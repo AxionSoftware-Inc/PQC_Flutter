@@ -7,6 +7,8 @@ from users.models import UserDevice
 
 
 User = get_user_model()
+VALID_PUBLIC_KEY_1 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+VALID_PUBLIC_KEY_2 = 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE='
 
 
 class AuthApiTests(APITestCase):
@@ -18,7 +20,7 @@ class AuthApiTests(APITestCase):
                 'device_id': 'device-1',
                 'device_name': 'flutter-android',
                 'platform': 'android',
-                'identity_public_key': 'public-key-1',
+                'identity_public_key': VALID_PUBLIC_KEY_1,
                 'key_algorithm': 'x25519',
             },
             format='json',
@@ -31,7 +33,7 @@ class AuthApiTests(APITestCase):
             UserDevice.objects.filter(
                 device_id='device-1',
                 user__username='ali',
-                identity_public_key='public-key-1',
+                identity_public_key=VALID_PUBLIC_KEY_1,
                 key_algorithm='x25519',
             ).exists()
         )
@@ -48,7 +50,7 @@ class AuthApiTests(APITestCase):
             {
                 'username': 'Riley Reid',
                 'device_id': 'device-riley',
-                'identity_public_key': 'public-key-riley',
+                'identity_public_key': VALID_PUBLIC_KEY_1,
                 'key_algorithm': 'x25519',
             },
             format='json',
@@ -106,7 +108,7 @@ class AuthApiTests(APITestCase):
             {
                 'username': 'ali',
                 'device_id': 'device-1',
-                'identity_public_key': 'public-key-1',
+                'identity_public_key': VALID_PUBLIC_KEY_1,
                 'key_algorithm': 'x25519',
             },
             format='json',
@@ -117,7 +119,7 @@ class AuthApiTests(APITestCase):
             {
                 'username': 'ali',
                 'device_id': 'device-1',
-                'identity_public_key': 'public-key-2',
+                'identity_public_key': VALID_PUBLIC_KEY_2,
                 'key_algorithm': 'x25519',
             },
             format='json',
@@ -125,7 +127,7 @@ class AuthApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         device = UserDevice.objects.get(device_id='device-1')
-        self.assertEqual(device.identity_public_key, 'public-key-2')
+        self.assertEqual(device.identity_public_key, VALID_PUBLIC_KEY_2)
 
     def test_authenticated_device_sync_updates_registered_device(self):
         login = self.client.post(
@@ -133,7 +135,7 @@ class AuthApiTests(APITestCase):
             {
                 'username': 'ali',
                 'device_id': 'device-1',
-                'identity_public_key': 'public-key-1',
+                'identity_public_key': VALID_PUBLIC_KEY_1,
                 'key_algorithm': 'x25519',
             },
             format='json',
@@ -146,7 +148,7 @@ class AuthApiTests(APITestCase):
                 'device_id': 'device-1',
                 'device_name': 'flutter-android',
                 'platform': 'android',
-                'identity_public_key': 'public-key-2',
+                'identity_public_key': VALID_PUBLIC_KEY_2,
                 'key_algorithm': 'x25519',
             },
             format='json',
@@ -154,5 +156,20 @@ class AuthApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         device = UserDevice.objects.get(device_id='device-1')
-        self.assertEqual(device.identity_public_key, 'public-key-2')
+        self.assertEqual(device.identity_public_key, VALID_PUBLIC_KEY_2)
         self.assertEqual(device.platform, 'android')
+
+    def test_login_rejects_invalid_x25519_public_key(self):
+        response = self.client.post(
+            '/api/auth/login',
+            {
+                'username': 'ali',
+                'device_id': 'device-1',
+                'identity_public_key': 'not-base64',
+                'key_algorithm': 'x25519',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('identity_public_key', str(response.data))
