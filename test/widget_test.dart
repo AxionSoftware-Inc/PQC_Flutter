@@ -1,30 +1,34 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:pqc_chat_app/main.dart';
+import 'package:pqc_chat_app/core/device/device_identity_service.dart';
+import 'package:pqc_chat_app/core/device/device_key_service.dart';
+import 'package:pqc_chat_app/core/network/api_client.dart';
+import 'package:pqc_chat_app/core/storage/session_storage.dart';
+import 'package:pqc_chat_app/features/auth/data/auth_repository.dart';
+import 'package:pqc_chat_app/features/auth/presentation/login_page.dart';
+import 'package:pqc_chat_app/features/auth/session_controller.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('login page renders login form', (tester) async {
+    SharedPreferences.setMockInitialValues({});
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    final sessionController = SessionController(
+      authRepository: AuthRepository(
+        apiClient: ApiClient(),
+        sessionStorage: SessionStorage(),
+        deviceIdentityService: DeviceIdentityService(),
+        deviceKeyService: DeviceKeyService(),
+      ),
+    );
+    await sessionController.initialize();
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    await tester.pumpWidget(
+      MaterialApp(home: LoginPage(sessionController: sessionController)),
+    );
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('PQC Chat Login'), findsOneWidget);
+    expect(find.text('Ism'), findsOneWidget);
+    expect(find.text('Login'), findsOneWidget);
   });
 }

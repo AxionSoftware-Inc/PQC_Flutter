@@ -1,17 +1,48 @@
-# pqc_chat_app
+# PQC Chat App
 
-A new Flutter project.
+Minimal chat prototype built with Flutter and Django REST Framework.
 
-## Getting Started
+Current scope:
 
-This project is a starting point for a Flutter application.
+- simple login with `name + device identity`
+- one shared group chat for all logged-in users
+- private chat between any 2 users
+- polling-based refresh
+- no encryption yet, but client message services are separated for future PQC work
 
-A few resources to get you started if this is your first Flutter project:
+## Backend setup
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r backend/requirements.txt
+.venv/bin/python backend/manage.py migrate
+.venv/bin/python backend/manage.py runserver
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Backend API runs locally at `http://127.0.0.1:8000/api`.
+
+## Flutter setup
+
+```bash
+flutter pub get
+flutter run
+```
+
+Notes:
+
+- current default API base URL is `http://91.108.121.56/api`
+- login asks only for a name
+- the app generates and stores a persistent device identity locally, then reuses it on the same device
+- users are not pre-seeded anymore; any new device can join with a new name
+- if needed, override it with:
+
+```bash
+flutter run --dart-define=API_BASE_URL=http://YOUR_HOST:8000/api
+```
+
+## Tests
+
+```bash
+.venv/bin/python backend/manage.py test users chat
+flutter test
+```
