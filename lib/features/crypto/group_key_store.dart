@@ -102,19 +102,23 @@ class GroupKeyStore implements GroupKeyProvider {
       }
 
       for (final device in usableDevices) {
-        envelopes.add(
-          ConversationKeyEnvelopeUpload(
-            targetDeviceId: device.deviceId,
-            wrappedKey: await _wrapGroupKeyForDevice(
-              conversation: conversation,
-              keyId: keyId,
-              senderDeviceId: deviceIdentity.id,
-              targetDevice: device,
-              localKeyPair: localKeyPair,
-              secretKeyBytes: secretKeyBytes,
+        try {
+          envelopes.add(
+            ConversationKeyEnvelopeUpload(
+              targetDeviceId: device.deviceId,
+              wrappedKey: await _wrapGroupKeyForDevice(
+                conversation: conversation,
+                keyId: keyId,
+                senderDeviceId: deviceIdentity.id,
+                targetDevice: device,
+                localKeyPair: localKeyPair,
+                secretKeyBytes: secretKeyBytes,
+              ),
             ),
-          ),
-        );
+          );
+        } catch (_) {
+          continue;
+        }
       }
     }
 

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class AppUserDevice {
   const AppUserDevice({
     required this.deviceId,
@@ -14,7 +16,19 @@ class AppUserDevice {
   final String keyAlgorithm;
 
   bool get hasUsableX25519Key =>
-      keyAlgorithm == 'x25519' && identityPublicKey.isNotEmpty;
+      keyAlgorithm == 'x25519' && _hasValidX25519PublicKey(identityPublicKey);
+
+  static bool _hasValidX25519PublicKey(String value) {
+    if (value.isEmpty) {
+      return false;
+    }
+
+    try {
+      return base64Decode(value).length == 32;
+    } catch (_) {
+      return false;
+    }
+  }
 
   factory AppUserDevice.fromJson(Map<String, dynamic> json) {
     return AppUserDevice(

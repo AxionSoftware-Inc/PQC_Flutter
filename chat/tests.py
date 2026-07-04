@@ -7,6 +7,8 @@ from users.models import UserDevice
 
 
 User = get_user_model()
+VALID_PUBLIC_KEY_1 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+VALID_PUBLIC_KEY_2 = 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE='
 
 
 class ChatApiTests(APITestCase):
@@ -16,7 +18,7 @@ class ChatApiTests(APITestCase):
             {
                 'username': 'ali',
                 'device_id': 'device-1',
-                'identity_public_key': 'ali-public',
+                'identity_public_key': VALID_PUBLIC_KEY_1,
                 'key_algorithm': 'x25519',
             },
             format='json',
@@ -243,7 +245,7 @@ class ChatApiTests(APITestCase):
             {
                 'username': 'vali',
                 'device_id': 'device-2',
-                'identity_public_key': 'vali-public',
+                'identity_public_key': VALID_PUBLIC_KEY_2,
                 'key_algorithm': 'x25519',
             },
             format='json',
