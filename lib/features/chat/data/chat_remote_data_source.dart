@@ -16,6 +16,26 @@ class ChatRemoteDataSource {
         .toList();
   }
 
+  Future<ClaimedAppUserPreKey?> claimPreKey({
+    required int userId,
+    required String deviceId,
+  }) async {
+    try {
+      final response =
+          await apiClient.post(
+                '/users/$userId/devices/$deviceId/claim-prekey',
+                {},
+              )
+              as Map<String, dynamic>;
+      return ClaimedAppUserPreKey.fromJson(response);
+    } on ApiException catch (error) {
+      if (error.message == 'No available prekeys for this device.') {
+        return null;
+      }
+      rethrow;
+    }
+  }
+
   Future<List<Conversation>> fetchConversations() async {
     final response = await apiClient.get('/conversations') as List<dynamic>;
     return response

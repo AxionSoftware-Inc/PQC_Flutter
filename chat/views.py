@@ -141,8 +141,17 @@ class ConversationKeyEnvelopeView(APIView):
         participant_user_ids = set(
             conversation.participants.values_list('id', flat=True)
         )
-        saved = []
+        expected_target_ids = set(
+            UserDevice.objects.filter(
+                user_id__in=participant_user_ids,
+                key_algorithm='x25519',
+            )
+            .exclude(identity_public_key='')
+            .values_list('device_id', flat=True)
+        )
+        submitted_target_ids = []
         for item in serializer.validated_data['envelopes']:
+            submitted_target_ids.append(item['target_device_id'])
             target_device = UserDevice.objects.filter(
                 device_id=item['target_device_id'],
                 user_id__in=participant_user_ids,
@@ -155,6 +164,36 @@ class ConversationKeyEnvelopeView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+        submitted_target_id_set = set(submitted_target_ids)
+
+        if len(submitted_target_ids) != len(submitted_target_id_set):
+            return Response(
+                {'detail': 'Duplicate target_device_id entries are not allowed.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if expected_target_ids != submitted_target_id_set:
+            missing_ids = sorted(expected_target_ids - submitted_target_id_set)
+            extra_ids = sorted(submitted_target_id_set - expected_target_ids)
+            parts = []
+            if missing_ids:
+                parts.append(f"missing devices: {', '.join(missing_ids)}")
+            if extra_ids:
+                parts.append(f"unexpected devices: {', '.join(extra_ids)}")
+            return Response(
+                {
+                    'detail': 'Envelope set must exactly match the registered group devices.',
+                    'mismatch': parts,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        saved = []
+        for item in serializer.validated_data['envelopes']:
+            target_device = UserDevice.objects.get(
+                device_id=item['target_device_id'],
+                user_id__in=participant_user_ids,
+            )
             envelope, _ = conversation.key_envelopes.update_or_create(
                 target_device=target_device,
                 key_id=serializer.validated_data['key_id'],

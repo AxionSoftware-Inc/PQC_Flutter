@@ -1,7 +1,10 @@
 import '../../../core/models/app_user.dart';
 import '../../../core/models/chat_message.dart';
 import '../../../core/models/conversation.dart';
+import '../../crypto/chat_crypto_exceptions.dart';
 import '../../crypto/message_codec.dart';
+import '../../crypto/private_session_store.dart';
+import '../../security/key_verification_service.dart';
 import 'chat_remote_data_source.dart';
 
 class ChatRepository {
@@ -9,11 +12,15 @@ class ChatRepository {
     required this.remoteDataSource,
     required this.composerService,
     required this.decoderService,
+    required this.privateSessionStore,
+    required this.keyVerificationService,
   });
 
   final ChatRemoteDataSource remoteDataSource;
   final MessageComposerService composerService;
   final MessageDecoderService decoderService;
+  final PrivateSessionStore privateSessionStore;
+  final KeyVerificationService keyVerificationService;
   final Map<int, AppUser> _usersById = {};
 
   Future<List<AppUser>> fetchUsers() async {
@@ -86,6 +93,14 @@ class ChatRepository {
     required String text,
   }) async {
     await _ensureUsersLoaded();
+    await _guardPrivateConversationTrust(
+      conversation: conversation,
+      currentUserId: currentUserId,
+    );
+    await _preparePrivatePeerPreKey(
+      conversation: conversation,
+      currentUserId: currentUserId,
+    );
     final payload = await composerService.compose(
       currentUserId: currentUserId,
       conversation: conversation,
@@ -116,5 +131,100 @@ class ChatRepository {
       return;
     }
     await fetchUsers();
+  }
+
+  Future<Map<int, UserKeyTrust>> buildUserTrustMap() async {
+    await _ensureUsersLoaded();
+    return keyVerificationService.buildUserTrustMap(_usersById.values);
+  }
+
+  Future<ConversationKeyTrust> getConversationTrust({
+    required int currentUserId,
+    required Conversation conversation,
+  }) async {
+    await _ensureUsersLoaded();
+    return keyVerificationService.getConversationTrust(
+      currentUserId: currentUserId,
+      conversation: conversation,
+      usersById: _usersById,
+    );
+  }
+
+  Future<void> verifyConversationPeerKey({
+    required int currentUserId,
+    required Conversation conversation,
+  }) async {
+    await _ensureUsersLoaded();
+    final trust = await keyVerificationService.getConversationTrust(
+      currentUserId: currentUserId,
+      conversation: conversation,
+      usersById: _usersById,
+    );
+    final peerUser = trust.peerUser;
+    if (peerUser == null) {
+      return;
+    }
+    await keyVerificationService.verifyUser(peerUser);
+  }
+
+  Future<void> _preparePrivatePeerPreKey({
+    required Conversation conversation,
+    required int currentUserId,
+  }) async {
+    if (conversation.isGroup) {
+      return;
+    }
+
+    final peerUserId = conversation.participantIds.firstWhere(
+      (id) => id != currentUserId,
+      orElse: () => -1,
+    );
+    final peerUser = _usersById[peerUserId];
+    final peerDevice = peerUser?.preferredX25519Device;
+    if (peerUser == null || peerDevice == null) {
+      return;
+    }
+
+    final claimedPreKey = await remoteDataSource.claimPreKey(
+      userId: peerUser.id,
+      deviceId: peerDevice.deviceId,
+    );
+    final nextPreKeys = claimedPreKey == null
+        ? const <AppUserPreKey>[]
+        : [
+            AppUserPreKey(
+              keyId: claimedPreKey.keyId,
+              publicKey: claimedPreKey.publicKey,
+            ),
+          ];
+
+    final updatedDevices = peerUser.devices.map((device) {
+      if (device.deviceId != peerDevice.deviceId) {
+        return device;
+      }
+      return device.copyWith(preKeys: nextPreKeys);
+    }).toList();
+
+    _usersById[peerUser.id] = peerUser.copyWith(devices: updatedDevices);
+  }
+
+  Future<void> _guardPrivateConversationTrust({
+    required Conversation conversation,
+    required int currentUserId,
+  }) async {
+    if (conversation.isGroup) {
+      return;
+    }
+
+    final trust = await keyVerificationService.getConversationTrust(
+      currentUserId: currentUserId,
+      conversation: conversation,
+      usersById: _usersById,
+    );
+    if (trust.hasKeyChanged) {
+      throw ChatEncryptionException(
+        '${trust.peerUser?.displayName ?? 'Peer'} key changed. Verify the new key before sending more private messages.',
+      );
+    }
   }
 }

@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/session_user.dart';
+import 'local_secret_store.dart';
 
 class RememberedIdentity {
   const RememberedIdentity({required this.username, required this.displayName});
@@ -10,19 +11,23 @@ class RememberedIdentity {
 }
 
 class SessionStorage {
+  SessionStorage({LocalSecretStore? secretStore})
+    : _secretStore = secretStore ?? LocalSecretStore();
+
   static const _tokenKey = 'session_token';
   static const _idKey = 'session_user_id';
   static const _usernameKey = 'session_username';
   static const _displayNameKey = 'session_display_name';
   static const _rememberedUsernameKey = 'remembered_username';
   static const _rememberedDisplayNameKey = 'remembered_display_name';
+  final LocalSecretStore _secretStore;
 
   Future<SessionUser?> read() async {
-    final preferences = await SharedPreferences.getInstance();
-    final token = preferences.getString(_tokenKey);
-    final id = preferences.getInt(_idKey);
-    final username = preferences.getString(_usernameKey);
-    final displayName = preferences.getString(_displayNameKey);
+    final token = await _secretStore.read(_tokenKey);
+    final idValue = await _secretStore.read(_idKey);
+    final username = await _secretStore.read(_usernameKey);
+    final displayName = await _secretStore.read(_displayNameKey);
+    final id = idValue == null ? null : int.tryParse(idValue);
 
     if (token == null ||
         id == null ||
@@ -41,10 +46,10 @@ class SessionStorage {
 
   Future<void> write(SessionUser user) async {
     final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(_tokenKey, user.token);
-    await preferences.setInt(_idKey, user.id);
-    await preferences.setString(_usernameKey, user.username);
-    await preferences.setString(_displayNameKey, user.displayName);
+    await _secretStore.write(key: _tokenKey, value: user.token);
+    await _secretStore.write(key: _idKey, value: user.id.toString());
+    await _secretStore.write(key: _usernameKey, value: user.username);
+    await _secretStore.write(key: _displayNameKey, value: user.displayName);
     await preferences.setString(_rememberedUsernameKey, user.username);
     await preferences.setString(_rememberedDisplayNameKey, user.displayName);
   }
@@ -63,10 +68,10 @@ class SessionStorage {
 
   Future<void> clear({bool clearRememberedIdentity = true}) async {
     final preferences = await SharedPreferences.getInstance();
-    await preferences.remove(_tokenKey);
-    await preferences.remove(_idKey);
-    await preferences.remove(_usernameKey);
-    await preferences.remove(_displayNameKey);
+    await _secretStore.delete(_tokenKey);
+    await _secretStore.delete(_idKey);
+    await _secretStore.delete(_usernameKey);
+    await _secretStore.delete(_displayNameKey);
     if (clearRememberedIdentity) {
       await preferences.remove(_rememberedUsernameKey);
       await preferences.remove(_rememberedDisplayNameKey);

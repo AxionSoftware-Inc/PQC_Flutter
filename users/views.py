@@ -1,13 +1,19 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from chat.models import Conversation, ConversationParticipant
-from users.models import UserDevice
-from users.serializers import DeviceSyncSerializer, LoginSerializer, UserSerializer
+from users.models import UserDevice, UserDevicePreKey
+from users.serializers import (
+    ClaimedDevicePreKeySerializer,
+    DeviceSyncSerializer,
+    LoginSerializer,
+    UserSerializer,
+)
 
 
 User = get_user_model()
@@ -60,6 +66,24 @@ def upsert_user_device(
     return device, None
 
 
+def sync_device_prekeys(*, device, prekeys):
+    if not prekeys:
+        return
+
+    incoming_ids = {item['key_id'] for item in prekeys}
+    device.prekeys.filter(used_at__isnull=True).exclude(key_id__in=incoming_ids).delete()
+
+    for item in prekeys:
+        UserDevicePreKey.objects.update_or_create(
+            device=device,
+            key_id=item['key_id'],
+            defaults={
+                'public_key': item['public_key'],
+                'used_at': None,
+            },
+        )
+
+
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -76,6 +100,7 @@ class LoginView(APIView):
         platform = serializer.validated_data['platform'].strip()
         identity_public_key = serializer.validated_data['identity_public_key'].strip()
         key_algorithm = serializer.validated_data['key_algorithm'].strip()
+        prekeys = serializer.validated_data['prekeys']
 
         if not username or not device_id:
             return Response(
@@ -91,7 +116,7 @@ class LoginView(APIView):
             user.first_name = display_name
             user.save(update_fields=['first_name'])
 
-        _, error_response = upsert_user_device(
+        device, error_response = upsert_user_device(
             user=user,
             device_id=device_id,
             device_name=device_name,
@@ -101,6 +126,7 @@ class LoginView(APIView):
         )
         if error_response is not None:
             return error_response
+        sync_device_prekeys(device=device, prekeys=prekeys)
 
         group, _ = Conversation.objects.get_or_create(
             type=Conversation.ConversationType.GROUP,
@@ -154,6 +180,10 @@ class DeviceSyncView(APIView):
         )
         if error_response is not None:
             return error_response
+        sync_device_prekeys(
+            device=device,
+            prekeys=serializer.validated_data['prekeys'],
+        )
 
         return Response(
             {
@@ -161,4 +191,44 @@ class DeviceSyncView(APIView):
                 'identity_public_key': device.identity_public_key,
                 'key_algorithm': device.key_algorithm,
             }
+        )
+
+
+class ClaimDevicePreKeyView(APIView):
+    @transaction.atomic
+    def post(self, request, user_id, device_id):
+        if request.user.id == user_id:
+            return Response(
+                {'detail': 'Cannot claim a prekey from your own device.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        device = UserDevice.objects.select_for_update().filter(
+            user_id=user_id,
+            device_id=device_id,
+        ).first()
+        if device is None:
+            return Response(
+                {'detail': 'Target device was not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        prekey = device.prekeys.filter(used_at__isnull=True).order_by('id').first()
+        if prekey is None:
+            return Response(
+                {'detail': 'No available prekeys for this device.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        prekey.used_at = timezone.now()
+        prekey.save(update_fields=['used_at'])
+
+        return Response(
+            ClaimedDevicePreKeySerializer(
+                {
+                    'device_id': device.device_id,
+                    'key_id': prekey.key_id,
+                    'public_key': prekey.public_key,
+                }
+            ).data
         )
