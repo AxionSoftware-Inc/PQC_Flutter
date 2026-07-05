@@ -5,6 +5,7 @@ import '../../../core/models/conversation.dart';
 import '../../../core/network/api_client.dart';
 import '../../auth/session_controller.dart';
 import '../data/chat_repository.dart';
+import '../../security/key_verification_service.dart';
 import 'chat_page.dart';
 
 class ChatListPage extends StatefulWidget {
@@ -26,6 +27,7 @@ class _ChatListPageState extends State<ChatListPage> {
   String? _error;
   List<AppUser> _users = const [];
   List<Conversation> _conversations = const [];
+  Map<int, UserKeyTrust> _trustByUserId = const {};
 
   @override
   void initState() {
@@ -44,12 +46,14 @@ class _ChatListPageState extends State<ChatListPage> {
       final conversations = await widget.chatRepository.fetchConversations(
         currentUserId: widget.sessionController.sessionUser!.id,
       );
+      final trustByUserId = await widget.chatRepository.buildUserTrustMap();
       if (!mounted) {
         return;
       }
       setState(() {
         _users = users;
         _conversations = conversations;
+        _trustByUserId = trustByUserId;
       });
     } catch (error) {
       if (error is UnauthorizedApiException) {
@@ -177,24 +181,41 @@ class _ChatListPageState extends State<ChatListPage> {
             const Text('Private chats'),
             const SizedBox(height: 8),
             for (final user in otherUsers)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(user.displayName),
-                subtitle: Text(
-                  privateConversations[user.id]
-                              ?.lastMessagePreview
-                              .isNotEmpty ==
-                          true
-                      ? privateConversations[user.id]!.lastMessagePreview
-                      : user.hasUsableDeviceKey
-                      ? 'Start private chat'
-                      : 'Device key tayyor emas. U avval ilovaga kirishi kerak.',
-                ),
-                onTap: () => _openPrivateChat(user),
+              _buildPrivateUserTile(
+                user: user,
+                privateConversation: privateConversations[user.id],
               ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPrivateUserTile({
+    required AppUser user,
+    required Conversation? privateConversation,
+  }) {
+    final trust = _trustByUserId[user.id];
+    final subtitle = privateConversation?.lastMessagePreview.isNotEmpty == true
+        ? privateConversation!.lastMessagePreview
+        : trust?.hasKeyChanged == true
+        ? 'Key changed. Verify again before trusting.'
+        : user.hasUsableDeviceKey
+        ? trust?.isVerified == true
+              ? 'Verified key'
+              : 'Start private chat. Key not verified yet.'
+        : 'Device key tayyor emas. U avval ilovaga kirishi kerak.';
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(user.displayName),
+      subtitle: Text(subtitle),
+      trailing: trust?.hasKeyChanged == true
+          ? const Icon(Icons.warning_amber_rounded, color: Colors.orange)
+          : trust?.isVerified == true
+          ? const Icon(Icons.verified_user, color: Colors.green)
+          : null,
+      onTap: () => _openPrivateChat(user),
     );
   }
 }

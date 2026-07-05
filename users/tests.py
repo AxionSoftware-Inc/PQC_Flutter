@@ -3,7 +3,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
 from chat.models import Conversation, ConversationParticipant
-from users.models import UserDevice
+from users.models import UserDevice, UserDevicePreKey
 
 
 User = get_user_model()
@@ -22,6 +22,12 @@ class AuthApiTests(APITestCase):
                 'platform': 'android',
                 'identity_public_key': VALID_PUBLIC_KEY_1,
                 'key_algorithm': 'x25519',
+                'prekeys': [
+                    {
+                        'key_id': 'prekey-1',
+                        'public_key': VALID_PUBLIC_KEY_2,
+                    },
+                ],
             },
             format='json',
         )
@@ -35,6 +41,13 @@ class AuthApiTests(APITestCase):
                 user__username='ali',
                 identity_public_key=VALID_PUBLIC_KEY_1,
                 key_algorithm='x25519',
+            ).exists()
+        )
+        self.assertTrue(
+            UserDevicePreKey.objects.filter(
+                device__device_id='device-1',
+                key_id='prekey-1',
+                public_key=VALID_PUBLIC_KEY_2,
             ).exists()
         )
         self.assertTrue(
@@ -59,6 +72,90 @@ class AuthApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['user']['username'], 'riley reid')
         self.assertEqual(response.data['user']['display_name'], 'Riley Reid')
+
+    def test_users_endpoint_returns_available_prekeys(self):
+        login = self.client.post(
+            '/api/auth/login',
+            {
+                'username': 'ali',
+                'device_id': 'device-1',
+                'identity_public_key': VALID_PUBLIC_KEY_1,
+                'key_algorithm': 'x25519',
+                'prekeys': [
+                    {'key_id': 'prekey-1', 'public_key': VALID_PUBLIC_KEY_2},
+                ],
+            },
+            format='json',
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {login.data['token']}")
+
+        response = self.client.get('/api/users')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data[0]['devices'][0]['prekeys'][0]['key_id'],
+            'prekey-1',
+        )
+
+    def test_claim_prekey_marks_it_used_and_returns_next_one_once(self):
+        login = self.client.post(
+            '/api/auth/login',
+            {
+                'username': 'ali',
+                'device_id': 'device-1',
+                'identity_public_key': VALID_PUBLIC_KEY_1,
+                'key_algorithm': 'x25519',
+                'prekeys': [
+                    {'key_id': 'prekey-1', 'public_key': VALID_PUBLIC_KEY_2},
+                ],
+            },
+            format='json',
+        )
+        claimer = self.client.post(
+            '/api/auth/login',
+            {
+                'username': 'vali',
+                'device_id': 'device-2',
+                'identity_public_key': VALID_PUBLIC_KEY_1,
+                'key_algorithm': 'x25519',
+            },
+            format='json',
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {claimer.data['token']}")
+
+        first_claim = self.client.post('/api/users/1/devices/device-1/claim-prekey', {}, format='json')
+        second_claim = self.client.post('/api/users/1/devices/device-1/claim-prekey', {}, format='json')
+
+        self.assertEqual(first_claim.status_code, 200)
+        self.assertEqual(first_claim.data['key_id'], 'prekey-1')
+        self.assertEqual(second_claim.status_code, 404)
+        self.assertFalse(
+            UserDevicePreKey.objects.filter(
+                device__device_id='device-1',
+                key_id='prekey-1',
+                used_at__isnull=True,
+            ).exists()
+        )
+
+    def test_cannot_claim_prekey_from_own_device(self):
+        login = self.client.post(
+            '/api/auth/login',
+            {
+                'username': 'ali',
+                'device_id': 'device-1',
+                'identity_public_key': VALID_PUBLIC_KEY_1,
+                'key_algorithm': 'x25519',
+                'prekeys': [
+                    {'key_id': 'prekey-1', 'public_key': VALID_PUBLIC_KEY_2},
+                ],
+            },
+            format='json',
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {login.data['token']}")
+
+        response = self.client.post('/api/users/1/devices/device-1/claim-prekey', {}, format='json')
+
+        self.assertEqual(response.status_code, 400)
 
     def test_me_returns_authenticated_user(self):
         login = self.client.post(
@@ -159,6 +256,51 @@ class AuthApiTests(APITestCase):
         self.assertEqual(device.identity_public_key, VALID_PUBLIC_KEY_2)
         self.assertEqual(device.platform, 'android')
 
+    def test_device_sync_replaces_available_prekey_batch(self):
+        login = self.client.post(
+            '/api/auth/login',
+            {
+                'username': 'ali',
+                'device_id': 'device-1',
+                'identity_public_key': VALID_PUBLIC_KEY_1,
+                'key_algorithm': 'x25519',
+                'prekeys': [
+                    {'key_id': 'prekey-1', 'public_key': VALID_PUBLIC_KEY_2},
+                ],
+            },
+            format='json',
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {login.data['token']}")
+
+        response = self.client.post(
+            '/api/users/me/device',
+            {
+                'device_id': 'device-1',
+                'identity_public_key': VALID_PUBLIC_KEY_1,
+                'key_algorithm': 'x25519',
+                'prekeys': [
+                    {'key_id': 'prekey-2', 'public_key': VALID_PUBLIC_KEY_2},
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            UserDevicePreKey.objects.filter(
+                device__device_id='device-1',
+                key_id='prekey-1',
+                used_at__isnull=True,
+            ).exists()
+        )
+        self.assertTrue(
+            UserDevicePreKey.objects.filter(
+                device__device_id='device-1',
+                key_id='prekey-2',
+                used_at__isnull=True,
+            ).exists()
+        )
+
     def test_login_rejects_invalid_x25519_public_key(self):
         response = self.client.post(
             '/api/auth/login',
@@ -166,6 +308,32 @@ class AuthApiTests(APITestCase):
                 'username': 'ali',
                 'device_id': 'device-1',
                 'identity_public_key': 'not-base64',
+                'key_algorithm': 'x25519',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('identity_public_key', str(response.data))
+
+    def test_device_sync_rejects_invalid_x25519_public_key(self):
+        login = self.client.post(
+            '/api/auth/login',
+            {
+                'username': 'ali',
+                'device_id': 'device-1',
+                'identity_public_key': VALID_PUBLIC_KEY_1,
+                'key_algorithm': 'x25519',
+            },
+            format='json',
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {login.data['token']}")
+
+        response = self.client.post(
+            '/api/users/me/device',
+            {
+                'device_id': 'device-1',
+                'identity_public_key': 'broken-key',
                 'key_algorithm': 'x25519',
             },
             format='json',

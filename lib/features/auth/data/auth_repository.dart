@@ -1,8 +1,10 @@
 import '../../../core/device/device_identity_service.dart';
 import '../../../core/device/device_key_service.dart';
+import '../../../core/device/device_prekey_service.dart';
 import '../../../core/models/session_user.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/session_storage.dart';
+import '../../crypto/outbound_message_cache.dart';
 
 class AuthRepository {
   AuthRepository({
@@ -10,12 +12,16 @@ class AuthRepository {
     required this.sessionStorage,
     required this.deviceIdentityService,
     required this.deviceKeyService,
+    required this.devicePreKeyService,
+    this._outboundMessageCache,
   });
 
   final ApiClient apiClient;
   final SessionStorage sessionStorage;
   final DeviceIdentityService deviceIdentityService;
   final DeviceKeyService deviceKeyService;
+  final DevicePreKeyService devicePreKeyService;
+  final OutboundMessageCache? _outboundMessageCache;
 
   Future<SessionUser?> restoreSession() async {
     final session = await sessionStorage.read();
@@ -44,6 +50,7 @@ class AuthRepository {
   Future<SessionUser> login(String username) async {
     final deviceIdentity = await deviceIdentityService.getIdentity();
     final deviceKeyMaterial = await deviceKeyService.getOrCreateKeyMaterial();
+    final preKeys = await devicePreKeyService.ensurePreKeys();
     apiClient.setDeviceId(deviceIdentity.id);
     final response =
         await apiClient.post('/auth/login', {
@@ -53,6 +60,7 @@ class AuthRepository {
               'platform': deviceIdentity.platform,
               'identity_public_key': deviceKeyMaterial.publicKey,
               'key_algorithm': deviceKeyMaterial.algorithm,
+              'prekeys': preKeys,
             })
             as Map<String, dynamic>;
 
@@ -73,6 +81,7 @@ class AuthRepository {
   Future<void> syncCurrentDevice() async {
     final deviceIdentity = await deviceIdentityService.getIdentity();
     final deviceKeyMaterial = await deviceKeyService.getOrCreateKeyMaterial();
+    final preKeys = await devicePreKeyService.ensurePreKeys();
     apiClient.setDeviceId(deviceIdentity.id);
     await apiClient.post('/users/me/device', {
       'device_id': deviceIdentity.id,
@@ -80,6 +89,7 @@ class AuthRepository {
       'platform': deviceIdentity.platform,
       'identity_public_key': deviceKeyMaterial.publicKey,
       'key_algorithm': deviceKeyMaterial.algorithm,
+      'prekeys': preKeys,
     });
   }
 
@@ -89,5 +99,6 @@ class AuthRepository {
     await sessionStorage.clear(
       clearRememberedIdentity: clearRememberedIdentity,
     );
+    await _outboundMessageCache?.clearAll();
   }
 }

@@ -55,6 +55,7 @@ class GroupKeyStore implements GroupKeyProvider {
        _uuid = uuid ?? const Uuid();
 
   static const _localKeyPrefix = 'group_secret_key';
+  static const _participantSignaturePrefix = 'group_participant_signature';
   static final _random = Random.secure();
 
   final DeviceIdentityService _deviceIdentityService;
@@ -71,11 +72,22 @@ class GroupKeyStore implements GroupKeyProvider {
     required Conversation conversation,
     required Map<int, AppUser> usersById,
   }) async {
+    final targetDevices = _resolveTargetDevices(
+      conversation: conversation,
+      usersById: usersById,
+    );
+    final currentSignature = _participantSignature(
+      conversation: conversation,
+      usersById: usersById,
+    );
     final existing = await getExistingKey(
       conversation: conversation,
       usersById: usersById,
     );
-    if (existing != null) {
+    final savedSignature = await _secretStore.read(
+      _participantSignatureStorageKey(conversation.id),
+    );
+    if (existing != null && savedSignature == currentSignature) {
       return existing;
     }
 
@@ -85,46 +97,25 @@ class GroupKeyStore implements GroupKeyProvider {
     final secretKeyBytes = List<int>.generate(32, (_) => _random.nextInt(256));
     final envelopes = <ConversationKeyEnvelopeUpload>[];
 
-    for (final userId in conversation.participantIds) {
-      final user = usersById[userId];
-      if (user == null) {
-        throw StateError('Missing participant data for user $userId.');
-      }
-
-      final usableDevices = user.devices
-          .where((item) => item.hasUsableX25519Key)
-          .toList();
-
-      // For the prototype we only distribute the group key to participants
-      // who have actually registered a usable device key.
-      if (usableDevices.isEmpty) {
-        continue;
-      }
-
-      for (final device in usableDevices) {
-        try {
-          envelopes.add(
-            ConversationKeyEnvelopeUpload(
-              targetDeviceId: device.deviceId,
-              wrappedKey: await _wrapGroupKeyForDevice(
-                conversation: conversation,
-                keyId: keyId,
-                senderDeviceId: deviceIdentity.id,
-                targetDevice: device,
-                localKeyPair: localKeyPair,
-                secretKeyBytes: secretKeyBytes,
-              ),
-            ),
-          );
-        } catch (_) {
-          continue;
-        }
-      }
+    for (final device in targetDevices) {
+      envelopes.add(
+        ConversationKeyEnvelopeUpload(
+          targetDeviceId: device.deviceId,
+          wrappedKey: await _wrapGroupKeyForDevice(
+            conversation: conversation,
+            keyId: keyId,
+            senderDeviceId: deviceIdentity.id,
+            targetDevice: device,
+            localKeyPair: localKeyPair,
+            secretKeyBytes: secretKeyBytes,
+          ),
+        ),
+      );
     }
 
-    if (envelopes.isEmpty) {
+    if (envelopes.length != targetDevices.length) {
       throw ChatEncryptionException(
-        'Groupda hali hech bir device public key tayyor emas. Har ishtirokchi ilovani bir marta ochib kirishi kerak.',
+        'Group key distribution incomplete. Retry after all participants re-open the app.',
       );
     }
 
@@ -138,6 +129,10 @@ class GroupKeyStore implements GroupKeyProvider {
       conversationId: conversation.id,
       keyId: keyId,
       secretKeyBytes: secretKeyBytes,
+    );
+    await _secretStore.write(
+      key: _participantSignatureStorageKey(conversation.id),
+      value: currentSignature,
     );
 
     return GroupKeyMaterial(keyId: keyId, secretKeyBytes: secretKeyBytes);
@@ -335,5 +330,71 @@ class GroupKeyStore implements GroupKeyProvider {
     required String keyId,
   }) {
     return '${_localKeyPrefix}_${conversationId}_$keyId';
+  }
+
+  String _participantSignatureStorageKey(int conversationId) {
+    return '${_participantSignaturePrefix}_$conversationId';
+  }
+
+  String _participantSignature({
+    required Conversation conversation,
+    required Map<int, AppUser> usersById,
+  }) {
+    final entries = <String>[];
+    final participantIds = [...conversation.participantIds]..sort();
+    for (final userId in participantIds) {
+      final user = usersById[userId];
+      if (user == null) {
+        entries.add('$userId:missing');
+        continue;
+      }
+      final devices =
+          user.usableX25519Devices
+              .map((item) => '${item.deviceId}:${item.identityPublicKey}')
+              .toList()
+            ..sort();
+      if (devices.isEmpty) {
+        entries.add('$userId:none');
+        continue;
+      }
+      entries.add('$userId:${devices.join("|")}');
+    }
+    return entries.join('||');
+  }
+
+  List<AppUserDevice> _resolveTargetDevices({
+    required Conversation conversation,
+    required Map<int, AppUser> usersById,
+  }) {
+    final targetDevices = <AppUserDevice>[];
+    final missingUsers = <String>[];
+
+    for (final userId in conversation.participantIds) {
+      final user = usersById[userId];
+      if (user == null) {
+        missingUsers.add('user-$userId');
+        continue;
+      }
+
+      final usableDevices = user.usableX25519Devices;
+      if (usableDevices.isEmpty) {
+        missingUsers.add(user.displayName);
+        continue;
+      }
+
+      targetDevices.addAll(usableDevices);
+    }
+
+    if (missingUsers.isNotEmpty) {
+      throw ChatEncryptionException(
+        'Group chat ready emas. Key yoq participantlar: ${missingUsers.join(", ")}.',
+      );
+    }
+
+    if (targetDevices.isEmpty) {
+      throw ChatEncryptionException('Groupda usable device key topilmadi.');
+    }
+
+    return targetDevices;
   }
 }

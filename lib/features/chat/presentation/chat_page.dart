@@ -7,6 +7,7 @@ import '../../../core/models/conversation.dart';
 import '../../../core/network/api_client.dart';
 import '../../crypto/chat_crypto_exceptions.dart';
 import '../data/chat_repository.dart';
+import '../../security/key_verification_service.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -36,15 +37,17 @@ class _ChatPageState extends State<ChatPage> {
   bool _isLoading = true;
   bool _isSending = false;
   String? _error;
+  ConversationKeyTrust? _conversationTrust;
 
   @override
   void initState() {
     super.initState();
     _loadMessages();
-    _pollingTimer = Timer.periodic(
-      const Duration(seconds: 3),
-      (_) => _loadMessages(showLoader: false),
-    );
+    _loadConversationTrust();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      _loadMessages(showLoader: false);
+      _loadConversationTrust();
+    });
   }
 
   @override
@@ -95,6 +98,32 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _loadConversationTrust() async {
+    if (widget.conversation.isGroup) {
+      return;
+    }
+
+    try {
+      final trust = await widget.chatRepository.getConversationTrust(
+        currentUserId: widget.currentUserId,
+        conversation: widget.conversation,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _conversationTrust = trust;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _conversationTrust = null;
+      });
+    }
+  }
+
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty || _isSending) {
@@ -136,6 +165,20 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _verifyCurrentKey() async {
+    await widget.chatRepository.verifyConversationPeerKey(
+      currentUserId: widget.currentUserId,
+      conversation: widget.conversation,
+    );
+    await _loadConversationTrust();
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Current key verified.')));
+  }
+
   void _jumpToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) {
@@ -148,12 +191,31 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
+      appBar: AppBar(
+        title: Text(widget.title),
+        actions: [
+          if (!widget.conversation.isGroup &&
+              _conversationTrust?.isAvailable == true)
+            IconButton(
+              onPressed: _verifyCurrentKey,
+              icon: Icon(
+                _conversationTrust?.isVerified == true
+                    ? Icons.verified_user
+                    : Icons.shield_outlined,
+              ),
+            ),
+        ],
+      ),
       body: Column(
         children: [
           if (_isLoading) const LinearProgressIndicator(),
           if (_error != null)
             Padding(padding: const EdgeInsets.all(8), child: Text(_error!)),
+          if (!widget.conversation.isGroup && _conversationTrust != null)
+            _SecurityBanner(
+              trust: _conversationTrust!,
+              onVerify: _verifyCurrentKey,
+            ),
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -215,6 +277,48 @@ class _ChatPageState extends State<ChatPage> {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SecurityBanner extends StatelessWidget {
+  const _SecurityBanner({required this.trust, required this.onVerify});
+
+  final ConversationKeyTrust trust;
+  final Future<void> Function() onVerify;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = !trust.isAvailable
+        ? 'Peer device key hali tayyor emas.'
+        : trust.hasKeyChanged
+        ? 'Warning: peer key changed. Verify again. Fingerprint: ${trust.fingerprint ?? '-'}'
+        : trust.isVerified
+        ? 'Verified fingerprint: ${trust.fingerprint ?? '-'}'
+        : 'Key not verified yet. Fingerprint: ${trust.fingerprint ?? '-'}';
+
+    final backgroundColor = !trust.isAvailable
+        ? Colors.grey.shade200
+        : trust.hasKeyChanged
+        ? Colors.orange.shade100
+        : trust.isVerified
+        ? Colors.green.shade100
+        : Colors.blueGrey.shade100;
+
+    return Container(
+      width: double.infinity,
+      color: backgroundColor,
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Expanded(child: Text(text)),
+          if (trust.isAvailable)
+            TextButton(
+              onPressed: onVerify,
+              child: Text(trust.isVerified ? 'Re-verify' : 'Verify'),
+            ),
         ],
       ),
     );

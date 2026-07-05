@@ -30,6 +30,21 @@ def validate_identity_public_key_fields(key_algorithm, identity_public_key):
     return identity_public_key
 
 
+class DevicePreKeySerializer(serializers.Serializer):
+    key_id = serializers.CharField()
+    public_key = serializers.CharField()
+
+    def validate(self, attrs):
+        validate_identity_public_key_fields('x25519', attrs.get('public_key', ''))
+        return attrs
+
+
+class ClaimedDevicePreKeySerializer(serializers.Serializer):
+    device_id = serializers.CharField()
+    key_id = serializers.CharField()
+    public_key = serializers.CharField()
+
+
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     device_id = serializers.CharField()
@@ -37,6 +52,7 @@ class LoginSerializer(serializers.Serializer):
     platform = serializers.CharField(required=False, allow_blank=True, default='')
     identity_public_key = serializers.CharField(required=False, allow_blank=True, default='')
     key_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
+    prekeys = DevicePreKeySerializer(many=True, required=False, default=list)
 
     def validate(self, attrs):
         validate_identity_public_key_fields(
@@ -52,6 +68,7 @@ class DeviceSerializer(serializers.Serializer):
     platform = serializers.CharField()
     identity_public_key = serializers.CharField()
     key_algorithm = serializers.CharField()
+    prekeys = DevicePreKeySerializer(many=True, required=False)
 
 
 class DeviceSyncSerializer(serializers.Serializer):
@@ -60,6 +77,7 @@ class DeviceSyncSerializer(serializers.Serializer):
     platform = serializers.CharField(required=False, allow_blank=True, default='')
     identity_public_key = serializers.CharField(required=False, allow_blank=True, default='')
     key_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
+    prekeys = DevicePreKeySerializer(many=True, required=False, default=list)
 
     def validate(self, attrs):
         validate_identity_public_key_fields(
@@ -89,6 +107,13 @@ class UserSerializer(serializers.ModelSerializer):
                     'platform': device.platform,
                     'identity_public_key': device.identity_public_key,
                     'key_algorithm': device.key_algorithm,
+                    'prekeys': [
+                        {
+                            'key_id': prekey.key_id,
+                            'public_key': prekey.public_key,
+                        }
+                        for prekey in device.prekeys.filter(used_at__isnull=True).order_by('id')[:10]
+                    ],
                 }
                 for device in obj.devices.order_by('id')
             ],

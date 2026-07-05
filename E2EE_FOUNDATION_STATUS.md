@@ -1,156 +1,115 @@
 # E2EE Foundation Status
 
-Bu hujjat realroq E2EE sari bugungi holatni, kamchiliklarni va keyingi qadamlarni qisqa emas, amaliy nuqtai nazardan yig'adi.
+Bu hujjat hozirgi kriptografik foundation qayergacha kelganini va hali qayerlari kuchsiz ekanini amaliy tarzda jamlaydi.
 
-## Hozir nimalar qo'shildi
+## Hozir Nima Ishlaydi
 
-1. Har device uchun alohida `identity key pair` generatsiya qilish foundation'i qo'shildi.
-2. Device private key client ichida saqlanadi.
-3. Device public key backendga login vaqtida yuboriladi.
-4. Backend har user uchun device registryni public key bilan saqlay oladi.
+### Private chat
 
-Asosiy fayllar:
+1. Har device local `identity key pair` yaratadi
+2. Public key login yoki device sync vaqtida backendga yuboriladi
+3. Private chat xabari `X25519 shared secret` asosida encrypt qilinadi
+4. Payload serverda `x25519:v4:*` yoki fallback `x25519:v3:*` ko'rinishida saqlanadi
+5. Har xabar uchun ephemeral public key bor
+6. Device'lar one-time prekey batch sync qiladi
+7. Peer usable prekey bo'lsa private bootstrap shu prekey bilan boshlanadi
+8. Payload ichida jo'natuvchining static public key'i borligi uchun yangi formatdagi xabarlar key rotate'dan keyin ham ochilishi mumkin
+9. Private transport hozir reliability uchun stateless-by-default: yangi xabarlar asosan `x25519:v4` yoki fallback `x25519:v3` formatida yuboriladi
+10. Self-sent encrypted payload uchun local plaintext cache bor, shu sabab yuborgan xabar history reload'da ham ko'rinadi
+11. Peer identity key o'zgarsa stale private session bekor qilinadi va eski session qayta ishlatilmaydi
+12. Oldin verified bo'lgan peer key o'zgarsa private send verify qilinmaguncha bloklanadi
+13. Private bootstrap decode bo'lgach one-time prekey local store'dan ham consume qilinadi
+14. Inbound encrypted plaintext ham payload cache'ga tushadi, shuning uchun consumed prekey history reload'ni sindirmaydi
+15. Eski `session:v1` tarixiy payloadlari uchun backward-compat decrypt qatlami saqlangan
+16. Legacy yoki buzilgan private session state avtomatik tashlab yuboriladi va yangi bootstrap majburlanadi
+17. Plaintext payload cache bounded bo'lib saqlanadi va logout paytida tozalanadi
 
-- [device_key_service.dart](/Users/macbookpro/Documents/PQC%20Chat%20app/lib/core/device/device_key_service.dart:1)
-- [auth_repository.dart](/Users/macbookpro/Documents/PQC%20Chat%20app/lib/features/auth/data/auth_repository.dart:1)
-- [users/models.py](/Users/macbookpro/Documents/PQC%20Chat%20app/users/models.py:1)
-- [users/views.py](/Users/macbookpro/Documents/PQC%20Chat%20app/users/views.py:1)
+### Group chat
 
-## Bu nima beradi
+1. Group secret clientda yaratiladi
+2. Har participant device uchun alohida wrapped key envelope yaratiladi
+3. Server faqat envelope'larni saqlaydi
+4. Payload `group:v1:*` ko'rinishida saqlanadi
+5. Participant usable device ro'yxati o'zgarsa keyingi yuborishda yangi group key yaratiladi
+6. Group key sync endi usable participant device'larning barchasi uchun envelope talab qiladi
+7. Kimdadir usable device key bo'lmasa group send to'xtatiladi, partial distribution bo'lmaydi
 
-Bu bosqich hali to'liq E2EE emas, lekin juda muhim poydevor:
+## Hozir Nima Yo'q
 
-1. Har qurilma endi alohida kriptografik identifikatsiyaga ega bo'lishi mumkin.
-2. Kelajakda private chat uchun real shared secret shu device key'lar asosida hosil qilinadi.
-3. Group chat uchun group key distribution ham shu foundation ustiga quriladi.
+1. safety number UI
+2. full forward secrecy
+3. double ratchet
+4. message retry / rekey orchestration
+5. PQC
 
-## Hozirgi eng katta kamchiliklar
+## Server Nimalarni Biladi
 
-1. Xabarlar hali `real device-to-device session key exchange` bilan encrypt qilinmayapti.
-2. Hozirgi message encryption hali demo darajada va app ichidagi static secretga suyanadi.
-3. Private key secure storage'da saqlanmoqda, lekin undan foydalanib real E2EE session hali qurilmagan.
-4. Group chat uchun shared group key management yo'q.
-5. Device verification va fingerprint UI yo'q.
-6. Forward secrecy yo'q.
-7. Key rotation yo'q.
+Server biladi:
 
-## Keyingi aniq qadamlar
+1. user identity metadata
+2. device ids
+3. public keys
+4. conversation metadata
+5. ciphertext
 
-### Qadam 1
+Server bilmaydi:
 
-Private chat uchun real session setup:
+1. device private key
+2. ready plaintext
+3. unwrapped group secret
 
-1. User list endpoint device public key'larini clientga beradi.
-2. Private chat ochilganda sender receiver device public key'ini oladi.
-3. Client tomonida `X25519` shared secret hosil qilinadi.
-4. Message key shu shared secret'dan derive qilinadi.
-5. Demo static secret message codec olib tashlanadi.
+## Hozirgi Xavfsizlik Bahosi
 
-### Qadam 2
+Bugungi holat:
 
-Private chat message envelope:
+- server-side plaintext hiding: `ha`
+- private key serverga chiqmasligi: `ha`
+- private chat real X25519 foundation: `ha`
+- private chat static + ephemeral derivation: `ha`
+- private chat prekey bootstrap foundation: `ha`
+- private chat stateless reinstall-safe transport default: `ha`
+- stale private session automatic invalidation: `ha`
+- verified key change bo'lsa private send guard: `ha`
+- one-time prekey local consume semantics: `ha`
+- inbound encrypted history cache after successful decrypt: `ha`
+- legacy session payload backward compatibility layer: `ha`
+- bounded plaintext cache cleanup on logout: `ha`
+- self-sent encrypted history readability: `ha`
+- private key verification va key change warning foundation: `ha`
+- group chat client-side key wrapping: `ha`
+- group key full-device coverage enforcement: `ha`
+- production-grade messenger security: `yo'q`
 
-1. `ciphertext`
-2. `nonce`
-3. `mac`
-4. `sender_device_id`
-5. `key_algorithm`
-6. `session_id` yoki `key_id`
+## Eng Katta Hali Qolgan Kamchiliklar
 
-### Qadam 3
+1. Stateless default transport reliability'ni oshirdi, lekin hali full double ratchet va Signal darajasidagi forward secrecy yo'q
+2. Verification UX hali minimal
+3. Group rekey policy endi device coverage qat'iy, lekin hali membership epoch / sender key darajasiga chiqmagan
+4. Local plaintext cache bounded va logout-cleaned, lekin forensic hardening hali alohida audit talab qiladi
 
-Group chat uchun key distribution:
+## PQC ga O'tishdan Oldin
 
-1. Group creator group key yaratadi.
-2. Group key har participant device public key'i bilan wrapped bo'ladi.
-3. Server wrapped group key'larni saqlaydi.
-4. Har user o'z device private key'i bilan unwrap qiladi.
+PQC dan oldin quyidagilar barqaror bo'lishi kerak:
 
-### Qadam 4
+1. private chat lifecycle
+2. group key lifecycle
+3. key update strategy
+4. user-visible security UX
 
-Key verification:
+Keyin hybrid model:
 
-1. Har device public key fingerprint'i ko'rsatiladi.
-2. User contact key'ni tasdiqlay oladi.
-3. Key o'zgarsa ogohlantirish chiqadi.
+1. `X25519`
+2. `ML-KEM`
+3. KDF -> final shared key
 
-### Qadam 5
+## Amaliy Xulosa
 
-Shundan keyin PQC / hybrid:
+Hozirgi loyiha demo encrypt bosqichidan chiqdi va haqiqiyroq E2EE foundationga o'tdi.
 
-1. Klassik `X25519` bilan birga PQC KEM qo'shiladi.
-2. Hybrid shared secret hosil qilinadi.
-3. KDF orqali final session key olinadi.
+Lekin bu hali:
 
-## Hozirgi tavsiya
+- Signal darajasidagi himoya emas
+- PQC emas
+- audit-complete product emas
 
-Eng to'g'ri navbat:
-
-1. avval private chat uchun real X25519-based E2EE
-2. keyin group key management
-3. keyin verification
-4. keyin hybrid PQC
-
-Shu tartib bilan yursak, biz demo encryption'dan haqiqiyroq E2EE'ga kontrolli o'tamiz.
-
-## 2026-07-03 Audit Natijasi
-
-Server va client holatini amaliy tekshiruvda quyidagilar aniqlandi:
-
-1. Serverdagi oxirgi xabarlar `x25519:v1` emas, `enc:v1` formatida saqlangan.
-2. `mac` user'ga bog'langan `users_userdevice` yozuvida `identity_public_key` bo'sh edi.
-3. Shu sabab private chat ham real `X25519` yo'liga o'tmagan, fallback demo encryption ishlagan.
-
-Server DB'dan ko'rilgan real namunalar:
-
-```text
-(5, 2, 6, 'enc:v1:Uc81sCuaprmdNla/:3t/IPcdXlL65uHHeKAmQgEqOA5jHdJVD5auR:ZoLmWXGfoHQzmcEWOzFVgw==', '2026-07-03 15:47:39.923855')
-(4, 2, 6, 'enc:v1:WRyLH7IRkJADEqwt:Xn47tNLAXPtsKZbaTZ6B3KQdt64=:QeIqEgViqkOJWcX2hJOVhg==', '2026-07-03 15:47:29.624033')
-(3, 1, 6, 'enc:v1:C4252Swj8NzQ17Yl:GNF7ICuN7qgrCg==:FudYqiNkw7no55e87uKSOg==', '2026-07-03 15:47:16.856102')
-```
-
-Decrypt audit natijasi:
-
-```text
-group#1   -> yana salom
-private#2 -> Qalaysan yaxshimisan
-private#2 -> axvollaring yaxshimi asalim
-```
-
-Muhim xulosa:
-
-1. Server plaintext saqlamayapti, ciphertext saqlayapti.
-2. Lekin bu ciphertext hozircha demo conversation-derived kalit bilan ochildi.
-3. Demak amalda `server-side plaintext hiding` bor, lekin hali `true device-to-device E2EE` yo'q.
-
-## 2026-07-04 Hozirgi Amaliy Holat
-
-Bugungi buildda oldingi eng katta kamchiliklar yopildi:
-
-1. Private chat uchun yangi xabarlar endi `x25519:v1` formatida yuboriladi.
-2. Private chat demo fallback bilan yuborilmaydi.
-3. Session restore vaqtida ham device public key serverga qayta sync qilinadi.
-4. Group chat uchun serverda `ConversationKeyEnvelope` saqlanadi.
-5. Group key clientda yaratiladi, participant device public key'lari bilan wrapped qilinadi va serverga faqat wrapped ko'rinishda yuboriladi.
-
-Asosiy yangi fayllar:
-
-- [group_key_store.dart](/Users/macbookpro/Documents/PQC Chat app/lib/features/crypto/group_key_store.dart:1)
-- [message_codec.dart](/Users/macbookpro/Documents/PQC Chat app/lib/features/crypto/message_codec.dart:1)
-- [chat/models.py](/Users/macbookpro/Documents/PQC Chat app/chat/models.py:1)
-- [chat/views.py](/Users/macbookpro/Documents/PQC Chat app/chat/views.py:1)
-
-Server smoke test natijasi:
-
-1. `POST /api/auth/login` ishladi
-2. `POST /api/users/me/device` ishladi
-3. `POST /api/conversations/{id}/keys` ishladi
-4. `GET /api/conversations/{id}/keys` ishladi
-
-Hali qolayotgan real cheklovlar:
-
-1. Contact key verification UI yo'q
-2. Key rotation yo'q
-3. Forward secrecy yo'q
-4. Group membership o'zgarsa rekey siyosati hali sodda
-5. PQC hali qo'shilmagan
+Shunga qaramay, endi keyingi bosqichlarni qurish uchun yetarli tayanch bor.

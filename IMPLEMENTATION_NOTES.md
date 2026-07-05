@@ -1,92 +1,105 @@
-# PQC Chat Prototype Status
+# Implementation Notes
 
-## Current state
+Bu fayl bugungi implementatsiyaning amaliy xotirasi: nimaga qanday qaror olingan, nimalar ataylab sodda qoldirilgan, qaysi joylar keyin almashtiriladi.
 
-This repository now contains a working chat prototype with:
+## Product Scope
 
-- Flutter client
-- Django REST Framework backend
-- automatic login with `username + device identity`
-- one shared `General Group`
-- private chats between any two users
-- polling refresh every 3 seconds
+Hozirgi scope ataylab kichik:
 
-## Authentication model
+1. login
+2. private chat
+3. 1 ta umumiy group chat
+4. minimal UI
+5. keyin PQC uchun toza foundation
 
-Current login is intentionally minimal for test distribution.
+## Deliberate Simplifications
 
-Flow:
+Ataylab sodda qilingan joylar:
 
-1. User enters only a name.
-2. Flutter creates or reuses a persistent app installation identifier.
-3. Backend receives:
-   - `username`
-   - `device_id`
-   - `device_name`
-   - `platform`
-4. If the username does not exist, backend creates it.
-5. If the device is already linked to another username, login is rejected.
-6. On successful login, the user is automatically added to `General Group`.
+1. realtime o'rniga polling
+2. seeded userlar o'rniga dynamic name + device binding
+3. registration/password yo'q
+4. avatar, media, typing, seen yo'q
+5. bitta fixed `General Group`
 
-Important note:
+## Current Flutter Notes
 
-- this is not a true hardware phone identifier
-- it is a persistent app-side device identity stored locally on the device
-- this is deliberate for testability, cross-platform support, and privacy safety
+Asosiy qatlamlar:
 
-## Architecture notes
+- `lib/app/` app bootstrap
+- `lib/core/` config, API, device, storage, models
+- `lib/features/auth/` login va session
+- `lib/features/chat/` conversations, messages, polling
+- `lib/features/crypto/` message codecs, group key store
 
-### Flutter
+Muhim implementatsiya eslatmalari:
 
-- `lib/app/` contains app bootstrap and screen switching
-- `lib/core/` contains config, API, local storage, models, and device identity
-- `lib/features/auth/` contains login and session state
-- `lib/features/chat/` contains conversations, messages, and polling
-- `lib/features/crypto/` contains placeholder message codec services for future PQC work
+1. macOS va Android prototip bosqichida secure storage muammolari sabab ayrim secretlar local fallback store bilan ishlatilmoqda
+2. session token va remembered identity alohida saqlanadi
+3. invalid token holatida remembered identity saqlanib qoladi
+4. private chat uchun peer key fingerprint local verify qilinadi
+5. verified key o'zgarsa UI warning ko'rsatiladi
+6. group key participant/device signature o'zgarsa qayta yaratiladi
+7. Android secretlar secure storage'ga qaytarildi, legacy local secretlar read vaqtida migratsiya qilinadi
+8. device login/sync vaqtida one-time prekey batch ham yuboriladi
+9. private chat payload hozir `x25519:v4` bo'lsa prekey bootstrap ishlatadi
+10. prekey yo'q holatda `x25519:v3` fallback ishlaydi
+11. private transport hozir reliability uchun stateless-by-default; yangi private xabarlar asosan `x25519:v4` yoki fallback `x25519:v3` bilan yuboriladi
+12. self-sent encrypted payload local plaintext cache'ga yoziladi, shuning uchun history reload'da ham user o'z yuborgan xabarini ko'radi
+13. peer identity key o'zgarsa stale private session avtomatik tashlab yuboriladi
+14. oldin verified bo'lgan peer key o'zgarsa private send vaqtincha bloklanadi, user yangi key'ni qayta verify qilishi kerak
+15. x25519:v4 bootstrap decode muvaffaqiyatli bo'lsa local one-time prekey ham delete qilinadi
+16. decoder successful decryptlardan keyin plaintext payload cache'ga yozadi, shuning uchun history qayta o'qilganda bootstrap/prekey state'ga qaramlik kamayadi
+17. group key create/sync vaqtida usable participant device'larning hammasi qamrab olinishi shart
+18. groupda biror participant usable device key'siz bo'lsa xabar yuborish to'xtatiladi, partial envelope upload qilinmaydi
+19. eski `session:v1` payloadlari uchun backward-compatible decrypt qatlami saqlangan
+20. legacy yoki buzilgan local private sessionlar read vaqtida auto-invalid bo'ladi
+21. outbound/inbound plaintext cache capped bo'lib yuradi va logout paytida tozalanadi
 
-### Backend
+## Current Backend Notes
 
-- `users/` handles login, current user, user list, and device binding
-- `chat/` handles conversations and messages
-- `backend/config/` contains Django project settings and routing
+Asosiy endpointlar:
 
-## PQC status
+- `POST /api/auth/login`
+- `GET /api/users`
+- `GET /api/users/me`
+- `POST /api/users/me/device`
+- `GET /api/conversations`
+- `POST /api/private-conversations`
+- `GET /api/conversations/{id}/messages`
+- `POST /api/conversations/{id}/messages`
+- `GET /api/conversations/{id}/keys`
+- `POST /api/conversations/{id}/keys`
 
-PQC encryption is not implemented yet.
+Muhim qarorlar:
 
-What is already prepared:
+1. server faqat transport, auth va metadata roli bajaradi
+2. private key serverga chiqmaydi
+3. group key faqat wrapped envelope sifatida serverga boradi
+4. `x25519` public key noto'g'ri bo'lsa backend reject qiladi
 
-- Flutter message composition and decoding are separated behind interfaces
-- backend remains transport-oriented
-- future encryption can be inserted before send and after receive without changing chat UI flow
+## Deploy Notes
 
-## Deployment target
-
-The mobile app default API base URL is currently set to:
+Current default production-like target:
 
 `http://91.108.121.56/api`
 
-Current server routing:
+Server routing:
 
-- `http://91.108.121.56/api/*` -> Django chat backend through nginx reverse proxy
-- `http://91.108.121.56/` -> existing non-chat site
+- `http://91.108.121.56/api/*` -> Django backend
+- `http://91.108.121.56/` -> boshqa mavjud site
 
-Current server state for testing:
+## Known Weak Spots
 
-- database was reset to a clean state
-- there are no pre-created test users
-- only one default conversation exists: `General Group`
-- users are created only when a new device logs in with a chosen name
+1. polling high traffic uchun yaxshi emas
+2. crypto flow hali full double ratchet ishlatmaydi
+3. group membership change bo'lsa rekey siyosati minimal
+4. local plaintext cache / forensic risk alohida audit talab qiladi
+5. session token secret store orqali saqlanadi, remembered identity esa UX uchun oddiy prefs'da qoladi
 
-This can still be overridden with:
+## Recommended Next Work
 
-```bash
-flutter run --dart-define=API_BASE_URL=http://YOUR_HOST:8000/api
-```
-
-## What to test now
-
-1. Multiple testers can enter different names and join the shared group.
-2. Two testers can open a private chat and exchange messages.
-3. Reopening the app on the same device restores the same identity.
-4. The same device cannot impersonate a different username later.
+1. regression tests
+2. richer key verification UX
+3. local encrypted cache strategy
+4. hybrid PQC design

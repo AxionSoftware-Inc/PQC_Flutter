@@ -327,3 +327,66 @@ class ChatApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('is not part of this conversation', response.data['detail'])
+
+    def test_group_key_envelope_rejects_partial_device_coverage(self):
+        other_login = self.client.post(
+            '/api/auth/login',
+            {
+                'username': 'vali',
+                'device_id': 'device-2',
+                'identity_public_key': VALID_PUBLIC_KEY_2,
+                'key_algorithm': 'x25519',
+            },
+            format='json',
+        )
+        self.assertEqual(other_login.status_code, 200)
+
+        response = self.client.post(
+            f'/api/conversations/{self.group.id}/keys',
+            {
+                'key_id': 'group-key-1',
+                'algorithm': 'group-x25519-aesgcm-v1',
+                'envelopes': [
+                    {
+                        'target_device_id': 'device-1',
+                        'wrapped_key': 'group-wrap:v1:nonce:cipher:mac',
+                    },
+                ],
+            },
+            format='json',
+            HTTP_X_DEVICE_ID='device-1',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data['detail'],
+            'Envelope set must exactly match the registered group devices.',
+        )
+        self.assertIn('missing devices: device-2', response.data['mismatch'][0])
+
+    def test_group_key_envelope_rejects_duplicate_target_devices(self):
+        response = self.client.post(
+            f'/api/conversations/{self.group.id}/keys',
+            {
+                'key_id': 'group-key-1',
+                'algorithm': 'group-x25519-aesgcm-v1',
+                'envelopes': [
+                    {
+                        'target_device_id': 'device-1',
+                        'wrapped_key': 'group-wrap:v1:nonce:cipher:mac',
+                    },
+                    {
+                        'target_device_id': 'device-1',
+                        'wrapped_key': 'group-wrap:v1:nonce2:cipher2:mac2',
+                    },
+                ],
+            },
+            format='json',
+            HTTP_X_DEVICE_ID='device-1',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data['detail'],
+            'Duplicate target_device_id entries are not allowed.',
+        )
