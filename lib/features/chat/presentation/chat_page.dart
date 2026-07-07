@@ -254,7 +254,8 @@ class _ChatPageState extends State<ChatPage> {
                         ),
                         const SizedBox(height: 4),
                         Text(message.body),
-                        if (message.deliveryState != MessageDeliveryState.sent) ...[
+                        if (message.deliveryState !=
+                            MessageDeliveryState.sent) ...[
                           const SizedBox(height: 6),
                           Text(
                             _statusLabel(message),
@@ -329,16 +330,24 @@ class _SecurityBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = !trust.isAvailable
         ? 'Peer device key hali tayyor emas.'
-        : trust.hasKeyChanged
-        ? 'Warning: peer key changed. Verify again. Fingerprint: ${trust.fingerprint ?? '-'}'
+        : trust.hasEnterpriseKeyChanged
+        ? 'Warning: peer security material changed. Re-verify. X25519: ${trust.fingerprint ?? '-'} PQC-KEM: ${trust.pqcFingerprint ?? '-'} ML-DSA: ${trust.signingFingerprint ?? '-'}'
+        : trust.isEnterpriseVerified
+        ? 'Enterprise trust verified. X25519: ${trust.fingerprint ?? '-'} PQC-KEM: ${trust.pqcFingerprint ?? '-'} ML-DSA: ${trust.signingFingerprint ?? '-'}'
+        : trust.isEnterpriseReady
+        ? 'Hybrid PQC ready, but not fully verified yet. X25519: ${trust.fingerprint ?? '-'} PQC-KEM: ${trust.pqcFingerprint ?? '-'} ML-DSA: ${trust.signingFingerprint ?? '-'}'
         : trust.isVerified
-        ? 'Verified fingerprint: ${trust.fingerprint ?? '-'}'
-        : 'Key not verified yet. Fingerprint: ${trust.fingerprint ?? '-'}';
+        ? 'Classical trust verified. X25519: ${trust.fingerprint ?? '-'}'
+        : 'Key not verified yet. X25519: ${trust.fingerprint ?? '-'}';
 
     final backgroundColor = !trust.isAvailable
         ? Colors.grey.shade200
-        : trust.hasKeyChanged
+        : trust.hasEnterpriseKeyChanged
         ? Colors.orange.shade100
+        : trust.isEnterpriseVerified
+        ? Colors.teal.shade100
+        : trust.isEnterpriseReady
+        ? Colors.cyan.shade100
         : trust.isVerified
         ? Colors.green.shade100
         : Colors.blueGrey.shade100;
@@ -353,7 +362,11 @@ class _SecurityBanner extends StatelessWidget {
           if (trust.isAvailable)
             TextButton(
               onPressed: onVerify,
-              child: Text(trust.isVerified ? 'Re-verify' : 'Verify'),
+              child: Text(
+                trust.isEnterpriseVerified || trust.isVerified
+                    ? 'Re-verify'
+                    : 'Verify',
+              ),
             ),
         ],
       ),

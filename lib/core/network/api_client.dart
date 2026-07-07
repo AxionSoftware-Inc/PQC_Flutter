@@ -75,10 +75,7 @@ class ApiClient {
       return base;
     }
     return base.replace(
-      queryParameters: {
-        ...base.queryParameters,
-        ...queryParameters,
-      },
+      queryParameters: {...base.queryParameters, ...queryParameters},
     );
   }
 

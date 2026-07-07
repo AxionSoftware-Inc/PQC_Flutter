@@ -62,6 +62,11 @@ Muhim implementatsiya eslatmalari:
 19. eski `session:v1` payloadlari uchun backward-compatible decrypt qatlami saqlangan
 20. legacy yoki buzilgan local private sessionlar read vaqtida auto-invalid bo'ladi
 21. outbound/inbound plaintext cache capped bo'lib yuradi va logout paytida tozalanadi
+22. peer device `ml-kem-768` public key e'lon qilgan bo'lsa private send `hybrid:v1` yoki `hybrid:v0` payload bilan yuboriladi
+23. hybrid final secret `X25519` va `ML-KEM-768` shared secret kombinatsiyasidan derive qilinadi
+24. peer PQC key yo'q bo'lsa flow avtomatik klassik `x25519:v4` yoki `x25519:v3` ga fallback qiladi
+25. peer device `ml-dsa-65` signing key e'lon qilgan bo'lsa private payload oxiriga signing public key va signature qo'shiladi
+26. decrypt paytida signed private payload `ML-DSA-65` bilan verify qilinadi; imzo yaroqsiz bo'lsa payload reject qilinadi
 
 ## Current Backend Notes
 
@@ -109,4 +114,4 @@ Server routing:
 1. regression tests
 2. richer key verification UX
 3. local encrypted cache strategy
-4. hybrid PQC design
+4. signed device directory trust UX

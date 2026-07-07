@@ -36,13 +36,17 @@ class ChatRemoteDataSource {
     }
   }
 
-  Future<List<Conversation>> fetchConversations({DateTime? updatedAfter}) async {
-    final response = await apiClient.get(
-      '/conversations',
-      queryParameters: updatedAfter == null
-          ? null
-          : {'updated_after': updatedAfter.toUtc().toIso8601String()},
-    ) as List<dynamic>;
+  Future<List<Conversation>> fetchConversations({
+    DateTime? updatedAfter,
+  }) async {
+    final response =
+        await apiClient.get(
+              '/conversations',
+              queryParameters: updatedAfter == null
+                  ? null
+                  : {'updated_after': updatedAfter.toUtc().toIso8601String()},
+            )
+            as List<dynamic>;
     return response
         .map((item) => Conversation.fromJson(item as Map<String, dynamic>))
         .toList();
@@ -64,7 +68,9 @@ class ChatRemoteDataSource {
     final response =
         await apiClient.get(
               '/conversations/$conversationId/messages',
-              queryParameters: afterId == null ? null : {'after_id': '$afterId'},
+              queryParameters: afterId == null
+                  ? null
+                  : {'after_id': '$afterId'},
             )
             as List<dynamic>;
     return response

@@ -198,20 +198,26 @@ class _ChatListPageState extends State<ChatListPage> {
     final trust = _trustByUserId[user.id];
     final subtitle = privateConversation?.lastMessagePreview.isNotEmpty == true
         ? privateConversation!.lastMessagePreview
-        : trust?.hasKeyChanged == true
-        ? 'Key changed. Verify again before trusting.'
+        : trust?.hasAnyKeyChanged == true
+        ? 'Security material changed. Re-verify before trusting.'
+        : user.hasUsableHybridDeviceKey
+        ? trust?.isEnterpriseVerified == true
+              ? 'Enterprise-ready PQC trust verified'
+              : 'Hybrid PQC ready. Verification needed.'
         : user.hasUsableDeviceKey
         ? trust?.isVerified == true
-              ? 'Verified key'
-              : 'Start private chat. Key not verified yet.'
+              ? 'Classical key verified'
+              : 'Classical key ready. Verification needed.'
         : 'Device key tayyor emas. U avval ilovaga kirishi kerak.';
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
       title: Text(user.displayName),
       subtitle: Text(subtitle),
-      trailing: trust?.hasKeyChanged == true
+      trailing: trust?.hasAnyKeyChanged == true
           ? const Icon(Icons.warning_amber_rounded, color: Colors.orange)
+          : trust?.isEnterpriseVerified == true
+          ? const Icon(Icons.verified, color: Colors.teal)
           : trust?.isVerified == true
           ? const Icon(Icons.verified_user, color: Colors.green)
           : null,

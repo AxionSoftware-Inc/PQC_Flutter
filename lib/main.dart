@@ -3,6 +3,8 @@ import 'package:flutter/widgets.dart';
 import 'app/app.dart';
 import 'core/device/device_identity_service.dart';
 import 'core/device/device_key_service.dart';
+import 'core/device/device_pqc_key_service.dart';
+import 'core/device/device_pqc_signing_key_service.dart';
 import 'core/device/device_prekey_service.dart';
 import 'core/network/api_client.dart';
 import 'core/storage/session_storage.dart';
@@ -26,6 +28,8 @@ Future<void> main() async {
   final apiClient = ApiClient();
   final deviceIdentityService = DeviceIdentityService();
   final deviceKeyService = DeviceKeyService();
+  final devicePqcKeyService = DevicePqcKeyService();
+  final devicePqcSigningKeyService = DevicePqcSigningKeyService();
   final devicePreKeyService = DevicePreKeyService();
   final privateSessionStore = PrivateSessionStore();
   final outboundMessageCache = OutboundMessageCache();
@@ -42,6 +46,8 @@ Future<void> main() async {
     sessionStorage: sessionStorage,
     deviceIdentityService: deviceIdentityService,
     deviceKeyService: deviceKeyService,
+    devicePqcKeyService: devicePqcKeyService,
+    devicePqcSigningKeyService: devicePqcSigningKeyService,
     devicePreKeyService: devicePreKeyService,
     outboundMessageCache: outboundMessageCache,
     outboxStore: outboxStore,
@@ -50,19 +56,20 @@ Future<void> main() async {
   final chatCipherService = RoutedChatCipherService(
     algorithms: [
       GroupChatCipherAlgorithm(groupKeyStore: groupKeyStore),
-      X25519PrivateChatAlgorithm(
+      StablePrivateChatAlgorithm(),
+      LegacyPrivateTransportDecryptAlgorithm(
         deviceIdentityService: deviceIdentityService,
         deviceKeyService: deviceKeyService,
+        devicePqcKeyService: devicePqcKeyService,
+        devicePqcSigningKeyService: devicePqcSigningKeyService,
         devicePreKeyService: devicePreKeyService,
         privateSessionStore: privateSessionStore,
       ),
-      LegacyDemoChatCipherAlgorithm(),
     ],
     outboundMessageCache: outboundMessageCache,
   );
   final privateConversationSecurityCoordinator =
       PrivateConversationSecurityCoordinator(
-        remoteDataSource: remoteDataSource,
         keyVerificationService: keyVerificationService,
       );
   final chatRepository = ChatRepository(

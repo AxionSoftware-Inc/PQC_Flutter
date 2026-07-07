@@ -17,30 +17,22 @@ Bu foydali oraliq bosqich edi, lekin true E2EE emas edi.
 Format:
 
 ```text
-x25519:v4:<sender-device-id>:<sender-static-public-key-base64>:<sender-ephemeral-public-key-base64>:<recipient-prekey-id>:<nonce-base64>:<ciphertext-base64>:<mac-base64>
-```
-
-Fallback:
-
-```text
-x25519:v3:<sender-device-id>:<sender-static-public-key-base64>:<sender-ephemeral-public-key-base64>:<nonce-base64>:<ciphertext-base64>:<mac-base64>
+enc:v1:<nonce-base64>:<ciphertext-base64>:<mac-base64>
 ```
 
 Ma'nosi:
 
-1. ikki device orasida `X25519 shared secret` olinadi
-2. jo'natuvchining static public key'i payload ichida boradi
-3. har xabar uchun ephemeral public key payload ichida boradi
-4. recipient prekey id payload ichida boradi
-5. static-secret + ephemeral-secret + prekey-secret kombinatsiyasidan kalit derive qilinadi
-6. server ciphertextni saqlaydi
+1. private chat uchun bitta stabil payload formati ishlatiladi
+2. kalit conversation-derived shared secret'dan olinadi
+3. server ciphertextni saqlaydi
+4. macOS va Android bir xil yozish oqimini ishlatadi
 
 Server nuqtai nazaridan saqlanadigan narsa:
 
 ```text
 conversation_id=...
 sender_id=...
-body='x25519:v1:...'
+body='enc:v1:...'
 ```
 
 ## 3. Hozirgi Group Chat Ko'rinishi
@@ -88,7 +80,19 @@ Keyingi kuchaytirilgan bosqichda:
 3. local encrypted cache policy aniq bo'ladi
 4. group rekey siyosati mustahkamlanadi
 
-## 6. PQC / Hybrid Bosqich
+## 6. Legacy Private Transport Compatibility
+
+Eski private payloadlar hali o'qilishi mumkin:
+
+1. `x25519:v4`
+2. `x25519:v3`
+3. `hybrid:v1`
+4. `hybrid:v0`
+5. `session:v1`
+
+Lekin ular endi yangi yozish formati emas. Faqat backward-compatible decrypt qatlami sifatida saqlanadi.
+
+## 7. PQC / Hybrid Bosqich
 
 Oxirgi bosqichda:
 
@@ -110,15 +114,15 @@ Masalan:
 }
 ```
 
-## 7. Eng Muhim Xulosa
+## 8. Eng Muhim Xulosa
 
 Bugungi real holat:
 
 1. server plaintext storage'dan chiqdi
-2. private chat real X25519 foundationga o'tdi
+2. private chat bitta stabil `enc:v1` formatga qaytdi
 3. group chat wrapped key modeliga o'tdi
 4. manual verification bor, lekin hali full safety-number UX emas
 5. hali ratchet yo'q
 6. Android secret storage endi secure storage primary
-7. device prekey batch clientda saqlanadi va serverga sync qilinadi
+7. eski private transport formatlari faqat compatibility uchun qoldi
 8. PQC hali keyingi bosqich

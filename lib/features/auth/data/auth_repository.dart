@@ -1,5 +1,7 @@
 import '../../../core/device/device_identity_service.dart';
 import '../../../core/device/device_key_service.dart';
+import '../../../core/device/device_pqc_key_service.dart';
+import '../../../core/device/device_pqc_signing_key_service.dart';
 import '../../../core/device/device_prekey_service.dart';
 import '../../../core/models/session_user.dart';
 import '../../../core/network/api_client.dart';
@@ -13,6 +15,8 @@ class AuthRepository {
     required this.sessionStorage,
     required this.deviceIdentityService,
     required this.deviceKeyService,
+    required this.devicePqcKeyService,
+    required this.devicePqcSigningKeyService,
     required this.devicePreKeyService,
     this._outboundMessageCache,
     this._outboxStore,
@@ -22,6 +26,8 @@ class AuthRepository {
   final SessionStorage sessionStorage;
   final DeviceIdentityService deviceIdentityService;
   final DeviceKeyService deviceKeyService;
+  final DevicePqcKeyService devicePqcKeyService;
+  final DevicePqcSigningKeyService devicePqcSigningKeyService;
   final DevicePreKeyService devicePreKeyService;
   final OutboundMessageCache? _outboundMessageCache;
   final OutboxStore? _outboxStore;
@@ -53,7 +59,10 @@ class AuthRepository {
   Future<SessionUser> login(String username) async {
     final deviceIdentity = await deviceIdentityService.getIdentity();
     final deviceKeyMaterial = await deviceKeyService.getOrCreateKeyMaterial();
+    final pqcSigningKeyMaterial = await devicePqcSigningKeyService
+        .getOrCreateKeyMaterial();
     final preKeys = await devicePreKeyService.ensurePreKeys();
+    final pqcPayload = await _buildPqcRegistrationPayload();
     apiClient.setDeviceId(deviceIdentity.id);
     final response =
         await apiClient.post('/auth/login', {
@@ -64,6 +73,10 @@ class AuthRepository {
               'platform': deviceIdentity.platform,
               'identity_public_key': deviceKeyMaterial.publicKey,
               'key_algorithm': deviceKeyMaterial.algorithm,
+              'pqc_public_key': pqcPayload.publicKey,
+              'pqc_algorithm': pqcPayload.algorithm,
+              'pqc_signing_public_key': pqcSigningKeyMaterial.publicKey,
+              'pqc_signing_algorithm': pqcSigningKeyMaterial.algorithm,
               'prekeys': preKeys,
             })
             as Map<String, dynamic>;
@@ -71,7 +84,10 @@ class AuthRepository {
     final user = response['user'] as Map<String, dynamic>;
     final session = SessionUser(
       id: user['id'] as int,
-      accountId: response['account_id'] as int? ?? user['account_id'] as int? ?? user['id'] as int,
+      accountId:
+          response['account_id'] as int? ??
+          user['account_id'] as int? ??
+          user['id'] as int,
       username: user['username'] as String,
       displayName:
           (user['display_name'] as String?) ?? user['username'] as String,
@@ -87,7 +103,10 @@ class AuthRepository {
   Future<void> syncCurrentDevice() async {
     final deviceIdentity = await deviceIdentityService.getIdentity();
     final deviceKeyMaterial = await deviceKeyService.getOrCreateKeyMaterial();
+    final pqcSigningKeyMaterial = await devicePqcSigningKeyService
+        .getOrCreateKeyMaterial();
     final preKeys = await devicePreKeyService.ensurePreKeys();
+    final pqcPayload = await _buildPqcRegistrationPayload();
     apiClient.setDeviceId(deviceIdentity.id);
     await apiClient.post('/users/me/device', {
       'device_id': deviceIdentity.id,
@@ -95,6 +114,10 @@ class AuthRepository {
       'platform': deviceIdentity.platform,
       'identity_public_key': deviceKeyMaterial.publicKey,
       'key_algorithm': deviceKeyMaterial.algorithm,
+      'pqc_public_key': pqcPayload.publicKey,
+      'pqc_algorithm': pqcPayload.algorithm,
+      'pqc_signing_public_key': pqcSigningKeyMaterial.publicKey,
+      'pqc_signing_algorithm': pqcSigningKeyMaterial.algorithm,
       'prekeys': preKeys,
     });
   }
@@ -108,4 +131,27 @@ class AuthRepository {
     await _outboundMessageCache?.clearAll();
     await _outboxStore?.clear();
   }
+
+  Future<_PqcRegistrationPayload> _buildPqcRegistrationPayload() async {
+    if (!devicePqcKeyService.isSupportedOnCurrentPlatform) {
+      await devicePqcKeyService.clearKeyMaterial();
+      return const _PqcRegistrationPayload(publicKey: '', algorithm: '');
+    }
+
+    final pqcKeyMaterial = await devicePqcKeyService.getOrCreateKeyMaterial();
+    return _PqcRegistrationPayload(
+      publicKey: pqcKeyMaterial.publicKey,
+      algorithm: pqcKeyMaterial.algorithm,
+    );
+  }
+}
+
+class _PqcRegistrationPayload {
+  const _PqcRegistrationPayload({
+    required this.publicKey,
+    required this.algorithm,
+  });
+
+  final String publicKey;
+  final String algorithm;
 }

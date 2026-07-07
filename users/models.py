@@ -13,6 +13,10 @@ class UserDevice(models.Model):
     platform = models.CharField(max_length=64, blank=True)
     identity_public_key = models.TextField(blank=True)
     key_algorithm = models.CharField(max_length=64, blank=True)
+    pqc_public_key = models.TextField(blank=True)
+    pqc_algorithm = models.CharField(max_length=64, blank=True)
+    pqc_signing_public_key = models.TextField(blank=True)
+    pqc_signing_algorithm = models.CharField(max_length=64, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

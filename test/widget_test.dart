@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pqc_chat_app/core/device/device_identity_service.dart';
 import 'package:pqc_chat_app/core/device/device_key_service.dart';
+import 'package:pqc_chat_app/core/device/device_pqc_key_service.dart';
+import 'package:pqc_chat_app/core/device/device_pqc_signing_key_service.dart';
 import 'package:pqc_chat_app/core/device/device_prekey_service.dart';
 import 'package:pqc_chat_app/core/network/api_client.dart';
 import 'package:pqc_chat_app/core/storage/local_secret_store.dart';
@@ -22,6 +24,12 @@ void main() {
         sessionStorage: SessionStorage(secretStore: _MemorySecretStore()),
         deviceIdentityService: DeviceIdentityService(),
         deviceKeyService: DeviceKeyService(),
+        devicePqcKeyService: DevicePqcKeyService(
+          secretStore: _MemorySecretStore(),
+        ),
+        devicePqcSigningKeyService: DevicePqcSigningKeyService(
+          secretStore: _MemorySecretStore(),
+        ),
         devicePreKeyService: DevicePreKeyService(),
         outboundMessageCache: OutboundMessageCache(
           secretStore: _MemorySecretStore(),

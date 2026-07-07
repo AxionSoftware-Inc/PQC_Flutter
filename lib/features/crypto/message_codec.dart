@@ -2,11 +2,14 @@
 
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 
 import '../../core/device/device_identity_service.dart';
 import '../../core/device/device_key_service.dart';
+import '../../core/device/device_pqc_key_service.dart';
+import '../../core/device/device_pqc_signing_key_service.dart';
 import '../../core/device/device_prekey_service.dart';
 import '../../core/models/app_user.dart';
 import '../../core/models/conversation.dart';
@@ -38,6 +41,8 @@ class HybridMessageComposerService implements MessageComposerService {
   HybridMessageComposerService({
     required DeviceIdentityService deviceIdentityService,
     required DeviceKeyService deviceKeyService,
+    DevicePqcKeyService? devicePqcKeyService,
+    DevicePqcSigningKeyService? devicePqcSigningKeyService,
     required DevicePreKeyService devicePreKeyService,
     required PrivateSessionStore privateSessionStore,
     required OutboundMessageCache outboundMessageCache,
@@ -50,6 +55,9 @@ class HybridMessageComposerService implements MessageComposerService {
            X25519CipherMessageCodec(
              deviceIdentityService: deviceIdentityService,
              deviceKeyService: deviceKeyService,
+             devicePqcKeyService: devicePqcKeyService ?? DevicePqcKeyService(),
+             devicePqcSigningKeyService:
+                 devicePqcSigningKeyService ?? DevicePqcSigningKeyService(),
              devicePreKeyService: devicePreKeyService,
              privateSessionStore: privateSessionStore,
              peerPreKeySelectionService: peerPreKeySelectionService,
@@ -94,6 +102,8 @@ class HybridMessageDecoderService implements MessageDecoderService {
   HybridMessageDecoderService({
     required DeviceIdentityService deviceIdentityService,
     required DeviceKeyService deviceKeyService,
+    DevicePqcKeyService? devicePqcKeyService,
+    DevicePqcSigningKeyService? devicePqcSigningKeyService,
     required DevicePreKeyService devicePreKeyService,
     required PrivateSessionStore privateSessionStore,
     required OutboundMessageCache outboundMessageCache,
@@ -107,6 +117,9 @@ class HybridMessageDecoderService implements MessageDecoderService {
            X25519CipherMessageCodec(
              deviceIdentityService: deviceIdentityService,
              deviceKeyService: deviceKeyService,
+             devicePqcKeyService: devicePqcKeyService ?? DevicePqcKeyService(),
+             devicePqcSigningKeyService:
+                 devicePqcSigningKeyService ?? DevicePqcSigningKeyService(),
              devicePreKeyService: devicePreKeyService,
              privateSessionStore: privateSessionStore,
            ),
@@ -132,6 +145,10 @@ class HybridMessageDecoderService implements MessageDecoderService {
     }
 
     if (payload.startsWith('${X25519CipherMessageCodec.prefix}:') ||
+        payload.startsWith('${X25519CipherMessageCodec.hybridPrefix}:') ||
+        payload.startsWith(
+          '${X25519CipherMessageCodec.hybridPreviousPrefix}:',
+        ) ||
         payload.startsWith('${X25519CipherMessageCodec.sessionPrefix}:') ||
         payload.startsWith('${X25519CipherMessageCodec.previousPrefix}:') ||
         payload.startsWith('${X25519CipherMessageCodec.legacyPrefix}:')) {
@@ -188,9 +205,31 @@ class DemoCipherMessageCodec {
 
   static const prefix = 'enc:v1';
   static const _appSecret = 'pqc-chat-demo-master-secret-v1';
+  static final _random = Random.secure();
 
   final AesGcm _algorithm = AesGcm.with256bits();
   final Sha256 _sha256 = Sha256();
+
+  Future<String> encrypt({
+    required Conversation conversation,
+    required String plaintext,
+  }) async {
+    final keyMaterial = _candidateKeyMaterials(conversation).first;
+    final secretKey = await _deriveSecretKey(keyMaterial);
+    final nonce = List<int>.generate(12, (_) => _random.nextInt(256));
+    final secretBox = await _algorithm.encrypt(
+      utf8.encode(plaintext),
+      secretKey: secretKey,
+      nonce: nonce,
+    );
+
+    return [
+      prefix,
+      base64Encode(secretBox.nonce),
+      base64Encode(secretBox.cipherText),
+      base64Encode(secretBox.mac.bytes),
+    ].join(':');
+  }
 
   Future<String> decrypt({
     required Conversation conversation,
@@ -332,9 +371,13 @@ class GroupCipherMessageCodec {
 }
 
 class X25519CipherMessageCodec {
+  static const _enableSignedPayloads = false;
+
   X25519CipherMessageCodec({
     required this.deviceIdentityService,
     required this.deviceKeyService,
+    DevicePqcKeyService? devicePqcKeyService,
+    DevicePqcSigningKeyService? devicePqcSigningKeyService,
     required this.devicePreKeyService,
     required this.privateSessionStore,
     PeerPreKeySelectionService? peerPreKeySelectionService,
@@ -342,12 +385,17 @@ class X25519CipherMessageCodec {
     Hkdf? hkdf,
     AesGcm? cipher,
   }) : _keyExchange = keyExchange ?? X25519(),
+       devicePqcKeyService = devicePqcKeyService ?? DevicePqcKeyService(),
+       devicePqcSigningKeyService =
+           devicePqcSigningKeyService ?? DevicePqcSigningKeyService(),
        _hkdf = hkdf ?? Hkdf(hmac: Hmac.sha256(), outputLength: 32),
        _cipher = cipher ?? AesGcm.with256bits(),
        _peerPreKeySelectionService =
            peerPreKeySelectionService ?? PeerPreKeySelectionService();
 
   static const prefix = 'x25519:v4';
+  static const hybridPrefix = 'hybrid:v1';
+  static const hybridPreviousPrefix = 'hybrid:v0';
   static const sessionPrefix = 'session:v1';
   static const previousPrefix = 'x25519:v3';
   static const legacyPrefix = 'x25519:v1';
@@ -356,6 +404,8 @@ class X25519CipherMessageCodec {
 
   final DeviceIdentityService deviceIdentityService;
   final DeviceKeyService deviceKeyService;
+  final DevicePqcKeyService devicePqcKeyService;
+  final DevicePqcSigningKeyService devicePqcSigningKeyService;
   final DevicePreKeyService devicePreKeyService;
   final PrivateSessionStore privateSessionStore;
   final X25519 _keyExchange;
@@ -383,10 +433,26 @@ class X25519CipherMessageCodec {
     final staticKeyPair = await deviceKeyService.getIdentityKeyPair();
     final ephemeralKeyPair = await _keyExchange.newKeyPair();
     final ephemeralKeyPairData = await ephemeralKeyPair.extract();
+    var canUseHybrid =
+        devicePqcKeyService.isSupportedOnCurrentPlatform &&
+        peerDevice.hasUsableMlKemKey;
+    final canUseSignedPayload =
+        _enableSignedPayloads && peerDevice.hasUsableMlDsaKey;
+    DevicePqcSigningKeyMaterial? signingKeyMaterial;
+    if (canUseHybrid) {
+      final localPqcKeyMaterial = await devicePqcKeyService
+          .getOrCreateKeyMaterial();
+      canUseHybrid =
+          localPqcKeyMaterial.algorithm == DevicePqcKeyService.algorithmName;
+    }
+    if (canUseSignedPayload) {
+      signingKeyMaterial = await devicePqcSigningKeyService
+          .getOrCreateKeyMaterial();
+    }
     final reservedPeerPreKey = await _peerPreKeySelectionService
         .reserveNextPreKey(peerDevice);
     if (reservedPeerPreKey != null) {
-      final bootstrapSecretKey = await _derivePreKeyBootstrapSecretKey(
+      final x25519BootstrapSecretKey = await _derivePreKeyBootstrapSecretKey(
         staticKeyPair: staticKeyPair,
         ephemeralKeyPair: ephemeralKeyPair,
         remoteIdentityPublicKey: remotePublicKey,
@@ -396,6 +462,13 @@ class X25519CipherMessageCodec {
         ),
         info: conversation.keyMaterial,
       );
+      final (payloadPrefix, bootstrapSecretKey, pqcCiphertext) = canUseHybrid
+          ? await _buildHybridBootstrapSecret(
+              x25519SecretKey: x25519BootstrapSecretKey,
+              peerPqcPublicKey: peerDevice.pqcPublicKey,
+              info: conversation.keyMaterial,
+            )
+          : (prefix, x25519BootstrapSecretKey, null);
       final rootKey = await _deriveSessionRootKey(
         bootstrapSecretKey,
         info: conversation.keyMaterial,
@@ -411,7 +484,7 @@ class X25519CipherMessageCodec {
         rootKey: rootKey,
         sendingChainKey: chainKeys.localSendingChainKey,
         receivingChainKey: chainKeys.localReceivingChainKey,
-        establishedBy: prefix,
+        establishedBy: payloadPrefix,
       );
       final nonce = List<int>.generate(12, (_) => _random.nextInt(256));
       final secretBox = await _cipher.encrypt(
@@ -420,8 +493,8 @@ class X25519CipherMessageCodec {
         nonce: nonce,
       );
 
-      return [
-        prefix,
+      final payloadParts = [
+        payloadPrefix,
         deviceIdentity.id,
         keyMaterial.publicKey,
         base64Encode(ephemeralKeyPairData.publicKey.bytes),
@@ -429,15 +502,31 @@ class X25519CipherMessageCodec {
         base64Encode(secretBox.nonce),
         base64Encode(secretBox.cipherText),
         base64Encode(secretBox.mac.bytes),
-      ].join(':');
+        if (pqcCiphertext case final String ciphertext) ciphertext,
+        if (signingKeyMaterial case final DevicePqcSigningKeyMaterial material)
+          material.publicKey,
+      ];
+      if (signingKeyMaterial == null) {
+        return payloadParts.join(':');
+      }
+      final signature = await _signPayload(payloadParts);
+      return [...payloadParts, signature].join(':');
     }
 
-    final bootstrapSecretKey = await _deriveHybridSharedSecretKey(
+    final x25519BootstrapSecretKey = await _deriveHybridSharedSecretKey(
       staticKeyPair: staticKeyPair,
       ephemeralKeyPair: ephemeralKeyPair,
       remotePublicKey: remotePublicKey,
       info: conversation.keyMaterial,
     );
+    final (payloadPrefix, bootstrapSecretKey, pqcCiphertext) = canUseHybrid
+        ? await _buildHybridBootstrapSecret(
+            x25519SecretKey: x25519BootstrapSecretKey,
+            peerPqcPublicKey: peerDevice.pqcPublicKey,
+            info: conversation.keyMaterial,
+            fallbackPrefix: hybridPreviousPrefix,
+          )
+        : (previousPrefix, x25519BootstrapSecretKey, null);
     final rootKey = await _deriveSessionRootKey(
       bootstrapSecretKey,
       info: conversation.keyMaterial,
@@ -453,7 +542,7 @@ class X25519CipherMessageCodec {
       rootKey: rootKey,
       sendingChainKey: chainKeys.localSendingChainKey,
       receivingChainKey: chainKeys.localReceivingChainKey,
-      establishedBy: previousPrefix,
+      establishedBy: payloadPrefix,
     );
     final nonce = List<int>.generate(12, (_) => _random.nextInt(256));
     final secretBox = await _cipher.encrypt(
@@ -462,15 +551,23 @@ class X25519CipherMessageCodec {
       nonce: nonce,
     );
 
-    return [
-      previousPrefix,
+    final payloadParts = [
+      payloadPrefix,
       deviceIdentity.id,
       keyMaterial.publicKey,
       base64Encode(ephemeralKeyPairData.publicKey.bytes),
       base64Encode(secretBox.nonce),
       base64Encode(secretBox.cipherText),
       base64Encode(secretBox.mac.bytes),
-    ].join(':');
+      if (pqcCiphertext case final String ciphertext) ciphertext,
+      if (signingKeyMaterial case final DevicePqcSigningKeyMaterial material)
+        material.publicKey,
+    ];
+    if (signingKeyMaterial == null) {
+      return payloadParts.join(':');
+    }
+    final signature = await _signPayload(payloadParts);
+    return [...payloadParts, signature].join(':');
   }
 
   Future<String> decrypt({
@@ -516,8 +613,19 @@ class X25519CipherMessageCodec {
 
       if (payload.startsWith('$prefix:')) {
         final parts = payload.substring(prefix.length + 1).split(':');
-        if (parts.length != 7) {
+        if (parts.length != 7 && parts.length != 9) {
           return '[decrypt-error]';
+        }
+        if (parts.length == 9) {
+          _verifyPayloadSignature(
+            payloadPrefix: prefix,
+            payloadParts: parts.sublist(0, 8),
+            signature: parts[8],
+            senderDeviceId: parts[0],
+            signingPublicKey: parts[7],
+            currentUserId: currentUserId,
+            usersById: usersById,
+          );
         }
 
         final senderStaticPublicKey = SimplePublicKey(
@@ -573,10 +681,97 @@ class X25519CipherMessageCodec {
         return utf8.decode(clearBytes);
       }
 
+      if (payload.startsWith('$hybridPrefix:')) {
+        final parts = payload.substring(hybridPrefix.length + 1).split(':');
+        if (parts.length != 8 && parts.length != 10) {
+          return '[decrypt-error]';
+        }
+        if (parts.length == 10) {
+          _verifyPayloadSignature(
+            payloadPrefix: hybridPrefix,
+            payloadParts: parts.sublist(0, 9),
+            signature: parts[9],
+            senderDeviceId: parts[0],
+            signingPublicKey: parts[8],
+            currentUserId: currentUserId,
+            usersById: usersById,
+          );
+        }
+
+        final senderStaticPublicKey = SimplePublicKey(
+          base64Decode(parts[1]),
+          type: KeyPairType.x25519,
+        );
+        final senderEphemeralPublicKey = SimplePublicKey(
+          base64Decode(parts[2]),
+          type: KeyPairType.x25519,
+        );
+        final localIdentityKeyPair = await deviceKeyService
+            .getIdentityKeyPair();
+        final localPreKeyPair = await devicePreKeyService.takePreKeyPair(
+          parts[3],
+        );
+        if (localPreKeyPair == null) {
+          return '[decrypt-error]';
+        }
+        final x25519BootstrapSecretKey =
+            await _derivePreKeyBootstrapSecretKeyForReceiver(
+              localIdentityKeyPair: localIdentityKeyPair,
+              localPreKeyPair: localPreKeyPair,
+              senderStaticPublicKey: senderStaticPublicKey,
+              senderEphemeralPublicKey: senderEphemeralPublicKey,
+              info: conversation.keyMaterial,
+            );
+        final pqcSharedSecret = await devicePqcKeyService.decapsulate(parts[7]);
+        final bootstrapSecretKey = await _deriveHybridPqcSecretKey(
+          x25519SecretKey: x25519BootstrapSecretKey,
+          pqcSharedSecret: pqcSharedSecret,
+          info: conversation.keyMaterial,
+        );
+        final rootKey = await _deriveSessionRootKey(
+          bootstrapSecretKey,
+          info: conversation.keyMaterial,
+        );
+        final chainKeys = await _deriveSessionChainKeys(
+          rootKey: rootKey,
+          initiatorSendsFirst: false,
+        );
+        await privateSessionStore.establishSession(
+          conversationId: conversation.id,
+          peerDeviceId: parts[0],
+          peerIdentityPublicKey: parts[1],
+          rootKey: rootKey,
+          sendingChainKey: chainKeys.localSendingChainKey,
+          receivingChainKey: chainKeys.localReceivingChainKey,
+          establishedBy: hybridPrefix,
+        );
+        final clearBytes = await _cipher.decrypt(
+          SecretBox(
+            base64Decode(parts[5]),
+            nonce: base64Decode(parts[4]),
+            mac: Mac(base64Decode(parts[6])),
+          ),
+          secretKey: bootstrapSecretKey,
+        );
+        await devicePreKeyService.removePreKey(parts[3]);
+        return utf8.decode(clearBytes);
+      }
+
       if (payload.startsWith('$previousPrefix:')) {
         final parts = payload.substring(previousPrefix.length + 1).split(':');
-        if (parts.length != 6) {
+        if (parts.length != 6 && parts.length != 8) {
           return '[decrypt-error]';
+        }
+        if (parts.length == 8) {
+          _verifyPayloadSignature(
+            payloadPrefix: previousPrefix,
+            payloadParts: parts.sublist(0, 7),
+            signature: parts[7],
+            senderDeviceId: parts[0],
+            signingPublicKey: parts[6],
+            currentUserId: currentUserId,
+            usersById: usersById,
+          );
         }
 
         final senderStaticPublicKey = SimplePublicKey(
@@ -611,6 +806,75 @@ class X25519CipherMessageCodec {
           sendingChainKey: chainKeys.localSendingChainKey,
           receivingChainKey: chainKeys.localReceivingChainKey,
           establishedBy: previousPrefix,
+        );
+        final clearBytes = await _cipher.decrypt(
+          SecretBox(
+            base64Decode(parts[4]),
+            nonce: base64Decode(parts[3]),
+            mac: Mac(base64Decode(parts[5])),
+          ),
+          secretKey: bootstrapSecretKey,
+        );
+        return utf8.decode(clearBytes);
+      }
+
+      if (payload.startsWith('$hybridPreviousPrefix:')) {
+        final parts = payload
+            .substring(hybridPreviousPrefix.length + 1)
+            .split(':');
+        if (parts.length != 7 && parts.length != 9) {
+          return '[decrypt-error]';
+        }
+        if (parts.length == 9) {
+          _verifyPayloadSignature(
+            payloadPrefix: hybridPreviousPrefix,
+            payloadParts: parts.sublist(0, 8),
+            signature: parts[8],
+            senderDeviceId: parts[0],
+            signingPublicKey: parts[7],
+            currentUserId: currentUserId,
+            usersById: usersById,
+          );
+        }
+
+        final senderStaticPublicKey = SimplePublicKey(
+          base64Decode(parts[1]),
+          type: KeyPairType.x25519,
+        );
+        final senderEphemeralPublicKey = SimplePublicKey(
+          base64Decode(parts[2]),
+          type: KeyPairType.x25519,
+        );
+        final localKeyPair = await deviceKeyService.getIdentityKeyPair();
+        final x25519BootstrapSecretKey =
+            await _deriveHybridSharedSecretKeyForReceiver(
+              localKeyPair: localKeyPair,
+              senderStaticPublicKey: senderStaticPublicKey,
+              senderEphemeralPublicKey: senderEphemeralPublicKey,
+              info: conversation.keyMaterial,
+            );
+        final pqcSharedSecret = await devicePqcKeyService.decapsulate(parts[6]);
+        final bootstrapSecretKey = await _deriveHybridPqcSecretKey(
+          x25519SecretKey: x25519BootstrapSecretKey,
+          pqcSharedSecret: pqcSharedSecret,
+          info: conversation.keyMaterial,
+        );
+        final rootKey = await _deriveSessionRootKey(
+          bootstrapSecretKey,
+          info: conversation.keyMaterial,
+        );
+        final chainKeys = await _deriveSessionChainKeys(
+          rootKey: rootKey,
+          initiatorSendsFirst: false,
+        );
+        await privateSessionStore.establishSession(
+          conversationId: conversation.id,
+          peerDeviceId: parts[0],
+          peerIdentityPublicKey: parts[1],
+          rootKey: rootKey,
+          sendingChainKey: chainKeys.localSendingChainKey,
+          receivingChainKey: chainKeys.localReceivingChainKey,
+          establishedBy: hybridPreviousPrefix,
         );
         final clearBytes = await _cipher.decrypt(
           SecretBox(
@@ -670,6 +934,80 @@ class X25519CipherMessageCodec {
       secretKey: sharedSecret,
       nonce: utf8.encode(info),
       info: utf8.encode('pqc-chat-x25519-message-key'),
+    );
+  }
+
+  Future<String> _signPayload(List<String> payloadParts) {
+    return devicePqcSigningKeyService.sign(
+      Uint8List.fromList(payloadParts.join(':').codeUnits),
+    );
+  }
+
+  bool _verifyPayloadSignature({
+    required String payloadPrefix,
+    required List<String> payloadParts,
+    required String signature,
+    required String senderDeviceId,
+    required String signingPublicKey,
+    required int currentUserId,
+    required Map<int, AppUser> usersById,
+  }) {
+    final peerDevice = _findPeerDeviceById(
+      currentUserId: currentUserId,
+      usersById: usersById,
+      deviceId: senderDeviceId,
+    );
+    if (peerDevice != null &&
+        peerDevice.hasUsableMlDsaKey &&
+        peerDevice.pqcSigningPublicKey != signingPublicKey) {
+      return false;
+    }
+    return devicePqcSigningKeyService.verify(
+      publicKeyBase64: signingPublicKey,
+      signatureBase64: signature,
+      message: Uint8List.fromList(
+        ([payloadPrefix, ...payloadParts]).join(':').codeUnits,
+      ),
+    );
+  }
+
+  Future<(String, SecretKey, String?)> _buildHybridBootstrapSecret({
+    required SecretKey x25519SecretKey,
+    required String peerPqcPublicKey,
+    required String info,
+    String fallbackPrefix = hybridPrefix,
+  }) async {
+    try {
+      final (pqcCiphertext, pqcSharedSecret) = await devicePqcKeyService
+          .encapsulateForPublicKey(peerPqcPublicKey);
+      final hybridSecretKey = await _deriveHybridPqcSecretKey(
+        x25519SecretKey: x25519SecretKey,
+        pqcSharedSecret: pqcSharedSecret,
+        info: info,
+      );
+      return (fallbackPrefix, hybridSecretKey, pqcCiphertext);
+    } catch (_) {
+      return (
+        fallbackPrefix == hybridPrefix ? prefix : previousPrefix,
+        x25519SecretKey,
+        null,
+      );
+    }
+  }
+
+  Future<SecretKey> _deriveHybridPqcSecretKey({
+    required SecretKey x25519SecretKey,
+    required List<int> pqcSharedSecret,
+    required String info,
+  }) async {
+    final combinedSecretBytes = [
+      ...await x25519SecretKey.extractBytes(),
+      ...pqcSharedSecret,
+    ];
+    return _hkdf.deriveKey(
+      secretKey: SecretKey(combinedSecretBytes),
+      nonce: utf8.encode(info),
+      info: utf8.encode('pqc-chat-hybrid-mlkem-x25519'),
     );
   }
 
@@ -945,13 +1283,31 @@ class X25519CipherMessageCodec {
       orElse: () => -1,
     );
     final peer = usersById[peerUserId];
-    final device = peer?.preferredX25519Device;
+    final device = peer?.preferredHybridDevice ?? peer?.preferredX25519Device;
     if (peer == null || device == null) {
       throw ChatEncryptionException(
         '${peer?.displayName ?? 'Other user'} hali yangi build bilan login qilmagan. U device public key yuborishi uchun ilovani bir marta ochib kirsin.',
       );
     }
     return device;
+  }
+
+  AppUserDevice? _findPeerDeviceById({
+    required int currentUserId,
+    required Map<int, AppUser> usersById,
+    required String deviceId,
+  }) {
+    for (final entry in usersById.entries) {
+      if (entry.key == currentUserId) {
+        continue;
+      }
+      for (final device in entry.value.devices) {
+        if (device.deviceId == deviceId) {
+          return device;
+        }
+      }
+    }
+    return null;
   }
 }
 

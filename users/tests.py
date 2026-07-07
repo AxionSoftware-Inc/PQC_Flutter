@@ -1,3 +1,5 @@
+import base64
+
 from django.contrib.auth import get_user_model
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
@@ -9,6 +11,8 @@ from users.models import UserDevice, UserDevicePreKey
 User = get_user_model()
 VALID_PUBLIC_KEY_1 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
 VALID_PUBLIC_KEY_2 = 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE='
+VALID_PQC_PUBLIC_KEY = base64.b64encode(bytes(1184)).decode()
+VALID_PQC_SIGNING_PUBLIC_KEY = base64.b64encode(bytes(1952)).decode()
 
 
 class AuthApiTests(APITestCase):
@@ -22,6 +26,10 @@ class AuthApiTests(APITestCase):
                 'platform': 'android',
                 'identity_public_key': VALID_PUBLIC_KEY_1,
                 'key_algorithm': 'x25519',
+                'pqc_public_key': VALID_PQC_PUBLIC_KEY,
+                'pqc_algorithm': 'ml-kem-768',
+                'pqc_signing_public_key': VALID_PQC_SIGNING_PUBLIC_KEY,
+                'pqc_signing_algorithm': 'ml-dsa-65',
                 'prekeys': [
                     {
                         'key_id': 'prekey-1',
@@ -42,6 +50,10 @@ class AuthApiTests(APITestCase):
                 user_id=user_id,
                 identity_public_key=VALID_PUBLIC_KEY_1,
                 key_algorithm='x25519',
+                pqc_public_key=VALID_PQC_PUBLIC_KEY,
+                pqc_algorithm='ml-kem-768',
+                pqc_signing_public_key=VALID_PQC_SIGNING_PUBLIC_KEY,
+                pqc_signing_algorithm='ml-dsa-65',
             ).exists()
         )
         self.assertTrue(
@@ -50,6 +62,14 @@ class AuthApiTests(APITestCase):
                 key_id='prekey-1',
                 public_key=VALID_PUBLIC_KEY_2,
             ).exists()
+        )
+        self.assertEqual(
+            response.data['user']['devices'][0]['pqc_algorithm'],
+            'ml-kem-768',
+        )
+        self.assertEqual(
+            response.data['user']['devices'][0]['pqc_signing_algorithm'],
+            'ml-dsa-65',
         )
         self.assertTrue(
             ConversationParticipant.objects.filter(
