@@ -8,21 +8,12 @@ Bu hujjat hozirgi kriptografik foundation qayergacha kelganini va hali qayerlari
 
 1. Har device local `identity key pair` yaratadi
 2. Public key login yoki device sync vaqtida backendga yuboriladi
-3. Private chat xabari `X25519 shared secret` asosida encrypt qilinadi
-4. Payload serverda `x25519:v4:*` yoki fallback `x25519:v3:*` ko'rinishida saqlanadi
-5. Har xabar uchun ephemeral public key bor
-6. Device'lar one-time prekey batch sync qiladi
-7. Peer usable prekey bo'lsa private bootstrap shu prekey bilan boshlanadi
-8. Payload ichida jo'natuvchining static public key'i borligi uchun yangi formatdagi xabarlar key rotate'dan keyin ham ochilishi mumkin
-9. Private transport hozir reliability uchun stateless-by-default: yangi xabarlar asosan `x25519:v4` yoki fallback `x25519:v3` formatida yuboriladi
-10. Self-sent encrypted payload uchun local plaintext cache bor, shu sabab yuborgan xabar history reload'da ham ko'rinadi
-11. Peer identity key o'zgarsa stale private session bekor qilinadi va eski session qayta ishlatilmaydi
-12. Oldin verified bo'lgan peer key o'zgarsa private send verify qilinmaguncha bloklanadi
-13. Private bootstrap decode bo'lgach one-time prekey local store'dan ham consume qilinadi
-14. Inbound encrypted plaintext ham payload cache'ga tushadi, shuning uchun consumed prekey history reload'ni sindirmaydi
-15. Eski `session:v1` tarixiy payloadlari uchun backward-compat decrypt qatlami saqlangan
-16. Legacy yoki buzilgan private session state avtomatik tashlab yuboriladi va yangi bootstrap majburlanadi
-17. Plaintext payload cache bounded bo'lib saqlanadi va logout paytida tozalanadi
+3. Yangi private chat xabari bitta stabil `enc:v1` formatida encrypt qilinadi
+4. Payload serverda `enc:v1:*` ko'rinishida saqlanadi
+5. Self-sent encrypted payload uchun local plaintext cache bor, shu sabab yuborgan xabar history reload'da ham ko'rinadi
+6. Oldin verified bo'lgan peer key o'zgarsa private send verify qilinmaguncha bloklanadi
+7. Plaintext payload cache bounded bo'lib saqlanadi va logout paytida tozalanadi
+8. Eski `x25519:*`, `hybrid:*`, `session:v1` tarixiy payloadlari uchun backward-compat decrypt qatlami saqlangan
 
 ### Group chat
 
@@ -40,7 +31,7 @@ Bu hujjat hozirgi kriptografik foundation qayergacha kelganini va hali qayerlari
 2. full forward secrecy
 3. double ratchet
 4. message retry / rekey orchestration
-5. PQC
+5. full PQC trust-center UX
 
 ## Server Nimalarni Biladi
 
@@ -64,15 +55,9 @@ Bugungi holat:
 
 - server-side plaintext hiding: `ha`
 - private key serverga chiqmasligi: `ha`
-- private chat real X25519 foundation: `ha`
-- private chat static + ephemeral derivation: `ha`
-- private chat prekey bootstrap foundation: `ha`
-- private chat stateless reinstall-safe transport default: `ha`
-- stale private session automatic invalidation: `ha`
+- private chat stabil yagona payload formati: `ha`
+- private chat legacy payload backward compatibility: `ha`
 - verified key change bo'lsa private send guard: `ha`
-- one-time prekey local consume semantics: `ha`
-- inbound encrypted history cache after successful decrypt: `ha`
-- legacy session payload backward compatibility layer: `ha`
 - bounded plaintext cache cleanup on logout: `ha`
 - self-sent encrypted history readability: `ha`
 - private key verification va key change warning foundation: `ha`
@@ -82,7 +67,7 @@ Bugungi holat:
 
 ## Eng Katta Hali Qolgan Kamchiliklar
 
-1. Stateless default transport reliability'ni oshirdi, lekin hali full double ratchet va Signal darajasidagi forward secrecy yo'q
+1. Private chat hozir stabil ishlash uchun soddalashtirilgan, lekin hali true modern E2EE transport emas
 2. Verification UX hali minimal
 3. Group rekey policy endi device coverage qat'iy, lekin hali membership epoch / sender key darajasiga chiqmagan
 4. Local plaintext cache bounded va logout-cleaned, lekin forensic hardening hali alohida audit talab qiladi
@@ -104,7 +89,7 @@ Keyin hybrid model:
 
 ## Amaliy Xulosa
 
-Hozirgi loyiha demo encrypt bosqichidan chiqdi va haqiqiyroq E2EE foundationga o'tdi.
+Hozirgi loyiha avval stabil, platformalararo bir xil ishlaydigan ciphertext transportni saqlab turadi.
 
 Lekin bu hali:
 

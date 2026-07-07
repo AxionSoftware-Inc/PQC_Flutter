@@ -1,8 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pqc_chat_app/core/models/app_user.dart';
 import 'package:pqc_chat_app/core/models/conversation.dart';
 import 'package:pqc_chat_app/features/security/key_verification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+final _validMlKem768PublicKey = base64Encode(List<int>.filled(1184, 0));
+final _validMlDsa65PublicKey = base64Encode(List<int>.filled(1952, 0));
 
 void main() {
   test('user key can be verified and later key change is detected', () async {
@@ -91,4 +96,43 @@ void main() {
     expect(trust.isVerified, isFalse);
     expect(trust.fingerprint, isNotNull);
   });
+
+  test(
+    'enterprise trust tracks pqc kem and signing verification together',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final service = KeyVerificationService();
+      final user = AppUser(
+        id: 2,
+        username: 'bob',
+        displayName: 'Bob',
+        devices: [
+          AppUserDevice(
+            deviceId: 'bob-device',
+            deviceName: 'Bob Phone',
+            platform: 'android',
+            identityPublicKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+            keyAlgorithm: 'x25519',
+            pqcPublicKey: _validMlKem768PublicKey,
+            pqcAlgorithm: 'ml-kem-768',
+            pqcSigningPublicKey: _validMlDsa65PublicKey,
+            pqcSigningAlgorithm: 'ml-dsa-65',
+            preKeys: const [],
+          ),
+        ],
+      );
+
+      final beforeVerify = await service.getUserTrust(user);
+      expect(beforeVerify.isEnterpriseReady, isTrue);
+      expect(beforeVerify.isEnterpriseVerified, isFalse);
+
+      await service.verifyUser(user);
+
+      final afterVerify = await service.getUserTrust(user);
+      expect(afterVerify.isVerified, isTrue);
+      expect(afterVerify.isPqcVerified, isTrue);
+      expect(afterVerify.isSigningVerified, isTrue);
+      expect(afterVerify.isEnterpriseVerified, isTrue);
+    },
+  );
 }

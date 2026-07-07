@@ -13,8 +13,11 @@ import 'package:pqc_chat_app/features/crypto/message_codec.dart';
 import 'package:pqc_chat_app/features/crypto/outbound_message_cache.dart';
 import 'package:pqc_chat_app/features/crypto/peer_prekey_selection_service.dart';
 import 'package:pqc_chat_app/features/crypto/private_session_store.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues({});
   final privateConversation = Conversation(
     id: 2,
     type: 'private',

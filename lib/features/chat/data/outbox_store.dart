@@ -103,13 +103,20 @@ class OutboxStore {
     }
     final decoded = jsonDecode(raw) as List<dynamic>;
     return decoded
-        .map((item) => QueuedOutgoingMessage.fromJson(item as Map<String, dynamic>))
+        .map(
+          (item) =>
+              QueuedOutgoingMessage.fromJson(item as Map<String, dynamic>),
+        )
         .toList();
   }
 
-  Future<List<QueuedOutgoingMessage>> readForConversation(int conversationId) async {
+  Future<List<QueuedOutgoingMessage>> readForConversation(
+    int conversationId,
+  ) async {
     final items = await readAll();
-    return items.where((item) => item.conversationId == conversationId).toList();
+    return items
+        .where((item) => item.conversationId == conversationId)
+        .toList();
   }
 
   Future<void> upsert(QueuedOutgoingMessage message) async {

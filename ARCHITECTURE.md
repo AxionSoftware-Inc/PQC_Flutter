@@ -54,12 +54,11 @@ Bu qatlam eng muhim qism.
 
 Mas'uliyatlar:
 
-1. Key agreement.
-2. Session key generation.
-3. Message encryption/decryption.
-4. Identity key storage.
-5. Key rotation.
-6. Ratchet yoki forward secrecy mexanizmlari.
+1. Stable message encryption/decryption.
+2. Identity key storage.
+3. Future key agreement modules.
+4. Key rotation.
+5. Ratchet yoki forward secrecy mexanizmlari.
 
 Bu qatlam ilovaning qolgan qismidan mustaqil bo'lishi kerak.
 
@@ -151,30 +150,30 @@ PQC chat uchun ikki bosqichli model tavsiya etiladi:
 1. `Identity layer` - foydalanuvchi va device identifikatsiyasi.
 2. `Session layer` - har bir suhbat uchun ephemeral session key.
 
-### 5.2 Gibrid Yondashuv
+### 5.2 Hozirgi Amaliy Yondashuv
 
-Boshlang'ich bosqichda gibrid yondashuv tavsiya qilinadi:
+Hozirgi ishlab turgan yondashuv:
 
-1. Klassik algoritm + PQC algoritm birga ishlaydi.
-2. Natijada session key hosil bo'ladi.
-3. Bu compatibility va xavfsizlik balansini yaxshilaydi.
+1. Private chat uchun bitta stabil yozish formati ishlatiladi: `enc:v1`
+2. Group chat uchun alohida format ishlatiladi: `group:v1`
+3. Eski `x25519:*`, `hybrid:*`, `session:*` payloadlar faqat backward-compatible decrypt uchun saqlanadi
 
-Bu yondashuv future-proof bo'lishi mumkin, chunki algoritmlar almashganda ilovani butunlay qayta yozish shart bo'lmaydi.
+Bu yondashuv platformalararo barqarorlikni tiklaydi va Flutter kod bazasini bir xil saqlab turadi.
 
 Shu sabab crypto qatlam algoritmga qattiq bog'lanmasligi kerak. Hozirgi tavsiya:
 
 1. conversation oqimi `ChatCipherAlgorithm` kabi pluggable interfeys orqali ishlaydi
-2. private trust / prekey policy alohida coordinator'da turadi
-3. `X25519` hozirgi implementation bo'ladi, keyin yoniga `ML-KEM` yoki hybrid qo'shiladi
+2. private trust policy alohida coordinator'da turadi
+3. aktiv private transport va legacy decrypt transport alohida implementation bo'ladi
+4. keyin kerak bo'lsa yangi PQC/private transport shu interfeys ostida qayta kiritiladi
 
 ### 5.3 Tavsiya Etiladigan Crypto Flow
 
 1. User device o'z identity key'ini yaratadi.
 2. Public key serverga yuboriladi.
-3. Contact bilan session boshlanganda key agreement bajariladi.
-4. Hosil bo'lgan shared secret'dan message keys derivation qilinadi.
-5. Har bir xabar alohida key bilan encrypt qilinadi.
-6. Session keys doim yangilanib boradi.
+3. Private chat uchun stabil shared secret qatlam ishlatiladi.
+4. Group chat uchun alohida wrapped-key oqimi ishlatiladi.
+5. Legacy transportlar faqat tarixiy decrypt uchun qoldiriladi.
 
 ### 5.4 Xavfsizlik Talablari
 

@@ -36,6 +36,10 @@ def upsert_user_device(
     platform='',
     identity_public_key='',
     key_algorithm='',
+    pqc_public_key='',
+    pqc_algorithm='',
+    pqc_signing_public_key='',
+    pqc_signing_algorithm='',
 ):
     device, device_created = UserDevice.objects.get_or_create(
         device_id=device_id,
@@ -45,6 +49,10 @@ def upsert_user_device(
             'platform': platform,
             'identity_public_key': identity_public_key,
             'key_algorithm': key_algorithm,
+            'pqc_public_key': pqc_public_key,
+            'pqc_algorithm': pqc_algorithm,
+            'pqc_signing_public_key': pqc_signing_public_key,
+            'pqc_signing_algorithm': pqc_signing_algorithm,
         },
     )
     if not device_created and device.user_id != user.id:
@@ -57,18 +65,30 @@ def upsert_user_device(
 
     if not device_created:
         updated_fields = []
-        if device_name and device.device_name != device_name:
+        if device.device_name != device_name:
             device.device_name = device_name
             updated_fields.append('device_name')
-        if platform and device.platform != platform:
+        if device.platform != platform:
             device.platform = platform
             updated_fields.append('platform')
-        if identity_public_key and device.identity_public_key != identity_public_key:
+        if device.identity_public_key != identity_public_key:
             device.identity_public_key = identity_public_key
             updated_fields.append('identity_public_key')
-        if key_algorithm and device.key_algorithm != key_algorithm:
+        if device.key_algorithm != key_algorithm:
             device.key_algorithm = key_algorithm
             updated_fields.append('key_algorithm')
+        if device.pqc_public_key != pqc_public_key:
+            device.pqc_public_key = pqc_public_key
+            updated_fields.append('pqc_public_key')
+        if device.pqc_algorithm != pqc_algorithm:
+            device.pqc_algorithm = pqc_algorithm
+            updated_fields.append('pqc_algorithm')
+        if device.pqc_signing_public_key != pqc_signing_public_key:
+            device.pqc_signing_public_key = pqc_signing_public_key
+            updated_fields.append('pqc_signing_public_key')
+        if device.pqc_signing_algorithm != pqc_signing_algorithm:
+            device.pqc_signing_algorithm = pqc_signing_algorithm
+            updated_fields.append('pqc_signing_algorithm')
         if updated_fields:
             device.save(update_fields=updated_fields + ['updated_at'])
 
@@ -109,6 +129,10 @@ class LoginView(APIView):
         platform = serializer.validated_data['platform'].strip()
         identity_public_key = serializer.validated_data['identity_public_key'].strip()
         key_algorithm = serializer.validated_data['key_algorithm'].strip()
+        pqc_public_key = serializer.validated_data['pqc_public_key'].strip()
+        pqc_algorithm = serializer.validated_data['pqc_algorithm'].strip()
+        pqc_signing_public_key = serializer.validated_data['pqc_signing_public_key'].strip()
+        pqc_signing_algorithm = serializer.validated_data['pqc_signing_algorithm'].strip()
         prekeys = serializer.validated_data['prekeys']
 
         if not display_name or not device_id:
@@ -136,6 +160,10 @@ class LoginView(APIView):
             platform=platform,
             identity_public_key=identity_public_key,
             key_algorithm=key_algorithm,
+            pqc_public_key=pqc_public_key,
+            pqc_algorithm=pqc_algorithm,
+            pqc_signing_public_key=pqc_signing_public_key,
+            pqc_signing_algorithm=pqc_signing_algorithm,
         )
         if error_response is not None:
             return error_response
@@ -192,6 +220,10 @@ class DeviceSyncView(APIView):
             platform=serializer.validated_data['platform'].strip(),
             identity_public_key=serializer.validated_data['identity_public_key'].strip(),
             key_algorithm=serializer.validated_data['key_algorithm'].strip(),
+            pqc_public_key=serializer.validated_data['pqc_public_key'].strip(),
+            pqc_algorithm=serializer.validated_data['pqc_algorithm'].strip(),
+            pqc_signing_public_key=serializer.validated_data['pqc_signing_public_key'].strip(),
+            pqc_signing_algorithm=serializer.validated_data['pqc_signing_algorithm'].strip(),
         )
         if error_response is not None:
             return error_response
@@ -205,6 +237,10 @@ class DeviceSyncView(APIView):
                 'device_id': device.device_id,
                 'identity_public_key': device.identity_public_key,
                 'key_algorithm': device.key_algorithm,
+                'pqc_public_key': device.pqc_public_key,
+                'pqc_algorithm': device.pqc_algorithm,
+                'pqc_signing_public_key': device.pqc_signing_public_key,
+                'pqc_signing_algorithm': device.pqc_signing_algorithm,
             }
         )
 

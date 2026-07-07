@@ -8,7 +8,7 @@ Hozirgi ishchi scope:
 - 1 ta umumiy `General Group`
 - istalgan 2 user orasida private chat
 - polling asosidagi refresh
-- private chat uchun `X25519 + AES-GCM`
+- private chat uchun bitta barqaror shared-secret transport
 - group chat uchun client-side group key + wrapped key envelopes
 - manual key verification va key-change warning
 
@@ -23,7 +23,7 @@ Ishlaydi:
 - group chat
 - server deploy
 - Android release APK build
-- minimal E2EE foundation
+- minimal ciphertext-at-rest foundation
 - key verification banner
 
 Hozircha yo'q:
@@ -31,23 +31,24 @@ Hozircha yo'q:
 - WebSocket realtime
 - key rotation
 - forward secrecy / double ratchet
-- multi-device key fanout
-- PQC / hybrid KEM
+- production-grade multi-device private E2EE
+- full PQC trust-center UX
 
 ## Current Crypto Shape
 
-Crypto qatlam hozir PQC-ready refactor qilingan:
+Crypto qatlam hozir ikki aniq yo'lga ajratilgan:
 
 - `ChatRepository` endi to'g'ridan-to'g'ri `X25519` yoki `group` codec'larni bilmaydi
 - `RoutedChatCipherService` conversation/payload bo'yicha mos algorithm'ni tanlaydi
-- `PrivateConversationSecurityCoordinator` private send oldidan trust va prekey tayyorgarligini boshqaradi
-- yangi PQC yoki hybrid algorithm qo'shish uchun yangi `ChatCipherAlgorithm` implementation yetarli bo'ladi
+- `PrivateConversationSecurityCoordinator` private send oldidan trust holatini boshqaradi
+- private chat uchun aktiv yozish formati hozir faqat `enc:v1`
+- eski `x25519:*`, `hybrid:*`, `session:*` payloadlar faqat backward-compatible decrypt uchun saqlangan
 
 Hozir amalda ishlayotgan algorithm'lar:
 
-- private chat: `X25519`
+- private chat: `enc:v1`
 - group chat: wrapped group key + `AES-GCM`
-- legacy decrypt compatibility: `enc:v1`
+- legacy decrypt compatibility: `x25519:*`, `hybrid:*`, `session:*`
 
 ## Repo Shape
 
@@ -109,12 +110,10 @@ Muhim:
 
 Private chat:
 
-- payload format:
-  - `x25519:v4:<sender-device-id>:<sender-static-public-key>:<sender-ephemeral-public-key>:<recipient-prekey-id>:<nonce>:<ciphertext>:<mac>`
-  - fallback: `x25519:v3:<sender-device-id>:<sender-static-public-key>:<sender-ephemeral-public-key>:<nonce>:<ciphertext>:<mac>`
-- key: ikki device orasidagi `X25519 shared secret`dan derive qilinadi
-- asosiy yo'l: recipient one-time prekey + static + per-message ephemeral secret kombinatsiyasi
-- fallback: static + per-message ephemeral secret kombinatsiyasi
+- payload format: `enc:v1:<nonce>:<ciphertext>:<mac>`
+- key: conversation-derived shared secret
+- maqsad: macOS va Android o'rtasida yagona, stabil, bir xil private transport ishlatish
+- eski `x25519:*`, `hybrid:*`, `session:*` formatlar faqat oldingi tarixiy xabarlarni o'qish uchun qoldirilgan
 
 Group chat:
 
@@ -138,11 +137,6 @@ Secret storage:
 - Android: secure storage primary, legacy SharedPreferences secretlar avtomatik migratsiya qilinadi
 - macOS: hozircha prototip fallback storage ishlatiladi
 
-Prekey note:
-
-- har device serverga public one-time prekey batch sync qiladi
-- private chat yangi xabar yuborishda usable peer prekey bo'lsa `v4` bootstrap ishlatadi
-
 ## Important Docs
 
 - [ARCHITECTURE.md](/Users/macbookpro/Documents/PQC%20Chat%20app/ARCHITECTURE.md)
@@ -158,3 +152,6 @@ Prekey note:
 flutter test
 flutter analyze
 ```
+
+Korporativ yo‘l bo‘yicha keyingi katta qatlamni qo‘shdim: private chat endi nafaqat ML-KEM-768 bilan hybrid secret oladi, balki peer device signing key e’lon qilgan bo‘lsa payload ML-DSA-65 bilan ham imzolanadi. Shuning uchun arxitektura endi “server ciphertextni tashiydi” darajasidan “device-level signed private transport foundation” darajasiga ko‘tarildi.
+Asosiy o‘zgarishlar [lib/core/device/device_pqc_signing_key_service.dart](/Users/macbookpro/Documents/PQC Chat app/lib/core/device/device_pqc_signing_key_service.dart), [lib/features/crypto/message_codec.dart](/Users/macbookpro/Documents/PQC Chat app/lib/features/crypto/message_codec.dart), [lib/features/auth/data/auth_repository.dart](/Users/macbookpro/Documents/PQC Chat app/lib/features/auth/data/auth_repository.dart), [lib/core/models/app_user.dart](/Users/macbookpro/Documents/PQC Chat app/lib/core/models/app_user.dart), [users/models.py](/Users/macbookpro/Documents/PQC Chat app/users/models.py), [users/serializers.py](/Users/macbookpro/Documents/PQC Chat app/users/serializers.py), [users/views.py](/Users/macbookpro/Documents/PQC Chat app/users/views.py), [users/migrations/0005_userdevice_pqc_signing_public_key_and_more.py](/Users/macbookpro/Documents/PQC Chat app/users/migrations/0005_userdevice_pqc_signing_public_key_and_more.py) da. Device sync endi PQC signing public key’ni ham olib yuradi, private payload signed variantlarni tushunadi, verify qilolmasa reject qiladi, lekin eski/signed bo‘lmagan oqimlar bilan backward compatibility saqlangan.

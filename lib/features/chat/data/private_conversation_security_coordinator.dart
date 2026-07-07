@@ -6,11 +6,13 @@ import 'chat_remote_data_source.dart';
 
 class PrivateConversationSecurityCoordinator {
   const PrivateConversationSecurityCoordinator({
-    required this.remoteDataSource,
+    this.remoteDataSource,
     required this.keyVerificationService,
   });
 
-  final ChatRemoteDataSource remoteDataSource;
+  // Kept for API compatibility while private chat no longer depends on prekey claim.
+  // ignore: unused_field
+  final ChatRemoteDataSource? remoteDataSource;
   final KeyVerificationService keyVerificationService;
 
   Future<void> prepareForSend({
@@ -19,6 +21,7 @@ class PrivateConversationSecurityCoordinator {
     required Map<int, AppUser> usersById,
     required void Function(AppUser user) onUserUpdated,
   }) async {
+    final _ = onUserUpdated;
     if (conversation.isGroup) {
       return;
     }
@@ -28,51 +31,6 @@ class PrivateConversationSecurityCoordinator {
       conversation: conversation,
       usersById: usersById,
     );
-    await _preparePeerPreKey(
-      currentUserId: currentUserId,
-      conversation: conversation,
-      usersById: usersById,
-      onUserUpdated: onUserUpdated,
-    );
-  }
-
-  Future<void> _preparePeerPreKey({
-    required int currentUserId,
-    required Conversation conversation,
-    required Map<int, AppUser> usersById,
-    required void Function(AppUser user) onUserUpdated,
-  }) async {
-    final peerUserId = conversation.participantIds.firstWhere(
-      (id) => id != currentUserId,
-      orElse: () => -1,
-    );
-    final peerUser = usersById[peerUserId];
-    final peerDevice = peerUser?.preferredX25519Device;
-    if (peerUser == null || peerDevice == null) {
-      return;
-    }
-
-    final claimedPreKey = await remoteDataSource.claimPreKey(
-      userId: peerUser.id,
-      deviceId: peerDevice.deviceId,
-    );
-    final nextPreKeys = claimedPreKey == null
-        ? const <AppUserPreKey>[]
-        : [
-            AppUserPreKey(
-              keyId: claimedPreKey.keyId,
-              publicKey: claimedPreKey.publicKey,
-            ),
-          ];
-
-    final updatedDevices = peerUser.devices.map((device) {
-      if (device.deviceId != peerDevice.deviceId) {
-        return device;
-      }
-      return device.copyWith(preKeys: nextPreKeys);
-    }).toList();
-
-    onUserUpdated(peerUser.copyWith(devices: updatedDevices));
   }
 
   Future<void> _guardPrivateConversationTrust({
@@ -85,7 +43,7 @@ class PrivateConversationSecurityCoordinator {
       conversation: conversation,
       usersById: usersById,
     );
-    if (trust.hasKeyChanged) {
+    if (trust.hasEnterpriseKeyChanged) {
       throw ChatEncryptionException(
         '${trust.peerUser?.displayName ?? 'Peer'} key changed. Verify the new key before sending more private messages.',
       );

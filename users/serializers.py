@@ -30,6 +30,63 @@ def validate_identity_public_key_fields(key_algorithm, identity_public_key):
     return identity_public_key
 
 
+def validate_pqc_public_key_fields(pqc_algorithm, pqc_public_key):
+    if not pqc_algorithm:
+        return pqc_public_key
+
+    if pqc_algorithm != 'ml-kem-768':
+        raise serializers.ValidationError('Unsupported pqc_algorithm.')
+
+    if not pqc_public_key:
+        raise serializers.ValidationError(
+            'pqc_public_key is required when pqc_algorithm is ml-kem-768.'
+        )
+
+    try:
+        decoded = base64.b64decode(pqc_public_key, validate=True)
+    except Exception as exc:
+        raise serializers.ValidationError(
+            'pqc_public_key must be valid base64 for ml-kem-768.'
+        ) from exc
+
+    if len(decoded) != 1184:
+        raise serializers.ValidationError(
+            'pqc_public_key must decode to 1184 bytes for ml-kem-768.'
+        )
+
+    return pqc_public_key
+
+
+def validate_pqc_signing_public_key_fields(
+    pqc_signing_algorithm,
+    pqc_signing_public_key,
+):
+    if not pqc_signing_algorithm:
+        return pqc_signing_public_key
+
+    if pqc_signing_algorithm != 'ml-dsa-65':
+        raise serializers.ValidationError('Unsupported pqc_signing_algorithm.')
+
+    if not pqc_signing_public_key:
+        raise serializers.ValidationError(
+            'pqc_signing_public_key is required when pqc_signing_algorithm is ml-dsa-65.'
+        )
+
+    try:
+        decoded = base64.b64decode(pqc_signing_public_key, validate=True)
+    except Exception as exc:
+        raise serializers.ValidationError(
+            'pqc_signing_public_key must be valid base64 for ml-dsa-65.'
+        ) from exc
+
+    if len(decoded) != 1952:
+        raise serializers.ValidationError(
+            'pqc_signing_public_key must decode to 1952 bytes for ml-dsa-65.'
+        )
+
+    return pqc_signing_public_key
+
+
 class DevicePreKeySerializer(serializers.Serializer):
     key_id = serializers.CharField()
     public_key = serializers.CharField()
@@ -53,6 +110,10 @@ class LoginSerializer(serializers.Serializer):
     platform = serializers.CharField(required=False, allow_blank=True, default='')
     identity_public_key = serializers.CharField(required=False, allow_blank=True, default='')
     key_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
+    pqc_public_key = serializers.CharField(required=False, allow_blank=True, default='')
+    pqc_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
+    pqc_signing_public_key = serializers.CharField(required=False, allow_blank=True, default='')
+    pqc_signing_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
     prekeys = DevicePreKeySerializer(many=True, required=False, default=list)
 
     def validate(self, attrs):
@@ -67,6 +128,14 @@ class LoginSerializer(serializers.Serializer):
             attrs.get('key_algorithm', ''),
             attrs.get('identity_public_key', ''),
         )
+        validate_pqc_public_key_fields(
+            attrs.get('pqc_algorithm', ''),
+            attrs.get('pqc_public_key', ''),
+        )
+        validate_pqc_signing_public_key_fields(
+            attrs.get('pqc_signing_algorithm', ''),
+            attrs.get('pqc_signing_public_key', ''),
+        )
         return attrs
 
 
@@ -76,6 +145,10 @@ class DeviceSerializer(serializers.Serializer):
     platform = serializers.CharField()
     identity_public_key = serializers.CharField()
     key_algorithm = serializers.CharField()
+    pqc_public_key = serializers.CharField()
+    pqc_algorithm = serializers.CharField()
+    pqc_signing_public_key = serializers.CharField()
+    pqc_signing_algorithm = serializers.CharField()
     prekeys = DevicePreKeySerializer(many=True, required=False)
     created_at = serializers.DateTimeField()
     updated_at = serializers.DateTimeField()
@@ -87,12 +160,24 @@ class DeviceSyncSerializer(serializers.Serializer):
     platform = serializers.CharField(required=False, allow_blank=True, default='')
     identity_public_key = serializers.CharField(required=False, allow_blank=True, default='')
     key_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
+    pqc_public_key = serializers.CharField(required=False, allow_blank=True, default='')
+    pqc_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
+    pqc_signing_public_key = serializers.CharField(required=False, allow_blank=True, default='')
+    pqc_signing_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
     prekeys = DevicePreKeySerializer(many=True, required=False, default=list)
 
     def validate(self, attrs):
         validate_identity_public_key_fields(
             attrs.get('key_algorithm', ''),
             attrs.get('identity_public_key', ''),
+        )
+        validate_pqc_public_key_fields(
+            attrs.get('pqc_algorithm', ''),
+            attrs.get('pqc_public_key', ''),
+        )
+        validate_pqc_signing_public_key_fields(
+            attrs.get('pqc_signing_algorithm', ''),
+            attrs.get('pqc_signing_public_key', ''),
         )
         return attrs
 
@@ -122,6 +207,10 @@ class UserSerializer(serializers.ModelSerializer):
                     'platform': device.platform,
                     'identity_public_key': device.identity_public_key,
                     'key_algorithm': device.key_algorithm,
+                    'pqc_public_key': device.pqc_public_key,
+                    'pqc_algorithm': device.pqc_algorithm,
+                    'pqc_signing_public_key': device.pqc_signing_public_key,
+                    'pqc_signing_algorithm': device.pqc_signing_algorithm,
                     'created_at': device.created_at,
                     'updated_at': device.updated_at,
                     'prekeys': [

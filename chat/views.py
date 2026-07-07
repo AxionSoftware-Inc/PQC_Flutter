@@ -142,12 +142,6 @@ class ConversationKeyEnvelopeView(APIView):
     @transaction.atomic
     def post(self, request, conversation_id):
         conversation = get_user_conversation_or_404(request.user, conversation_id)
-        if conversation.type != Conversation.ConversationType.GROUP:
-            return Response(
-                {'detail': 'Conversation key envelopes are only used for group chats.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
         sender_device, error_response = get_request_device_or_400(request)
         if error_response is not None:
             return error_response

@@ -4,10 +4,7 @@ import '../models/session_user.dart';
 import 'local_secret_store.dart';
 
 class RememberedIdentity {
-  const RememberedIdentity({
-    required this.displayName,
-    this.username = '',
-  });
+  const RememberedIdentity({required this.displayName, this.username = ''});
 
   final String displayName;
   final String username;
@@ -34,7 +31,9 @@ class SessionStorage {
     final displayName = await _secretStore.read(_displayNameKey);
     final deviceId = await _secretStore.read(_deviceIdKey);
     final id = idValue == null ? null : int.tryParse(idValue);
-    final accountId = accountIdValue == null ? null : int.tryParse(accountIdValue);
+    final accountId = accountIdValue == null
+        ? null
+        : int.tryParse(accountIdValue);
 
     if (token == null ||
         id == null ||
@@ -59,7 +58,10 @@ class SessionStorage {
     final preferences = await SharedPreferences.getInstance();
     await _secretStore.write(key: _tokenKey, value: user.token);
     await _secretStore.write(key: _idKey, value: user.id.toString());
-    await _secretStore.write(key: _accountIdKey, value: user.accountId.toString());
+    await _secretStore.write(
+      key: _accountIdKey,
+      value: user.accountId.toString(),
+    );
     await _secretStore.write(key: _usernameKey, value: user.username);
     await _secretStore.write(key: _displayNameKey, value: user.displayName);
     await _secretStore.write(key: _deviceIdKey, value: user.deviceId);

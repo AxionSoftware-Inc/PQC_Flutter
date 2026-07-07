@@ -1,5 +1,7 @@
 import '../../core/device/device_identity_service.dart';
 import '../../core/device/device_key_service.dart';
+import '../../core/device/device_pqc_key_service.dart';
+import '../../core/device/device_pqc_signing_key_service.dart';
 import '../../core/device/device_prekey_service.dart';
 import '../../core/models/conversation.dart';
 import 'chat_cipher_service.dart';
@@ -49,10 +51,12 @@ class GroupChatCipherAlgorithm implements ChatCipherAlgorithm {
   }
 }
 
-class X25519PrivateChatAlgorithm implements ChatCipherAlgorithm {
-  X25519PrivateChatAlgorithm({
+class LegacyPrivateTransportDecryptAlgorithm implements ChatCipherAlgorithm {
+  LegacyPrivateTransportDecryptAlgorithm({
     required DeviceIdentityService deviceIdentityService,
     required DeviceKeyService deviceKeyService,
+    required DevicePqcKeyService devicePqcKeyService,
+    required DevicePqcSigningKeyService devicePqcSigningKeyService,
     required DevicePreKeyService devicePreKeyService,
     required PrivateSessionStore privateSessionStore,
     PeerPreKeySelectionService? peerPreKeySelectionService,
@@ -62,6 +66,8 @@ class X25519PrivateChatAlgorithm implements ChatCipherAlgorithm {
            X25519CipherMessageCodec(
              deviceIdentityService: deviceIdentityService,
              deviceKeyService: deviceKeyService,
+             devicePqcKeyService: devicePqcKeyService,
+             devicePqcSigningKeyService: devicePqcSigningKeyService,
              devicePreKeyService: devicePreKeyService,
              privateSessionStore: privateSessionStore,
              peerPreKeySelectionService: peerPreKeySelectionService,
@@ -70,10 +76,12 @@ class X25519PrivateChatAlgorithm implements ChatCipherAlgorithm {
   final X25519CipherMessageCodec _codec;
 
   @override
-  bool supportsConversation(Conversation conversation) => !conversation.isGroup;
+  bool supportsConversation(Conversation conversation) => false;
 
   @override
   bool canDecrypt(String payload) =>
+      payload.startsWith('${X25519CipherMessageCodec.hybridPrefix}:') ||
+      payload.startsWith('${X25519CipherMessageCodec.hybridPreviousPrefix}:') ||
       payload.startsWith('${X25519CipherMessageCodec.prefix}:') ||
       payload.startsWith('${X25519CipherMessageCodec.sessionPrefix}:') ||
       payload.startsWith('${X25519CipherMessageCodec.previousPrefix}:') ||
@@ -106,14 +114,14 @@ class X25519PrivateChatAlgorithm implements ChatCipherAlgorithm {
   }
 }
 
-class LegacyDemoChatCipherAlgorithm implements ChatCipherAlgorithm {
-  LegacyDemoChatCipherAlgorithm({DemoCipherMessageCodec? codec})
+class StablePrivateChatAlgorithm implements ChatCipherAlgorithm {
+  StablePrivateChatAlgorithm({DemoCipherMessageCodec? codec})
     : _codec = codec ?? DemoCipherMessageCodec();
 
   final DemoCipherMessageCodec _codec;
 
   @override
-  bool supportsConversation(Conversation conversation) => false;
+  bool supportsConversation(Conversation conversation) => !conversation.isGroup;
 
   @override
   bool canDecrypt(String payload) =>
@@ -124,8 +132,9 @@ class LegacyDemoChatCipherAlgorithm implements ChatCipherAlgorithm {
     required ChatCryptoContext context,
     required String plaintext,
   }) {
-    throw UnsupportedError(
-      'Legacy demo cipher is only kept for backward-compatible decrypt.',
+    return _codec.encrypt(
+      conversation: context.conversation,
+      plaintext: plaintext,
     );
   }
 

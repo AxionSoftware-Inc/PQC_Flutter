@@ -19,9 +19,14 @@ void main() {
   final keyVerificationService = _FakeKeyVerificationService(
     const ConversationKeyTrust(
       isAvailable: true,
+      isEnterpriseReady: false,
       isVerified: false,
+      isEnterpriseVerified: false,
       hasKeyChanged: true,
+      hasEnterpriseKeyChanged: true,
       fingerprint: 'dead beef',
+      pqcFingerprint: null,
+      signingFingerprint: null,
       peerUser: AppUser(
         id: 2,
         username: 'bob',
@@ -67,9 +72,14 @@ void main() {
         keyVerificationService: _FakeKeyVerificationService(
           const ConversationKeyTrust(
             isAvailable: true,
+            isEnterpriseReady: false,
             isVerified: false,
+            isEnterpriseVerified: false,
             hasKeyChanged: false,
+            hasEnterpriseKeyChanged: false,
             fingerprint: 'dead beef',
+            pqcFingerprint: null,
+            signingFingerprint: null,
             peerUser: AppUser(
               id: 2,
               username: 'bob',
@@ -191,9 +201,14 @@ class _NoopPrivateConversationSecurityCoordinator
         keyVerificationService: _FakeKeyVerificationService(
           const ConversationKeyTrust(
             isAvailable: true,
+            isEnterpriseReady: false,
             isVerified: false,
+            isEnterpriseVerified: false,
             hasKeyChanged: false,
+            hasEnterpriseKeyChanged: false,
             fingerprint: null,
+            pqcFingerprint: null,
+            signingFingerprint: null,
             peerUser: null,
           ),
         ),

@@ -7,6 +7,10 @@ class AppUserDevice {
     required this.platform,
     required this.identityPublicKey,
     required this.keyAlgorithm,
+    this.pqcPublicKey = '',
+    this.pqcAlgorithm = '',
+    this.pqcSigningPublicKey = '',
+    this.pqcSigningAlgorithm = '',
     required this.preKeys,
     this.createdAt,
     this.updatedAt,
@@ -17,12 +21,23 @@ class AppUserDevice {
   final String platform;
   final String identityPublicKey;
   final String keyAlgorithm;
+  final String pqcPublicKey;
+  final String pqcAlgorithm;
+  final String pqcSigningPublicKey;
+  final String pqcSigningAlgorithm;
   final List<AppUserPreKey> preKeys;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
   bool get hasUsableX25519Key =>
       keyAlgorithm == 'x25519' && _hasValidX25519PublicKey(identityPublicKey);
+
+  bool get hasUsableMlKemKey =>
+      pqcAlgorithm == 'ml-kem-768' && _hasValidMlKemPublicKey(pqcPublicKey);
+
+  bool get hasUsableMlDsaKey =>
+      pqcSigningAlgorithm == 'ml-dsa-65' &&
+      _hasValidMlDsaPublicKey(pqcSigningPublicKey);
 
   static bool _hasValidX25519PublicKey(String value) {
     if (value.isEmpty) {
@@ -36,6 +51,30 @@ class AppUserDevice {
     }
   }
 
+  static bool _hasValidMlKemPublicKey(String value) {
+    if (value.isEmpty) {
+      return false;
+    }
+
+    try {
+      return base64Decode(value).length == 1184;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static bool _hasValidMlDsaPublicKey(String value) {
+    if (value.isEmpty) {
+      return false;
+    }
+
+    try {
+      return base64Decode(value).length == 1952;
+    } catch (_) {
+      return false;
+    }
+  }
+
   factory AppUserDevice.fromJson(Map<String, dynamic> json) {
     return AppUserDevice(
       deviceId: json['device_id'] as String? ?? '',
@@ -43,6 +82,10 @@ class AppUserDevice {
       platform: json['platform'] as String? ?? '',
       identityPublicKey: json['identity_public_key'] as String? ?? '',
       keyAlgorithm: json['key_algorithm'] as String? ?? '',
+      pqcPublicKey: json['pqc_public_key'] as String? ?? '',
+      pqcAlgorithm: json['pqc_algorithm'] as String? ?? '',
+      pqcSigningPublicKey: json['pqc_signing_public_key'] as String? ?? '',
+      pqcSigningAlgorithm: json['pqc_signing_algorithm'] as String? ?? '',
       preKeys: (json['prekeys'] as List<dynamic>? ?? const [])
           .map((item) => AppUserPreKey.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -57,6 +100,10 @@ class AppUserDevice {
     String? platform,
     String? identityPublicKey,
     String? keyAlgorithm,
+    String? pqcPublicKey,
+    String? pqcAlgorithm,
+    String? pqcSigningPublicKey,
+    String? pqcSigningAlgorithm,
     List<AppUserPreKey>? preKeys,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -67,6 +114,10 @@ class AppUserDevice {
       platform: platform ?? this.platform,
       identityPublicKey: identityPublicKey ?? this.identityPublicKey,
       keyAlgorithm: keyAlgorithm ?? this.keyAlgorithm,
+      pqcPublicKey: pqcPublicKey ?? this.pqcPublicKey,
+      pqcAlgorithm: pqcAlgorithm ?? this.pqcAlgorithm,
+      pqcSigningPublicKey: pqcSigningPublicKey ?? this.pqcSigningPublicKey,
+      pqcSigningAlgorithm: pqcSigningAlgorithm ?? this.pqcSigningAlgorithm,
       preKeys: preKeys ?? this.preKeys,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -138,12 +189,25 @@ class AppUser {
 
   bool get hasUsableDeviceKey => preferredX25519Device != null;
 
+  bool get hasUsableHybridDeviceKey => preferredHybridDevice != null;
+
   List<AppUserDevice> get usableX25519Devices =>
       devices.where((device) => device.hasUsableX25519Key).toList();
 
   AppUserDevice? get preferredX25519Device {
     for (final device in usableX25519Devices) {
       if (device.hasUsableX25519Key) {
+        return device;
+      }
+    }
+    return null;
+  }
+
+  AppUserDevice? get preferredHybridDevice {
+    for (final device in devices) {
+      if (device.hasUsableX25519Key &&
+          device.hasUsableMlKemKey &&
+          device.hasUsableMlDsaKey) {
         return device;
       }
     }
