@@ -46,7 +46,8 @@ class ClaimedDevicePreKeySerializer(serializers.Serializer):
 
 
 class LoginSerializer(serializers.Serializer):
-    username = serializers.CharField()
+    username = serializers.CharField(required=False, allow_blank=True, default='')
+    display_name = serializers.CharField(required=False, allow_blank=True, default='')
     device_id = serializers.CharField()
     device_name = serializers.CharField(required=False, allow_blank=True, default='')
     platform = serializers.CharField(required=False, allow_blank=True, default='')
@@ -55,6 +56,13 @@ class LoginSerializer(serializers.Serializer):
     prekeys = DevicePreKeySerializer(many=True, required=False, default=list)
 
     def validate(self, attrs):
+        attrs['display_name'] = (
+            attrs.get('display_name', '').strip() or attrs.get('username', '').strip()
+        )
+        if not attrs['display_name']:
+            raise serializers.ValidationError(
+                {'display_name': 'display_name is required.'}
+            )
         validate_identity_public_key_fields(
             attrs.get('key_algorithm', ''),
             attrs.get('identity_public_key', ''),
@@ -69,6 +77,8 @@ class DeviceSerializer(serializers.Serializer):
     identity_public_key = serializers.CharField()
     key_algorithm = serializers.CharField()
     prekeys = DevicePreKeySerializer(many=True, required=False)
+    created_at = serializers.DateTimeField()
+    updated_at = serializers.DateTimeField()
 
 
 class DeviceSyncSerializer(serializers.Serializer):
@@ -88,12 +98,17 @@ class DeviceSyncSerializer(serializers.Serializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    username = serializers.SerializerMethodField()
     display_name = serializers.SerializerMethodField()
     devices = serializers.SerializerMethodField()
+    account_id = serializers.IntegerField(source='id')
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'display_name', 'devices']
+        fields = ['id', 'account_id', 'username', 'display_name', 'devices']
+
+    def get_username(self, obj):
+        return obj.first_name or obj.username
 
     def get_display_name(self, obj):
         return obj.first_name or obj.username
@@ -107,6 +122,8 @@ class UserSerializer(serializers.ModelSerializer):
                     'platform': device.platform,
                     'identity_public_key': device.identity_public_key,
                     'key_algorithm': device.key_algorithm,
+                    'created_at': device.created_at,
+                    'updated_at': device.updated_at,
                     'prekeys': [
                         {
                             'key_id': prekey.key_id,

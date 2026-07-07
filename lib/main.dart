@@ -10,8 +10,11 @@ import 'features/auth/data/auth_repository.dart';
 import 'features/auth/session_controller.dart';
 import 'features/chat/data/chat_remote_data_source.dart';
 import 'features/chat/data/chat_repository.dart';
+import 'features/chat/data/outbox_store.dart';
+import 'features/chat/data/private_conversation_security_coordinator.dart';
+import 'features/crypto/chat_cipher_algorithms.dart';
+import 'features/crypto/chat_cipher_service.dart';
 import 'features/crypto/group_key_store.dart';
-import 'features/crypto/message_codec.dart';
 import 'features/crypto/outbound_message_cache.dart';
 import 'features/crypto/private_session_store.dart';
 import 'features/security/key_verification_service.dart';
@@ -27,6 +30,7 @@ Future<void> main() async {
   final privateSessionStore = PrivateSessionStore();
   final outboundMessageCache = OutboundMessageCache();
   final remoteDataSource = ChatRemoteDataSource(apiClient: apiClient);
+  final outboxStore = OutboxStore();
   final keyVerificationService = KeyVerificationService();
   final groupKeyStore = GroupKeyStore(
     deviceIdentityService: deviceIdentityService,
@@ -40,28 +44,34 @@ Future<void> main() async {
     deviceKeyService: deviceKeyService,
     devicePreKeyService: devicePreKeyService,
     outboundMessageCache: outboundMessageCache,
+    outboxStore: outboxStore,
   );
   final sessionController = SessionController(authRepository: authRepository);
+  final chatCipherService = RoutedChatCipherService(
+    algorithms: [
+      GroupChatCipherAlgorithm(groupKeyStore: groupKeyStore),
+      X25519PrivateChatAlgorithm(
+        deviceIdentityService: deviceIdentityService,
+        deviceKeyService: deviceKeyService,
+        devicePreKeyService: devicePreKeyService,
+        privateSessionStore: privateSessionStore,
+      ),
+      LegacyDemoChatCipherAlgorithm(),
+    ],
+    outboundMessageCache: outboundMessageCache,
+  );
+  final privateConversationSecurityCoordinator =
+      PrivateConversationSecurityCoordinator(
+        remoteDataSource: remoteDataSource,
+        keyVerificationService: keyVerificationService,
+      );
   final chatRepository = ChatRepository(
     remoteDataSource: remoteDataSource,
-    composerService: HybridMessageComposerService(
-      deviceIdentityService: deviceIdentityService,
-      deviceKeyService: deviceKeyService,
-      devicePreKeyService: devicePreKeyService,
-      privateSessionStore: privateSessionStore,
-      outboundMessageCache: outboundMessageCache,
-      groupKeyStore: groupKeyStore,
-    ),
-    decoderService: HybridMessageDecoderService(
-      deviceIdentityService: deviceIdentityService,
-      deviceKeyService: deviceKeyService,
-      devicePreKeyService: devicePreKeyService,
-      privateSessionStore: privateSessionStore,
-      outboundMessageCache: outboundMessageCache,
-      groupKeyStore: groupKeyStore,
-    ),
-    privateSessionStore: privateSessionStore,
+    cipherService: chatCipherService,
     keyVerificationService: keyVerificationService,
+    privateConversationSecurityCoordinator:
+        privateConversationSecurityCoordinator,
+    outboxStore: outboxStore,
   );
 
   await sessionController.initialize();

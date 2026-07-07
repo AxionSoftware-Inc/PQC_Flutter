@@ -147,7 +147,7 @@ class _ChatListPageState extends State<ChatListPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Chats - ${sessionUser.username}'),
+        title: Text('Chats - ${sessionUser.displayName}'),
         actions: [
           IconButton(
             onPressed: widget.sessionController.logout,

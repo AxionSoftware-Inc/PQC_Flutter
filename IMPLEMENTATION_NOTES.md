@@ -32,6 +32,13 @@ Asosiy qatlamlar:
 - `lib/features/chat/` conversations, messages, polling
 - `lib/features/crypto/` message codecs, group key store
 
+Yangi crypto orchestration shakli:
+
+- `RoutedChatCipherService` encryption/decryption routing uchun ishlatiladi
+- `ChatCipherAlgorithm` abstraction private/group/legacy algorithm'larni ajratadi
+- `PrivateConversationSecurityCoordinator` private send oldidan trust check va peer prekey sync ishlarini bajaradi
+- shu refactor PQC yoki hybrid KEM algorithm qo'shishni `ChatRepository` dan mustaqil qiladi
+
 Muhim implementatsiya eslatmalari:
 
 1. macOS va Android prototip bosqichida secure storage muammolari sabab ayrim secretlar local fallback store bilan ishlatilmoqda

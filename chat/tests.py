@@ -24,7 +24,7 @@ class ChatApiTests(APITestCase):
             format='json',
         )
         self.token = login.data['token']
-        self.user = User.objects.get(username='ali')
+        self.user = User.objects.get(id=login.data['account_id'])
         self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token}')
         self.group = Conversation.objects.get(
             type=Conversation.ConversationType.GROUP,
@@ -38,7 +38,7 @@ class ChatApiTests(APITestCase):
             format='json',
         )
         self.assertEqual(outsider_login.status_code, 200)
-        outsider = User.objects.get(username='laylo')
+        outsider = User.objects.get(id=outsider_login.data['account_id'])
         hidden = Conversation.objects.create(
             type=Conversation.ConversationType.PRIVATE,
             title='',
@@ -58,7 +58,7 @@ class ChatApiTests(APITestCase):
             {'username': 'vali', 'device_id': 'device-2'},
             format='json',
         )
-        other = User.objects.get(username='vali')
+        other = User.objects.get(devices__device_id='device-2')
 
         first = self.client.post(
             '/api/private-conversations',
@@ -90,7 +90,7 @@ class ChatApiTests(APITestCase):
             {'username': 'vali', 'device_id': 'device-2'},
             format='json',
         )
-        other = User.objects.get(username='vali')
+        other = User.objects.get(devices__device_id='device-2')
         hidden = Conversation.objects.create(
             type=Conversation.ConversationType.PRIVATE,
             title='',
@@ -122,6 +122,62 @@ class ChatApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual([item['body'] for item in response.data][-2:], ['first', 'second'])
 
+    def test_message_create_is_idempotent_for_client_message_id(self):
+        first = self.client.post(
+            f'/api/conversations/{self.group.id}/messages',
+            {'body': 'once', 'client_message_id': 'msg-1'},
+            format='json',
+        )
+        second = self.client.post(
+            f'/api/conversations/{self.group.id}/messages',
+            {'body': 'once', 'client_message_id': 'msg-1'},
+            format='json',
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(first.data['id'], second.data['id'])
+
+    def test_messages_support_incremental_after_id_sync(self):
+        self.client.post(
+            f'/api/conversations/{self.group.id}/messages',
+            {'body': 'first'},
+            format='json',
+        )
+        second = self.client.post(
+            f'/api/conversations/{self.group.id}/messages',
+            {'body': 'second'},
+            format='json',
+        )
+
+        response = self.client.get(
+            f'/api/conversations/{self.group.id}/messages',
+            {'after_id': second.data['id'] - 1},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['body'], 'second')
+
+    def test_conversations_support_incremental_updated_after_sync(self):
+        first = self.client.get('/api/conversations')
+        self.assertEqual(first.status_code, 200)
+
+        self.client.post(
+            f'/api/conversations/{self.group.id}/messages',
+            {'body': 'updated'},
+            format='json',
+        )
+
+        response = self.client.get(
+            '/api/conversations',
+            {'updated_after': first.data[0]['updated_at']},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertGreaterEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['id'], self.group.id)
+
     def test_group_chat_handles_high_message_volume(self):
         total_messages = 180
 
@@ -151,7 +207,7 @@ class ChatApiTests(APITestCase):
         other_client.credentials(
             HTTP_AUTHORIZATION=f"Token {other_login.data['token']}",
         )
-        other = User.objects.get(username='laylo')
+        other = User.objects.get(id=other_login.data['account_id'])
 
         conversation_response = self.client.post(
             '/api/private-conversations',
@@ -208,7 +264,7 @@ class ChatApiTests(APITestCase):
             {'username': 'vali', 'device_id': 'device-2'},
             format='json',
         )
-        other = User.objects.get(username='vali')
+        other = User.objects.get(devices__device_id='device-2')
         private_chat = self.client.post(
             '/api/private-conversations',
             {'other_user_id': other.id},

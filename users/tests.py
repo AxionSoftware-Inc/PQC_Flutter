@@ -34,11 +34,12 @@ class AuthApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['user']['username'], 'ali')
-        self.assertTrue(Token.objects.filter(user__username='ali').exists())
+        user_id = response.data['account_id']
+        self.assertTrue(Token.objects.filter(user_id=user_id).exists())
         self.assertTrue(
             UserDevice.objects.filter(
                 device_id='device-1',
-                user__username='ali',
+                user_id=user_id,
                 identity_public_key=VALID_PUBLIC_KEY_1,
                 key_algorithm='x25519',
             ).exists()
@@ -53,7 +54,7 @@ class AuthApiTests(APITestCase):
         self.assertTrue(
             ConversationParticipant.objects.filter(
                 conversation__title='General Group',
-                user__username='ali',
+                user_id=user_id,
             ).exists()
         )
 
@@ -70,7 +71,7 @@ class AuthApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['user']['username'], 'riley reid')
+        self.assertEqual(response.data['user']['username'], 'Riley Reid')
         self.assertEqual(response.data['user']['display_name'], 'Riley Reid')
 
     def test_users_endpoint_returns_available_prekeys(self):
@@ -184,8 +185,12 @@ class AuthApiTests(APITestCase):
         self.assertEqual(response.data[0]['devices'][0]['device_id'], 'device-1')
         self.assertEqual(response.data[1]['devices'][0]['device_id'], 'device-2')
 
-    def test_same_device_cannot_claim_another_username(self):
-        self.client.post('/api/auth/login', {'username': 'ali', 'device_id': 'device-1'}, format='json')
+    def test_same_device_reuses_existing_account_binding(self):
+        first = self.client.post(
+            '/api/auth/login',
+            {'username': 'ali', 'device_id': 'device-1'},
+            format='json',
+        )
 
         response = self.client.post(
             '/api/auth/login',
@@ -193,11 +198,9 @@ class AuthApiTests(APITestCase):
             format='json',
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(
-            response.data['detail'],
-            'This device is already linked to another username.',
-        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['account_id'], first.data['account_id'])
+        self.assertEqual(response.data['user']['display_name'], 'vali')
 
     def test_existing_device_public_key_is_updated(self):
         self.client.post(
@@ -225,6 +228,22 @@ class AuthApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         device = UserDevice.objects.get(device_id='device-1')
         self.assertEqual(device.identity_public_key, VALID_PUBLIC_KEY_2)
+
+    def test_same_display_name_on_different_devices_creates_distinct_accounts(self):
+        first = self.client.post(
+            '/api/auth/login',
+            {'display_name': 'Riley', 'device_id': 'device-1'},
+            format='json',
+        )
+        second = self.client.post(
+            '/api/auth/login',
+            {'display_name': 'Riley', 'device_id': 'device-2'},
+            format='json',
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertNotEqual(first.data['account_id'], second.data['account_id'])
 
     def test_authenticated_device_sync_updates_registered_device(self):
         login = self.client.post(

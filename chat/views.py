@@ -50,11 +50,14 @@ def get_request_device_or_400(request):
 
 class ConversationListView(APIView):
     def get(self, request):
+        updated_after = request.query_params.get('updated_after', '').strip()
         conversations = (
             Conversation.objects.filter(participants=request.user)
             .prefetch_related('participants', 'messages')
             .distinct()
         )
+        if updated_after:
+            conversations = conversations.filter(updated_at__gt=updated_after)
         return Response(ConversationSerializer(conversations, many=True).data)
 
 
@@ -84,7 +87,10 @@ class PrivateConversationView(APIView):
 class MessageListCreateView(APIView):
     def get(self, request, conversation_id):
         conversation = get_user_conversation_or_404(request.user, conversation_id)
+        after_id = request.query_params.get('after_id', '').strip()
         messages = conversation.messages.select_related('sender').all()
+        if after_id.isdigit():
+            messages = messages.filter(id__gt=int(after_id))
         return Response(MessageSerializer(messages, many=True).data)
 
     @transaction.atomic
@@ -96,10 +102,21 @@ class MessageListCreateView(APIView):
         if not conversation.participants.filter(id=request.user.id).exists():
             raise PermissionDenied('Not a participant of this conversation.')
 
+        client_message_id = serializer.validated_data['client_message_id'].strip()
+        if client_message_id:
+            existing = Message.objects.filter(
+                conversation=conversation,
+                sender=request.user,
+                client_message_id=client_message_id,
+            ).select_related('sender').first()
+            if existing is not None:
+                return Response(MessageSerializer(existing).data)
+
         message = Message.objects.create(
             conversation=conversation,
             sender=request.user,
             body=serializer.validated_data['body'].strip(),
+            client_message_id=client_message_id,
         )
         conversation.save(update_fields=['updated_at'])
         return Response(

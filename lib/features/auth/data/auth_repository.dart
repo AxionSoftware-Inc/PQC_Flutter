@@ -4,6 +4,7 @@ import '../../../core/device/device_prekey_service.dart';
 import '../../../core/models/session_user.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/session_storage.dart';
+import '../../chat/data/outbox_store.dart';
 import '../../crypto/outbound_message_cache.dart';
 
 class AuthRepository {
@@ -14,6 +15,7 @@ class AuthRepository {
     required this.deviceKeyService,
     required this.devicePreKeyService,
     this._outboundMessageCache,
+    this._outboxStore,
   });
 
   final ApiClient apiClient;
@@ -22,6 +24,7 @@ class AuthRepository {
   final DeviceKeyService deviceKeyService;
   final DevicePreKeyService devicePreKeyService;
   final OutboundMessageCache? _outboundMessageCache;
+  final OutboxStore? _outboxStore;
 
   Future<SessionUser?> restoreSession() async {
     final session = await sessionStorage.read();
@@ -55,6 +58,7 @@ class AuthRepository {
     final response =
         await apiClient.post('/auth/login', {
               'username': username,
+              'display_name': username,
               'device_id': deviceIdentity.id,
               'device_name': deviceIdentity.deviceName,
               'platform': deviceIdentity.platform,
@@ -67,9 +71,11 @@ class AuthRepository {
     final user = response['user'] as Map<String, dynamic>;
     final session = SessionUser(
       id: user['id'] as int,
+      accountId: response['account_id'] as int? ?? user['account_id'] as int? ?? user['id'] as int,
       username: user['username'] as String,
       displayName:
           (user['display_name'] as String?) ?? user['username'] as String,
+      deviceId: response['device_id'] as String? ?? deviceIdentity.id,
       token: response['token'] as String,
     );
 
@@ -100,5 +106,6 @@ class AuthRepository {
       clearRememberedIdentity: clearRememberedIdentity,
     );
     await _outboundMessageCache?.clearAll();
+    await _outboxStore?.clear();
   }
 }

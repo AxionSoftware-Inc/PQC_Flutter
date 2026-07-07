@@ -1,27 +1,34 @@
 import '../../../core/models/app_user.dart';
 import '../../../core/models/chat_message.dart';
 import '../../../core/models/conversation.dart';
-import '../../crypto/chat_crypto_exceptions.dart';
-import '../../crypto/message_codec.dart';
-import '../../crypto/private_session_store.dart';
+import '../../../core/network/api_client.dart';
+import '../../crypto/chat_cipher_service.dart';
+import '../../crypto/chat_crypto_context.dart';
 import '../../security/key_verification_service.dart';
 import 'chat_remote_data_source.dart';
+import 'outbox_store.dart';
+import 'private_conversation_security_coordinator.dart';
 
 class ChatRepository {
   ChatRepository({
     required this.remoteDataSource,
-    required this.composerService,
-    required this.decoderService,
-    required this.privateSessionStore,
+    required this.cipherService,
     required this.keyVerificationService,
-  });
+    required this.privateConversationSecurityCoordinator,
+    OutboxStore? outboxStore,
+  }) : outboxStore = outboxStore ?? OutboxStore();
 
   final ChatRemoteDataSource remoteDataSource;
-  final MessageComposerService composerService;
-  final MessageDecoderService decoderService;
-  final PrivateSessionStore privateSessionStore;
+  final ChatCipherService cipherService;
   final KeyVerificationService keyVerificationService;
+  final PrivateConversationSecurityCoordinator
+  privateConversationSecurityCoordinator;
+  final OutboxStore outboxStore;
   final Map<int, AppUser> _usersById = {};
+  final Map<int, Conversation> _conversationsById = {};
+  final Map<int, List<ChatMessage>> _messageCacheByConversation = {};
+  final Map<int, int> _lastMessageIdByConversation = {};
+  DateTime? _lastConversationSyncAt;
 
   Future<List<AppUser>> fetchUsers() async {
     final users = await remoteDataSource.fetchUsers();
@@ -35,26 +42,32 @@ class ChatRepository {
     required int currentUserId,
   }) async {
     await _ensureUsersLoaded();
-    final conversations = await remoteDataSource.fetchConversations();
+    final conversations = await remoteDataSource.fetchConversations(
+      updatedAfter: _lastConversationSyncAt,
+    );
+    _lastConversationSyncAt = DateTime.now().toUtc();
     final decoded = <Conversation>[];
     for (final conversation in conversations) {
       final preview = conversation.lastMessagePreview.isEmpty
           ? ''
-          : await decoderService.decode(
-              currentUserId: currentUserId,
-              conversation: conversation,
+          : await cipherService.decrypt(
+              context: _cryptoContext(
+                currentUserId: currentUserId,
+                conversation: conversation,
+              ),
               payload: conversation.lastMessagePreview,
-              usersById: _usersById,
             );
-      decoded.add(
-        conversation.copyWith(
-          lastMessagePreview: preview.length > 80
-              ? preview.substring(0, 80)
-              : preview,
-        ),
+      final merged = conversation.copyWith(
+        lastMessagePreview: preview.length > 80
+            ? preview.substring(0, 80)
+            : preview,
       );
+      _conversationsById[merged.id] = merged;
+      decoded.add(merged);
     }
-    return decoded;
+    final all = _conversationsById.values.toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return all;
   }
 
   Future<Conversation> openPrivateConversation(int otherUserId) =>
@@ -65,7 +78,15 @@ class ChatRepository {
     required int currentUserId,
   }) async {
     await _ensureUsersLoaded();
-    final messages = await remoteDataSource.fetchMessages(conversation.id);
+    await flushPendingMessages(
+      conversation: conversation,
+      currentUserId: currentUserId,
+    );
+    final messages = await remoteDataSource.fetchMessages(
+      conversation.id,
+      afterId: _lastMessageIdByConversation[conversation.id],
+    );
+    final existing = [...?_messageCacheByConversation[conversation.id]];
     final decoded = <ChatMessage>[];
     for (final message in messages) {
       decoded.add(
@@ -74,17 +95,26 @@ class ChatRepository {
           conversationId: message.conversationId,
           senderId: message.senderId,
           senderName: message.senderName,
-          body: await decoderService.decode(
-            currentUserId: currentUserId,
-            conversation: conversation,
+          body: await cipherService.decrypt(
+            context: _cryptoContext(
+              currentUserId: currentUserId,
+              conversation: conversation,
+            ),
             payload: message.body,
-            usersById: _usersById,
           ),
           createdAt: message.createdAt,
+          clientMessageId: message.clientMessageId,
+          deliveryState: message.deliveryState,
         ),
       );
     }
-    return decoded;
+    if (decoded.isNotEmpty) {
+      _lastMessageIdByConversation[conversation.id] = decoded.last.id;
+    }
+    final pending = await outboxStore.readForConversation(conversation.id);
+    final mergedRemote = _mergeRemoteMessages(existing, decoded);
+    _messageCacheByConversation[conversation.id] = mergedRemote;
+    return _mergeMessages(mergedRemote, pending);
   }
 
   Future<ChatMessage> sendMessage(
@@ -93,36 +123,100 @@ class ChatRepository {
     required String text,
   }) async {
     await _ensureUsersLoaded();
-    await _guardPrivateConversationTrust(
-      conversation: conversation,
-      currentUserId: currentUserId,
-    );
-    await _preparePrivatePeerPreKey(
-      conversation: conversation,
-      currentUserId: currentUserId,
-    );
-    final payload = await composerService.compose(
+    await privateConversationSecurityCoordinator.prepareForSend(
       currentUserId: currentUserId,
       conversation: conversation,
-      plaintext: text,
       usersById: _usersById,
+      onUserUpdated: (user) {
+        _usersById[user.id] = user;
+      },
     );
-    final message = await remoteDataSource.sendMessage(
-      conversation.id,
-      payload,
+    final now = DateTime.now().toUtc();
+    final clientMessageId =
+        '${conversation.id}_${currentUserId}_${now.microsecondsSinceEpoch}';
+    final currentUser = _usersById[currentUserId];
+    final queued = QueuedOutgoingMessage(
+      clientMessageId: clientMessageId,
+      conversationId: conversation.id,
+      senderId: currentUserId,
+      senderName: currentUser?.displayName ?? 'You',
+      plaintext: text,
+      createdAt: now,
+      deliveryState: MessageDeliveryState.pending,
     );
-    return ChatMessage(
-      id: message.id,
-      conversationId: message.conversationId,
-      senderId: message.senderId,
-      senderName: message.senderName,
-      body: await decoderService.decode(
-        currentUserId: currentUserId,
+    await outboxStore.upsert(queued);
+
+    try {
+      final sent = await _sendQueuedMessage(
+        queued,
         conversation: conversation,
-        payload: message.body,
-        usersById: _usersById,
+        currentUserId: currentUserId,
+      );
+      await outboxStore.remove(clientMessageId);
+      return sent;
+    } on ApiException catch (error) {
+      final state = error.isRetryable
+          ? MessageDeliveryState.failedRetryable
+          : MessageDeliveryState.failedPermanent;
+      await outboxStore.upsert(
+        queued.copyWith(deliveryState: state, failureReason: error.message),
+      );
+      return queued
+          .copyWith(deliveryState: state, failureReason: error.message)
+          .toChatMessage();
+    }
+  }
+
+  Future<void> flushPendingMessages({
+    required Conversation conversation,
+    required int currentUserId,
+  }) async {
+    final pending = await outboxStore.readForConversation(conversation.id);
+    for (final item in pending) {
+      if (item.deliveryState == MessageDeliveryState.failedPermanent) {
+        continue;
+      }
+      try {
+        await _sendQueuedMessage(
+          item.copyWith(deliveryState: MessageDeliveryState.pending),
+          conversation: conversation,
+          currentUserId: currentUserId,
+        );
+        await outboxStore.remove(item.clientMessageId);
+      } on ApiException catch (error) {
+        await outboxStore.upsert(
+          item.copyWith(
+            deliveryState: error.isRetryable
+                ? MessageDeliveryState.failedRetryable
+                : MessageDeliveryState.failedPermanent,
+            failureReason: error.message,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> retryMessage({
+    required Conversation conversation,
+    required int currentUserId,
+    required String clientMessageId,
+  }) async {
+    final queued = await outboxStore.readForConversation(conversation.id);
+    final target = queued.where(
+      (item) => item.clientMessageId == clientMessageId,
+    );
+    if (target.isEmpty) {
+      return;
+    }
+    await outboxStore.upsert(
+      target.first.copyWith(
+        deliveryState: MessageDeliveryState.pending,
+        failureReason: null,
       ),
-      createdAt: message.createdAt,
+    );
+    await flushPendingMessages(
+      conversation: conversation,
+      currentUserId: currentUserId,
     );
   }
 
@@ -131,6 +225,88 @@ class ChatRepository {
       return;
     }
     await fetchUsers();
+  }
+
+  Future<ChatMessage> _sendQueuedMessage(
+    QueuedOutgoingMessage queued, {
+    required Conversation conversation,
+    required int currentUserId,
+  }) async {
+    final payload = await cipherService.encrypt(
+      context: _cryptoContext(
+        currentUserId: currentUserId,
+        conversation: conversation,
+      ),
+      plaintext: queued.plaintext,
+    );
+    final message = await remoteDataSource.sendMessage(
+      conversation.id,
+      payload,
+      clientMessageId: queued.clientMessageId,
+    );
+    return ChatMessage(
+      id: message.id,
+      conversationId: message.conversationId,
+      senderId: message.senderId,
+      senderName: message.senderName,
+      body: await cipherService.decrypt(
+        context: _cryptoContext(
+          currentUserId: currentUserId,
+          conversation: conversation,
+        ),
+        payload: message.body,
+      ),
+      createdAt: message.createdAt,
+      clientMessageId: message.clientMessageId,
+      deliveryState: MessageDeliveryState.sent,
+    );
+  }
+
+  List<ChatMessage> _mergeMessages(
+    List<ChatMessage> remote,
+    List<QueuedOutgoingMessage> pending,
+  ) {
+    final byClientId = <String, ChatMessage>{};
+    final merged = <ChatMessage>[];
+    for (final message in remote) {
+      if (message.clientMessageId.isNotEmpty) {
+        byClientId[message.clientMessageId] = message;
+      }
+      merged.add(message);
+    }
+    for (final item in pending) {
+      if (byClientId.containsKey(item.clientMessageId)) {
+        continue;
+      }
+      merged.add(item.toChatMessage());
+    }
+    merged.sort((a, b) {
+      final createdCompare = a.createdAt.compareTo(b.createdAt);
+      if (createdCompare != 0) {
+        return createdCompare;
+      }
+      return a.id.compareTo(b.id);
+    });
+    return merged;
+  }
+
+  List<ChatMessage> _mergeRemoteMessages(
+    List<ChatMessage> existing,
+    List<ChatMessage> incoming,
+  ) {
+    final byId = <int, ChatMessage>{for (final item in existing) item.id: item};
+    for (final item in incoming) {
+      byId[item.id] = item;
+    }
+    final merged = byId.values.toList()
+      ..sort((a, b) {
+        final createdCompare = a.createdAt.compareTo(b.createdAt);
+        if (createdCompare != 0) {
+          return createdCompare;
+        }
+        return a.id.compareTo(b.id);
+      });
+    return merged;
   }
 
   Future<Map<int, UserKeyTrust>> buildUserTrustMap() async {
@@ -167,64 +343,14 @@ class ChatRepository {
     await keyVerificationService.verifyUser(peerUser);
   }
 
-  Future<void> _preparePrivatePeerPreKey({
-    required Conversation conversation,
+  ChatCryptoContext _cryptoContext({
     required int currentUserId,
-  }) async {
-    if (conversation.isGroup) {
-      return;
-    }
-
-    final peerUserId = conversation.participantIds.firstWhere(
-      (id) => id != currentUserId,
-      orElse: () => -1,
-    );
-    final peerUser = _usersById[peerUserId];
-    final peerDevice = peerUser?.preferredX25519Device;
-    if (peerUser == null || peerDevice == null) {
-      return;
-    }
-
-    final claimedPreKey = await remoteDataSource.claimPreKey(
-      userId: peerUser.id,
-      deviceId: peerDevice.deviceId,
-    );
-    final nextPreKeys = claimedPreKey == null
-        ? const <AppUserPreKey>[]
-        : [
-            AppUserPreKey(
-              keyId: claimedPreKey.keyId,
-              publicKey: claimedPreKey.publicKey,
-            ),
-          ];
-
-    final updatedDevices = peerUser.devices.map((device) {
-      if (device.deviceId != peerDevice.deviceId) {
-        return device;
-      }
-      return device.copyWith(preKeys: nextPreKeys);
-    }).toList();
-
-    _usersById[peerUser.id] = peerUser.copyWith(devices: updatedDevices);
-  }
-
-  Future<void> _guardPrivateConversationTrust({
     required Conversation conversation,
-    required int currentUserId,
-  }) async {
-    if (conversation.isGroup) {
-      return;
-    }
-
-    final trust = await keyVerificationService.getConversationTrust(
+  }) {
+    return ChatCryptoContext(
       currentUserId: currentUserId,
       conversation: conversation,
       usersById: _usersById,
     );
-    if (trust.hasKeyChanged) {
-      throw ChatEncryptionException(
-        '${trust.peerUser?.displayName ?? 'Peer'} key changed. Verify the new key before sending more private messages.',
-      );
-    }
   }
 }

@@ -8,6 +8,8 @@ class AppUserDevice {
     required this.identityPublicKey,
     required this.keyAlgorithm,
     required this.preKeys,
+    this.createdAt,
+    this.updatedAt,
   });
 
   final String deviceId;
@@ -16,6 +18,8 @@ class AppUserDevice {
   final String identityPublicKey;
   final String keyAlgorithm;
   final List<AppUserPreKey> preKeys;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   bool get hasUsableX25519Key =>
       keyAlgorithm == 'x25519' && _hasValidX25519PublicKey(identityPublicKey);
@@ -42,6 +46,8 @@ class AppUserDevice {
       preKeys: (json['prekeys'] as List<dynamic>? ?? const [])
           .map((item) => AppUserPreKey.fromJson(item as Map<String, dynamic>))
           .toList(),
+      createdAt: _parseDate(json['created_at'] as String?),
+      updatedAt: _parseDate(json['updated_at'] as String?),
     );
   }
 
@@ -52,6 +58,8 @@ class AppUserDevice {
     String? identityPublicKey,
     String? keyAlgorithm,
     List<AppUserPreKey>? preKeys,
+    DateTime? createdAt,
+    DateTime? updatedAt,
   }) {
     return AppUserDevice(
       deviceId: deviceId ?? this.deviceId,
@@ -60,7 +68,16 @@ class AppUserDevice {
       identityPublicKey: identityPublicKey ?? this.identityPublicKey,
       keyAlgorithm: keyAlgorithm ?? this.keyAlgorithm,
       preKeys: preKeys ?? this.preKeys,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
+  }
+
+  static DateTime? _parseDate(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return DateTime.tryParse(value);
   }
 }
 

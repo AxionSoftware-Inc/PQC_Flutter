@@ -165,6 +165,15 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _retryMessage(ChatMessage message) async {
+    await widget.chatRepository.retryMessage(
+      conversation: widget.conversation,
+      currentUserId: widget.currentUserId,
+      clientMessageId: message.clientMessageId,
+    );
+    await _loadMessages(showLoader: false);
+  }
+
   Future<void> _verifyCurrentKey() async {
     await widget.chatRepository.verifyConversationPeerKey(
       currentUserId: widget.currentUserId,
@@ -245,6 +254,20 @@ class _ChatPageState extends State<ChatPage> {
                         ),
                         const SizedBox(height: 4),
                         Text(message.body),
+                        if (message.deliveryState != MessageDeliveryState.sent) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            _statusLabel(message),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                        if (message.canRetry) ...[
+                          const SizedBox(height: 4),
+                          TextButton(
+                            onPressed: () => _retryMessage(message),
+                            child: const Text('Retry'),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -280,6 +303,19 @@ class _ChatPageState extends State<ChatPage> {
         ],
       ),
     );
+  }
+
+  String _statusLabel(ChatMessage message) {
+    switch (message.deliveryState) {
+      case MessageDeliveryState.pending:
+        return 'Pending sync...';
+      case MessageDeliveryState.failedRetryable:
+        return message.failureReason ?? 'Send failed. Retry available.';
+      case MessageDeliveryState.failedPermanent:
+        return message.failureReason ?? 'Send failed permanently.';
+      case MessageDeliveryState.sent:
+        return '';
+    }
   }
 }
 
