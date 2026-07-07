@@ -6,7 +6,8 @@ class Conversation {
     required this.participantIds,
     required this.lastMessagePreview,
     required this.updatedAt,
-  });
+    DateTime? createdAt,
+  }) : createdAt = createdAt ?? updatedAt;
 
   final int id;
   final String type;
@@ -14,6 +15,7 @@ class Conversation {
   final List<int> participantIds;
   final String lastMessagePreview;
   final DateTime updatedAt;
+  final DateTime createdAt;
 
   bool get isGroup => type == 'group';
 
@@ -29,6 +31,7 @@ class Conversation {
     List<int>? participantIds,
     String? lastMessagePreview,
     DateTime? updatedAt,
+    DateTime? createdAt,
   }) {
     return Conversation(
       id: id ?? this.id,
@@ -37,6 +40,7 @@ class Conversation {
       participantIds: participantIds ?? this.participantIds,
       lastMessagePreview: lastMessagePreview ?? this.lastMessagePreview,
       updatedAt: updatedAt ?? this.updatedAt,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 
@@ -48,6 +52,9 @@ class Conversation {
       participantIds: (json['participant_ids'] as List<dynamic>).cast<int>(),
       lastMessagePreview: json['last_message_preview'] as String? ?? '',
       updatedAt: DateTime.parse(json['updated_at'] as String),
+      createdAt: DateTime.parse(
+        (json['created_at'] as String?) ?? json['updated_at'] as String,
+      ),
     );
   }
 }

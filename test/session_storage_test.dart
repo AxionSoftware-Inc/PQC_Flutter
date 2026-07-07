@@ -15,6 +15,7 @@ void main() {
         id: 7,
         username: 'riley',
         displayName: 'Riley',
+        deviceId: 'device-1',
         token: 'secret-token',
       );
 
@@ -41,6 +42,7 @@ void main() {
         id: 7,
         username: 'riley',
         displayName: 'Riley',
+        deviceId: 'device-1',
         token: 'secret-token',
       );
 
@@ -51,7 +53,7 @@ void main() {
       final remembered = await storage.readRememberedIdentity();
 
       expect(restored, isNull);
-      expect(remembered?.username, 'riley');
+      expect(remembered?.displayName, 'Riley');
     },
   );
 }

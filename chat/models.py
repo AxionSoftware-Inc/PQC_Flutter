@@ -43,10 +43,18 @@ class Message(models.Model):
     )
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     body = models.TextField()
+    client_message_id = models.CharField(max_length=64, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['created_at', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['conversation', 'sender', 'client_message_id'],
+                condition=~models.Q(client_message_id=''),
+                name='chat_unique_client_message_per_sender',
+            ),
+        ]
 
     def __str__(self) -> str:
         return f'{self.sender_id}:{self.body[:30]}'

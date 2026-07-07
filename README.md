@@ -34,6 +34,21 @@ Hozircha yo'q:
 - multi-device key fanout
 - PQC / hybrid KEM
 
+## Current Crypto Shape
+
+Crypto qatlam hozir PQC-ready refactor qilingan:
+
+- `ChatRepository` endi to'g'ridan-to'g'ri `X25519` yoki `group` codec'larni bilmaydi
+- `RoutedChatCipherService` conversation/payload bo'yicha mos algorithm'ni tanlaydi
+- `PrivateConversationSecurityCoordinator` private send oldidan trust va prekey tayyorgarligini boshqaradi
+- yangi PQC yoki hybrid algorithm qo'shish uchun yangi `ChatCipherAlgorithm` implementation yetarli bo'ladi
+
+Hozir amalda ishlayotgan algorithm'lar:
+
+- private chat: `X25519`
+- group chat: wrapped group key + `AES-GCM`
+- legacy decrypt compatibility: `enc:v1`
+
 ## Repo Shape
 
 ```text

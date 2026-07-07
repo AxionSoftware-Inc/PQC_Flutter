@@ -15,18 +15,10 @@ class LocalSecretStore {
 
   final FlutterSecureStorage _secureStorage;
 
-  bool get _useSharedPreferencesAsPrimaryStore =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.macOS;
-
   bool get _shouldMigrateLegacyAndroidSharedPrefs =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   Future<String?> read(String key) async {
-    if (_useSharedPreferencesAsPrimaryStore) {
-      final preferences = await SharedPreferences.getInstance();
-      return _readSharedPreferencesValue(preferences, key);
-    }
-
     final secureValue = await _readSecureValue(key);
     if (secureValue != null && secureValue.isNotEmpty) {
       return secureValue;
@@ -40,12 +32,6 @@ class LocalSecretStore {
   }
 
   Future<void> write({required String key, required String value}) async {
-    if (_useSharedPreferencesAsPrimaryStore) {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.setString(key, value);
-      await _registerManagedKey(key);
-      return;
-    }
     await _writeSecureValue(key: key, value: value);
     await _registerManagedKey(key);
 
@@ -56,12 +42,6 @@ class LocalSecretStore {
   }
 
   Future<void> delete(String key) async {
-    if (_useSharedPreferencesAsPrimaryStore) {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.remove(key);
-      await _unregisterManagedKey(key);
-      return;
-    }
     await _deleteSecureValue(key);
     await _unregisterManagedKey(key);
 
@@ -73,15 +53,6 @@ class LocalSecretStore {
 
   Future<void> deleteAll() async {
     final managedKeys = await _readManagedKeys();
-    if (_useSharedPreferencesAsPrimaryStore) {
-      final preferences = await SharedPreferences.getInstance();
-      for (final key in managedKeys) {
-        await preferences.remove(key);
-      }
-      await preferences.remove(_managedKeysRegistry);
-      return;
-    }
-
     for (final key in managedKeys) {
       await _deleteSecureValue(key);
     }

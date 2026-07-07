@@ -105,6 +105,12 @@ Misollar:
 4. `VerifyContactKeyUseCase`
 5. `RotateKeysUseCase`
 
+Amaliy prototipda bunga yaqin bo'lgan orchestration komponentlari:
+
+1. `ChatRepository`
+2. `RoutedChatCipherService`
+3. `PrivateConversationSecurityCoordinator`
+
 ### 4.3 Domain Layer
 
 Business model va interfeyslar.
@@ -154,6 +160,12 @@ Boshlang'ich bosqichda gibrid yondashuv tavsiya qilinadi:
 3. Bu compatibility va xavfsizlik balansini yaxshilaydi.
 
 Bu yondashuv future-proof bo'lishi mumkin, chunki algoritmlar almashganda ilovani butunlay qayta yozish shart bo'lmaydi.
+
+Shu sabab crypto qatlam algoritmga qattiq bog'lanmasligi kerak. Hozirgi tavsiya:
+
+1. conversation oqimi `ChatCipherAlgorithm` kabi pluggable interfeys orqali ishlaydi
+2. private trust / prekey policy alohida coordinator'da turadi
+3. `X25519` hozirgi implementation bo'ladi, keyin yoniga `ML-KEM` yoki hybrid qo'shiladi
 
 ### 5.3 Tavsiya Etiladigan Crypto Flow
 

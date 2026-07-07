@@ -13,12 +13,19 @@ class PrivateConversationSerializer(serializers.Serializer):
 
 class MessageCreateSerializer(serializers.Serializer):
     body = serializers.CharField(allow_blank=False, trim_whitespace=True)
+    client_message_id = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default='',
+    )
 
 
 class MessageSerializer(serializers.ModelSerializer):
     conversation_id = serializers.IntegerField(source='conversation.id')
     sender_id = serializers.IntegerField(source='sender.id')
     sender_name = serializers.SerializerMethodField()
+    client_message_id = serializers.CharField()
+    delivery_state = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -27,12 +34,17 @@ class MessageSerializer(serializers.ModelSerializer):
             'conversation_id',
             'sender_id',
             'sender_name',
+            'client_message_id',
+            'delivery_state',
             'body',
             'created_at',
         ]
 
     def get_sender_name(self, obj):
         return obj.sender.first_name or obj.sender.username
+
+    def get_delivery_state(self, _obj):
+        return 'sent'
 
 
 class ConversationKeyEnvelopeSerializer(serializers.ModelSerializer):
@@ -76,6 +88,7 @@ class ConversationSerializer(serializers.ModelSerializer):
             'participant_ids',
             'last_message_preview',
             'updated_at',
+            'created_at',
         ]
 
     def get_participant_ids(self, obj):

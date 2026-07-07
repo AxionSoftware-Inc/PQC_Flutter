@@ -36,8 +36,13 @@ class ChatRemoteDataSource {
     }
   }
 
-  Future<List<Conversation>> fetchConversations() async {
-    final response = await apiClient.get('/conversations') as List<dynamic>;
+  Future<List<Conversation>> fetchConversations({DateTime? updatedAfter}) async {
+    final response = await apiClient.get(
+      '/conversations',
+      queryParameters: updatedAfter == null
+          ? null
+          : {'updated_after': updatedAfter.toUtc().toIso8601String()},
+    ) as List<dynamic>;
     return response
         .map((item) => Conversation.fromJson(item as Map<String, dynamic>))
         .toList();
@@ -52,19 +57,30 @@ class ChatRemoteDataSource {
     return Conversation.fromJson(response);
   }
 
-  Future<List<ChatMessage>> fetchMessages(int conversationId) async {
+  Future<List<ChatMessage>> fetchMessages(
+    int conversationId, {
+    int? afterId,
+  }) async {
     final response =
-        await apiClient.get('/conversations/$conversationId/messages')
+        await apiClient.get(
+              '/conversations/$conversationId/messages',
+              queryParameters: afterId == null ? null : {'after_id': '$afterId'},
+            )
             as List<dynamic>;
     return response
         .map((item) => ChatMessage.fromJson(item as Map<String, dynamic>))
         .toList();
   }
 
-  Future<ChatMessage> sendMessage(int conversationId, String body) async {
+  Future<ChatMessage> sendMessage(
+    int conversationId,
+    String body, {
+    String clientMessageId = '',
+  }) async {
     final response =
         await apiClient.post('/conversations/$conversationId/messages', {
               'body': body,
+              'client_message_id': clientMessageId,
             })
             as Map<String, dynamic>;
     return ChatMessage.fromJson(response);

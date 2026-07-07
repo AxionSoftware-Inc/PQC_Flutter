@@ -1,6 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
+from uuid import uuid4
+
 from rest_framework import permissions, status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
@@ -17,6 +19,13 @@ from users.serializers import (
 
 
 User = get_user_model()
+
+
+def create_account_for_display_name(display_name):
+    return User.objects.create(
+        username=f'account_{uuid4().hex[:24]}',
+        first_name=display_name,
+    )
 
 
 def upsert_user_device(
@@ -92,9 +101,9 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        raw_username = ' '.join(serializer.validated_data['username'].strip().split())
-        username = raw_username.lower()
-        display_name = raw_username
+        display_name = ' '.join(
+            serializer.validated_data['display_name'].strip().split()
+        )
         device_id = serializer.validated_data['device_id'].strip()
         device_name = serializer.validated_data['device_name'].strip()
         platform = serializer.validated_data['platform'].strip()
@@ -102,17 +111,21 @@ class LoginView(APIView):
         key_algorithm = serializer.validated_data['key_algorithm'].strip()
         prekeys = serializer.validated_data['prekeys']
 
-        if not username or not device_id:
+        if not display_name or not device_id:
             return Response(
-                {'detail': 'username and device_id are required.'},
+                {'detail': 'display_name and device_id are required.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        user, created = User.objects.get_or_create(
-            username=username,
-            defaults={'first_name': display_name},
-        )
-        if not created and display_name and user.first_name != display_name:
+        existing_device = UserDevice.objects.select_related('user').filter(
+            device_id=device_id,
+        ).first()
+        if existing_device is not None:
+            user = existing_device.user
+        else:
+            user = create_account_for_display_name(display_name)
+
+        if display_name and user.first_name != display_name:
             user.first_name = display_name
             user.save(update_fields=['first_name'])
 
@@ -141,6 +154,8 @@ class LoginView(APIView):
         return Response(
             {
                 'token': token.key,
+                'account_id': user.id,
+                'device_id': device.device_id,
                 'user': UserSerializer(user).data,
             }
         )
