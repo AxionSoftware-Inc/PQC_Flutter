@@ -23,7 +23,8 @@ Ishlaydi:
 - group chat
 - server deploy
 - Android release APK build
-- minimal ciphertext-at-rest foundation
+- PQC private payloads
+- PQC group key wrapping
 - key verification banner
 
 Hozircha yo'q:
@@ -31,7 +32,7 @@ Hozircha yo'q:
 - WebSocket realtime
 - key rotation
 - forward secrecy / double ratchet
-- production-grade multi-device private E2EE
+- production-grade trust center UX
 - full PQC trust-center UX
 
 ## Current Crypto Shape
@@ -41,14 +42,15 @@ Crypto qatlam hozir ikki aniq yo'lga ajratilgan:
 - `ChatRepository` endi to'g'ridan-to'g'ri `X25519` yoki `group` codec'larni bilmaydi
 - `RoutedChatCipherService` conversation/payload bo'yicha mos algorithm'ni tanlaydi
 - `PrivateConversationSecurityCoordinator` private send oldidan trust holatini boshqaradi
-- private chat uchun aktiv yozish formati hozir faqat `enc:v1`
-- eski `x25519:*`, `hybrid:*`, `session:*` payloadlar faqat backward-compatible decrypt uchun saqlangan
+- private chat uchun aktiv yozish formati hozir `pqc:v1`
+- group key envelope formati `group-wrap:pqc:v1`
+- eski klassik formatlar endi aktiv write path emas
 
 Hozir amalda ishlayotgan algorithm'lar:
 
-- private chat: `enc:v1`
-- group chat: wrapped group key + `AES-GCM`
-- legacy decrypt compatibility: `x25519:*`, `hybrid:*`, `session:*`
+- private chat: `ML-KEM-768` + `AES-GCM` + `ML-DSA-65`
+- group chat: PQC wrapped group key + `AES-GCM`
+- legacy decrypt compatibility: faqat tarixiy oqimlar uchun
 
 ## Repo Shape
 
@@ -114,16 +116,17 @@ Muhim:
 
 Private chat:
 
-- payload format: `enc:v1:<nonce>:<ciphertext>:<mac>`
-- key: conversation-derived shared secret
-- maqsad: macOS va Android o'rtasida yagona, stabil, bir xil private transport ishlatish
-- eski `x25519:*`, `hybrid:*`, `session:*` formatlar faqat oldingi tarixiy xabarlarni o'qish uchun qoldirilgan
+- payload format: `pqc:v1:*`
+- content plaintext `AES-GCM` bilan shifrlanadi
+- content key `ML-KEM-768` bilan self va peer device uchun wrap qilinadi
+- payload `ML-DSA-65` bilan imzolanadi
+- plaintext payload ichida ko'rinmaydi
 
 Group chat:
 
 - payload format: `group:v1:<key_id>:<nonce>:<ciphertext>:<mac>`
 - group secret clientda yaratiladi
-- har participant device uchun wrapped key envelope serverga yuboriladi
+- har participant device uchun PQC wrapped key envelope serverga yuboriladi
 
 Server nimalarni ko'radi:
 
@@ -144,6 +147,7 @@ Secret storage:
 ## Important Docs
 
 - [ARCHITECTURE.md](/Users/macbookpro/Documents/PQC%20Chat%20app/ARCHITECTURE.md)
+- [TECHNICAL_STATUS.md](/Users/macbookpro/Documents/PQC%20Chat%20app/TECHNICAL_STATUS.md)
 - [IMPLEMENTATION_NOTES.md](/Users/macbookpro/Documents/PQC%20Chat%20app/IMPLEMENTATION_NOTES.md)
 - [E2EE_FOUNDATION_STATUS.md](/Users/macbookpro/Documents/PQC%20Chat%20app/E2EE_FOUNDATION_STATUS.md)
 - [ENCRYPTION_STORAGE_MODES.md](/Users/macbookpro/Documents/PQC%20Chat%20app/ENCRYPTION_STORAGE_MODES.md)
