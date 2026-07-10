@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/models/app_user.dart';
 import '../../../core/models/conversation.dart';
+import '../../../core/models/organization_context.dart';
+import '../../../core/models/session_user.dart';
 import '../../../core/network/api_client.dart';
 import '../../auth/session_controller.dart';
 import '../data/chat_repository.dart';
@@ -124,6 +126,14 @@ class _ChatListPageState extends State<ChatListPage> {
     }
   }
 
+  Future<void> _switchWorkspace(int workspaceId) async {
+    await widget.sessionController.switchWorkspace(workspaceId);
+    if (!mounted) {
+      return;
+    }
+    await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final sessionUser = widget.sessionController.sessionUser!;
@@ -144,11 +154,58 @@ class _ChatListPageState extends State<ChatListPage> {
     final otherUsers = _users
         .where((user) => user.id != sessionUser.id)
         .toList();
+    final currentUserEntry = _users.where((user) => user.id == sessionUser.id);
+    final currentUser = currentUserEntry.isEmpty
+        ? null
+        : currentUserEntry.first;
+    final currentWorkspace = _currentWorkspace(sessionUser);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Chats - ${sessionUser.displayName}'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Chats - ${sessionUser.displayName}'),
+            if (currentWorkspace != null)
+              Text(
+                currentWorkspace.name,
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+          ],
+        ),
         actions: [
+          if (sessionUser.organizations.isNotEmpty)
+            PopupMenuButton<int>(
+              tooltip: 'Switch workspace',
+              onSelected: _switchWorkspace,
+              itemBuilder: (context) {
+                final items = <PopupMenuEntry<int>>[];
+                for (final organization in sessionUser.organizations) {
+                  items.add(
+                    PopupMenuItem<int>(
+                      enabled: false,
+                      child: Text(organization.name),
+                    ),
+                  );
+                  for (final workspace in organization.workspaces) {
+                    items.add(
+                      PopupMenuItem<int>(
+                        value: workspace.id,
+                        child: Row(
+                          children: [
+                            Expanded(child: Text(workspace.name)),
+                            if (workspace.id == sessionUser.activeWorkspaceId)
+                              const Icon(Icons.check, size: 18),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                }
+                return items;
+              },
+              icon: const Icon(Icons.business_outlined),
+            ),
           IconButton(
             onPressed: widget.sessionController.logout,
             icon: const Icon(Icons.logout),
@@ -178,8 +235,31 @@ class _ChatListPageState extends State<ChatListPage> {
             else
               const Text('No group conversation found.'),
             const Divider(),
+            const Text('My devices'),
+            const SizedBox(height: 8),
+            if (currentUser != null && currentUser.devices.isNotEmpty)
+              for (final device in currentUser.devices)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.devices_outlined),
+                  title: Text(
+                    device.deviceName.isEmpty
+                        ? device.deviceId
+                        : device.deviceName,
+                  ),
+                  subtitle: Text(
+                    '${device.platform.isEmpty ? 'unknown' : device.platform} • ${device.hasUsableMlKemKey && device.hasUsableMlDsaKey ? 'PQC ready' : 'PQC not ready'}',
+                  ),
+                )
+            else
+              const Text('No registered devices yet.'),
+            const Divider(),
             const Text('Private chats'),
             const SizedBox(height: 8),
+            if (otherUsers.isEmpty)
+              const Text(
+                'No other workspace users yet. Open the app on your phone/tablet or log in with another account to test private chat.',
+              ),
             for (final user in otherUsers)
               _buildPrivateUserTile(
                 user: user,
@@ -200,15 +280,11 @@ class _ChatListPageState extends State<ChatListPage> {
         ? privateConversation!.lastMessagePreview
         : trust?.hasAnyKeyChanged == true
         ? 'Security material changed. Re-verify before trusting.'
-        : user.hasUsableHybridDeviceKey
+        : user.hasUsablePqcDeviceKey
         ? trust?.isEnterpriseVerified == true
               ? 'Enterprise-ready PQC trust verified'
-              : 'Hybrid PQC ready. Verification needed.'
-        : user.hasUsableDeviceKey
-        ? trust?.isVerified == true
-              ? 'Classical key verified'
-              : 'Classical key ready. Verification needed.'
-        : 'Device key tayyor emas. U avval ilovaga kirishi kerak.';
+              : 'PQC ready. Verification needed.'
+        : 'PQC key not ready yet. Reopen that device once.';
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
@@ -223,5 +299,16 @@ class _ChatListPageState extends State<ChatListPage> {
           : null,
       onTap: () => _openPrivateChat(user),
     );
+  }
+
+  WorkspaceSummary? _currentWorkspace(SessionUser sessionUser) {
+    for (final organization in sessionUser.organizations) {
+      for (final workspace in organization.workspaces) {
+        if (workspace.id == sessionUser.activeWorkspaceId) {
+          return workspace;
+        }
+      }
+    }
+    return null;
   }
 }

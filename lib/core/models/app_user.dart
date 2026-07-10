@@ -11,7 +11,6 @@ class AppUserDevice {
     this.pqcAlgorithm = '',
     this.pqcSigningPublicKey = '',
     this.pqcSigningAlgorithm = '',
-    required this.preKeys,
     this.createdAt,
     this.updatedAt,
   });
@@ -25,7 +24,6 @@ class AppUserDevice {
   final String pqcAlgorithm;
   final String pqcSigningPublicKey;
   final String pqcSigningAlgorithm;
-  final List<AppUserPreKey> preKeys;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -86,9 +84,6 @@ class AppUserDevice {
       pqcAlgorithm: json['pqc_algorithm'] as String? ?? '',
       pqcSigningPublicKey: json['pqc_signing_public_key'] as String? ?? '',
       pqcSigningAlgorithm: json['pqc_signing_algorithm'] as String? ?? '',
-      preKeys: (json['prekeys'] as List<dynamic>? ?? const [])
-          .map((item) => AppUserPreKey.fromJson(item as Map<String, dynamic>))
-          .toList(),
       createdAt: _parseDate(json['created_at'] as String?),
       updatedAt: _parseDate(json['updated_at'] as String?),
     );
@@ -104,7 +99,6 @@ class AppUserDevice {
     String? pqcAlgorithm,
     String? pqcSigningPublicKey,
     String? pqcSigningAlgorithm,
-    List<AppUserPreKey>? preKeys,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -118,7 +112,6 @@ class AppUserDevice {
       pqcAlgorithm: pqcAlgorithm ?? this.pqcAlgorithm,
       pqcSigningPublicKey: pqcSigningPublicKey ?? this.pqcSigningPublicKey,
       pqcSigningAlgorithm: pqcSigningAlgorithm ?? this.pqcSigningAlgorithm,
-      preKeys: preKeys ?? this.preKeys,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -129,48 +122,6 @@ class AppUserDevice {
       return null;
     }
     return DateTime.tryParse(value);
-  }
-}
-
-class AppUserPreKey {
-  const AppUserPreKey({required this.keyId, required this.publicKey});
-
-  final String keyId;
-  final String publicKey;
-
-  bool get hasUsablePublicKey {
-    try {
-      return base64Decode(publicKey).length == 32;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  factory AppUserPreKey.fromJson(Map<String, dynamic> json) {
-    return AppUserPreKey(
-      keyId: json['key_id'] as String? ?? '',
-      publicKey: json['public_key'] as String? ?? '',
-    );
-  }
-}
-
-class ClaimedAppUserPreKey {
-  const ClaimedAppUserPreKey({
-    required this.deviceId,
-    required this.keyId,
-    required this.publicKey,
-  });
-
-  final String deviceId;
-  final String keyId;
-  final String publicKey;
-
-  factory ClaimedAppUserPreKey.fromJson(Map<String, dynamic> json) {
-    return ClaimedAppUserPreKey(
-      deviceId: json['device_id'] as String,
-      keyId: json['key_id'] as String,
-      publicKey: json['public_key'] as String,
-    );
   }
 }
 
@@ -189,7 +140,7 @@ class AppUser {
 
   bool get hasUsableDeviceKey => preferredX25519Device != null;
 
-  bool get hasUsableHybridDeviceKey => preferredHybridDevice != null;
+  bool get hasUsablePqcDeviceKey => preferredPqcDevice != null;
 
   List<AppUserDevice> get usableX25519Devices =>
       devices.where((device) => device.hasUsableX25519Key).toList();
@@ -203,11 +154,9 @@ class AppUser {
     return null;
   }
 
-  AppUserDevice? get preferredHybridDevice {
+  AppUserDevice? get preferredPqcDevice {
     for (final device in devices) {
-      if (device.hasUsableX25519Key &&
-          device.hasUsableMlKemKey &&
-          device.hasUsableMlDsaKey) {
+      if (device.hasUsableMlKemKey && device.hasUsableMlDsaKey) {
         return device;
       }
     }

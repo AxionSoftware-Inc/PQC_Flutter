@@ -2,17 +2,12 @@ import '../../../core/models/app_user.dart';
 import '../../../core/models/conversation.dart';
 import '../../crypto/chat_crypto_exceptions.dart';
 import '../../security/key_verification_service.dart';
-import 'chat_remote_data_source.dart';
 
 class PrivateConversationSecurityCoordinator {
   const PrivateConversationSecurityCoordinator({
-    this.remoteDataSource,
     required this.keyVerificationService,
   });
 
-  // Kept for API compatibility while private chat no longer depends on prekey claim.
-  // ignore: unused_field
-  final ChatRemoteDataSource? remoteDataSource;
   final KeyVerificationService keyVerificationService;
 
   Future<void> prepareForSend({

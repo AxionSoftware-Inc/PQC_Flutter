@@ -1,6 +1,7 @@
 from django.urls import path
 
 from chat.views import (
+    AttachmentUploadView,
     ConversationListView,
     ConversationKeyEnvelopeView,
     MessageListCreateView,
@@ -14,6 +15,11 @@ urlpatterns = [
         'conversations/<int:conversation_id>/messages',
         MessageListCreateView.as_view(),
         name='conversation-messages',
+    ),
+    path(
+        'conversations/<int:conversation_id>/attachments',
+        AttachmentUploadView.as_view(),
+        name='conversation-attachments',
     ),
     path(
         'conversations/<int:conversation_id>/keys',

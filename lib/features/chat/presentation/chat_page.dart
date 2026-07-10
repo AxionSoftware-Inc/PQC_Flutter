@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/models/attachment.dart';
 import '../../../core/models/chat_message.dart';
 import '../../../core/models/conversation.dart';
 import '../../../core/network/api_client.dart';
@@ -38,6 +40,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _isSending = false;
   String? _error;
   ConversationKeyTrust? _conversationTrust;
+  List<_SelectedAttachment> _selectedAttachments = const [];
 
   @override
   void initState() {
@@ -126,7 +129,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
-    if (text.isEmpty || _isSending) {
+    if ((text.isEmpty && _selectedAttachments.isEmpty) || _isSending) {
       return;
     }
 
@@ -139,8 +142,25 @@ class _ChatPageState extends State<ChatPage> {
         widget.conversation,
         currentUserId: widget.currentUserId,
         text: text,
+        messageType: _selectedAttachments.isEmpty
+            ? 'text'
+            : _selectedAttachments.any((item) => item.isImage)
+            ? 'image'
+            : 'file',
+        attachments: _selectedAttachments
+            .map(
+              (item) => PendingAttachmentUpload(
+                filename: item.name,
+                bytes: item.bytes,
+                mimeType: item.mimeType,
+              ),
+            )
+            .toList(),
       );
       _messageController.clear();
+      setState(() {
+        _selectedAttachments = const [];
+      });
       await _loadMessages(showLoader: false);
     } catch (error) {
       if (error is UnauthorizedApiException) {
@@ -163,6 +183,37 @@ class _ChatPageState extends State<ChatPage> {
         });
       }
     }
+  }
+
+  Future<void> _pickAttachments() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: true,
+    );
+    if (result == null || !mounted) {
+      return;
+    }
+    final picked = result.files
+        .where((file) => file.bytes != null)
+        .map(
+          (file) => _SelectedAttachment(
+            name: file.name,
+            bytes: file.bytes!,
+            mimeType: _inferMimeType(file.name),
+          ),
+        )
+        .toList();
+    setState(() {
+      _selectedAttachments = [..._selectedAttachments, ...picked];
+    });
+  }
+
+  void _removeSelectedAttachment(_SelectedAttachment attachment) {
+    setState(() {
+      _selectedAttachments = _selectedAttachments
+          .where((item) => item != attachment)
+          .toList();
+    });
   }
 
   Future<void> _retryMessage(ChatMessage message) async {
@@ -254,6 +305,16 @@ class _ChatPageState extends State<ChatPage> {
                         ),
                         const SizedBox(height: 4),
                         Text(message.body),
+                        if (message.attachments.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: message.attachments
+                                .map(_buildAttachmentChip)
+                                .toList(),
+                          ),
+                        ],
                         if (message.deliveryState !=
                             MessageDeliveryState.sent) ...[
                           const SizedBox(height: 6),
@@ -280,22 +341,57 @@ class _ChatPageState extends State<ChatPage> {
             top: false,
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: Row(
+              child: Column(
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      decoration: const InputDecoration(
-                        hintText: 'Message',
-                        border: OutlineInputBorder(),
+                  if (_selectedAttachments.isNotEmpty)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _selectedAttachments
+                            .map(
+                              (item) => InputChip(
+                                avatar: Icon(
+                                  item.isImage
+                                      ? Icons.image_outlined
+                                      : Icons.attach_file,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  '${item.name} (${_formatBytes(item.bytes.length)})',
+                                ),
+                                onDeleted: () =>
+                                    _removeSelectedAttachment(item),
+                              ),
+                            )
+                            .toList(),
                       ),
-                      onSubmitted: (_) => _sendMessage(),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: _isSending ? null : _sendMessage,
-                    child: const Text('Send'),
+                  if (_selectedAttachments.isNotEmpty)
+                    const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: _isSending ? null : _pickAttachments,
+                        icon: const Icon(Icons.attach_file),
+                      ),
+                      Expanded(
+                        child: TextField(
+                          controller: _messageController,
+                          decoration: const InputDecoration(
+                            hintText: 'Message',
+                            border: OutlineInputBorder(),
+                          ),
+                          onSubmitted: (_) => _sendMessage(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: _isSending ? null : _sendMessage,
+                        child: const Text('Send'),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -318,6 +414,55 @@ class _ChatPageState extends State<ChatPage> {
         return '';
     }
   }
+
+  Widget _buildAttachmentChip(ChatAttachment attachment) {
+    return Chip(
+      avatar: Icon(
+        attachment.mimeType.startsWith('image/')
+            ? Icons.image_outlined
+            : Icons.insert_drive_file_outlined,
+        size: 18,
+      ),
+      label: Text(
+        '${attachment.filename} (${_formatBytes(attachment.sizeBytes)})',
+      ),
+    );
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) {
+      return '$bytes B';
+    }
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  String _inferMimeType(String filename) {
+    final lower = filename.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    if (lower.endsWith('.txt')) return 'text/plain';
+    return 'application/octet-stream';
+  }
+}
+
+class _SelectedAttachment {
+  const _SelectedAttachment({
+    required this.name,
+    required this.bytes,
+    required this.mimeType,
+  });
+
+  final String name;
+  final List<int> bytes;
+  final String mimeType;
+
+  bool get isImage => mimeType.startsWith('image/');
 }
 
 class _SecurityBanner extends StatelessWidget {

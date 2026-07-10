@@ -1,6 +1,8 @@
+import base64
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
-import base64
+
+from users.models import Invitation, Organization, OrganizationMember, Workspace, WorkspaceMember
 
 
 User = get_user_model()
@@ -87,21 +89,6 @@ def validate_pqc_signing_public_key_fields(
     return pqc_signing_public_key
 
 
-class DevicePreKeySerializer(serializers.Serializer):
-    key_id = serializers.CharField()
-    public_key = serializers.CharField()
-
-    def validate(self, attrs):
-        validate_identity_public_key_fields('x25519', attrs.get('public_key', ''))
-        return attrs
-
-
-class ClaimedDevicePreKeySerializer(serializers.Serializer):
-    device_id = serializers.CharField()
-    key_id = serializers.CharField()
-    public_key = serializers.CharField()
-
-
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField(required=False, allow_blank=True, default='')
     display_name = serializers.CharField(required=False, allow_blank=True, default='')
@@ -114,7 +101,6 @@ class LoginSerializer(serializers.Serializer):
     pqc_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
     pqc_signing_public_key = serializers.CharField(required=False, allow_blank=True, default='')
     pqc_signing_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
-    prekeys = DevicePreKeySerializer(many=True, required=False, default=list)
 
     def validate(self, attrs):
         attrs['display_name'] = (
@@ -149,7 +135,6 @@ class DeviceSerializer(serializers.Serializer):
     pqc_algorithm = serializers.CharField()
     pqc_signing_public_key = serializers.CharField()
     pqc_signing_algorithm = serializers.CharField()
-    prekeys = DevicePreKeySerializer(many=True, required=False)
     created_at = serializers.DateTimeField()
     updated_at = serializers.DateTimeField()
 
@@ -164,7 +149,6 @@ class DeviceSyncSerializer(serializers.Serializer):
     pqc_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
     pqc_signing_public_key = serializers.CharField(required=False, allow_blank=True, default='')
     pqc_signing_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
-    prekeys = DevicePreKeySerializer(many=True, required=False, default=list)
 
     def validate(self, attrs):
         validate_identity_public_key_fields(
@@ -213,15 +197,104 @@ class UserSerializer(serializers.ModelSerializer):
                     'pqc_signing_algorithm': device.pqc_signing_algorithm,
                     'created_at': device.created_at,
                     'updated_at': device.updated_at,
-                    'prekeys': [
-                        {
-                            'key_id': prekey.key_id,
-                            'public_key': prekey.public_key,
-                        }
-                        for prekey in device.prekeys.filter(used_at__isnull=True).order_by('id')[:10]
-                    ],
                 }
                 for device in obj.devices.order_by('id')
             ],
             many=True,
         ).data
+
+
+class WorkspaceSerializer(serializers.ModelSerializer):
+    organization_id = serializers.IntegerField(source='organization.id')
+
+    class Meta:
+        model = Workspace
+        fields = [
+            'id',
+            'organization_id',
+            'name',
+            'slug',
+            'policy_flags',
+            'is_default',
+        ]
+
+
+class OrganizationSerializer(serializers.ModelSerializer):
+    workspaces = serializers.SerializerMethodField()
+    current_role = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Organization
+        fields = [
+            'id',
+            'name',
+            'slug',
+            'brand_color',
+            'brand_logo_url',
+            'current_role',
+            'workspaces',
+        ]
+
+    def get_workspaces(self, obj):
+        memberships = self.context.get('workspace_memberships_by_org', {})
+        return WorkspaceSerializer(memberships.get(obj.id, []), many=True).data
+
+    def get_current_role(self, obj):
+        roles = self.context.get('roles_by_org', {})
+        return roles.get(obj.id, OrganizationMember.Role.MEMBER)
+
+
+class InvitationSerializer(serializers.ModelSerializer):
+    organization_id = serializers.IntegerField(source='organization.id')
+    workspace_id = serializers.IntegerField(source='workspace.id')
+
+    class Meta:
+        model = Invitation
+        fields = [
+            'id',
+            'organization_id',
+            'workspace_id',
+            'email',
+            'role',
+            'invite_code',
+            'status',
+            'created_at',
+            'updated_at',
+        ]
+
+
+class InvitationCreateSerializer(serializers.Serializer):
+    workspace_id = serializers.IntegerField()
+    email = serializers.EmailField()
+    role = serializers.ChoiceField(
+        choices=OrganizationMember.Role.choices,
+        default=OrganizationMember.Role.MEMBER,
+    )
+
+
+class InvitationAcceptSerializer(serializers.Serializer):
+    invite_code = serializers.CharField()
+
+
+class WorkspaceSwitchSerializer(serializers.Serializer):
+    workspace_id = serializers.IntegerField()
+
+
+class WorkspaceMemberSerializer(serializers.ModelSerializer):
+    workspace_id = serializers.IntegerField(source='workspace.id')
+    user_id = serializers.IntegerField(source='organization_member.user.id')
+    display_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WorkspaceMember
+        fields = [
+            'id',
+            'workspace_id',
+            'user_id',
+            'display_name',
+            'role',
+            'is_active',
+        ]
+
+    def get_display_name(self, obj):
+        return obj.organization_member.user.first_name or obj.organization_member.user.username

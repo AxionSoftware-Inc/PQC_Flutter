@@ -14,7 +14,6 @@ void main() {
         platform: 'android',
         identityPublicKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
         keyAlgorithm: 'x25519',
-        preKeys: [],
       );
       final invalidBase64Device = AppUserDevice(
         deviceId: 'device-2',
@@ -22,7 +21,6 @@ void main() {
         platform: 'macos',
         identityPublicKey: 'not-base64',
         keyAlgorithm: 'x25519',
-        preKeys: [],
       );
       final invalidLengthDevice = AppUserDevice(
         deviceId: 'device-3',
@@ -30,7 +28,6 @@ void main() {
         platform: 'android',
         identityPublicKey: 'AQID',
         keyAlgorithm: 'x25519',
-        preKeys: [],
       );
       final wrongAlgorithmDevice = AppUserDevice(
         deviceId: 'device-4',
@@ -38,7 +35,6 @@ void main() {
         platform: 'android',
         identityPublicKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
         keyAlgorithm: 'demo',
-        preKeys: [],
       );
 
       expect(validDevice.hasUsableX25519Key, isTrue);
@@ -59,7 +55,6 @@ void main() {
         keyAlgorithm: '',
         pqcPublicKey: _validMlKem768PublicKey,
         pqcAlgorithm: 'ml-kem-768',
-        preKeys: [],
       );
       final invalidBase64Device = AppUserDevice(
         deviceId: 'device-pqc-2',
@@ -69,7 +64,6 @@ void main() {
         keyAlgorithm: '',
         pqcPublicKey: 'not-base64',
         pqcAlgorithm: 'ml-kem-768',
-        preKeys: [],
       );
       final invalidLengthDevice = AppUserDevice(
         deviceId: 'device-pqc-3',
@@ -79,7 +73,6 @@ void main() {
         keyAlgorithm: '',
         pqcPublicKey: 'AQID',
         pqcAlgorithm: 'ml-kem-768',
-        preKeys: [],
       );
       final wrongAlgorithmDevice = AppUserDevice(
         deviceId: 'device-pqc-4',
@@ -89,7 +82,6 @@ void main() {
         keyAlgorithm: '',
         pqcPublicKey: _validMlKem768PublicKey,
         pqcAlgorithm: 'demo',
-        preKeys: [],
       );
 
       expect(validDevice.hasUsableMlKemKey, isTrue);

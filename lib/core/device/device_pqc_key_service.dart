@@ -34,13 +34,17 @@ class DevicePqcKeyService {
 
   final LocalSecretStore _secretStore;
   final KyberKem _kem;
+  DevicePqcKeyMaterial? _cachedMaterial;
 
-  bool get isSupportedOnCurrentPlatform =>
-      !kIsWeb && defaultTargetPlatform != TargetPlatform.macOS;
+  bool get isSupportedOnCurrentPlatform => !kIsWeb;
 
   Future<DevicePqcKeyMaterial> getOrCreateKeyMaterial() async {
     if (!isSupportedOnCurrentPlatform) {
       throw StateError('ML-KEM is disabled on this platform.');
+    }
+    final cachedMaterial = _cachedMaterial;
+    if (cachedMaterial != null) {
+      return cachedMaterial;
     }
     final existingPublicKey = await _secretStore.read(_publicKeyKey);
     final existingSecretKey = await _secretStore.read(_secretKeyKey);
@@ -48,11 +52,13 @@ class DevicePqcKeyService {
     if (_isUsablePublicKey(existingPublicKey) &&
         _isUsableSecretKey(existingSecretKey) &&
         existingAlgorithm == algorithmName) {
-      return DevicePqcKeyMaterial(
+      final material = DevicePqcKeyMaterial(
         publicKey: existingPublicKey!,
         secretKey: existingSecretKey!,
         algorithm: existingAlgorithm!,
       );
+      _cachedMaterial = material;
+      return material;
     }
 
     final (publicKey, secretKey) = _kem.generateKeyPair();
@@ -64,10 +70,12 @@ class DevicePqcKeyService {
     await _secretStore.write(key: _publicKeyKey, value: material.publicKey);
     await _secretStore.write(key: _secretKeyKey, value: material.secretKey);
     await _secretStore.write(key: _algorithmKey, value: material.algorithm);
+    _cachedMaterial = material;
     return material;
   }
 
   Future<void> clearKeyMaterial() async {
+    _cachedMaterial = null;
     await _secretStore.delete(_publicKeyKey);
     await _secretStore.delete(_secretKeyKey);
     await _secretStore.delete(_algorithmKey);
