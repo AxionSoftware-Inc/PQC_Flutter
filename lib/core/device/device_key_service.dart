@@ -29,8 +29,14 @@ class DeviceKeyService {
 
   final LocalSecretStore _secretStore;
   final X25519 _algorithm;
+  DeviceKeyMaterial? _cachedMaterial;
+  SimpleKeyPair? _cachedKeyPair;
 
   Future<DeviceKeyMaterial> getOrCreateKeyMaterial() async {
+    final cachedMaterial = _cachedMaterial;
+    if (cachedMaterial != null) {
+      return cachedMaterial;
+    }
     try {
       final existingPublicKey = await _secretStore.read(_publicKeyKey);
       final existingPrivateKey = await _secretStore.read(_privateKeyKey);
@@ -41,11 +47,13 @@ class DeviceKeyService {
           existingPublicKey.isNotEmpty &&
           existingPrivateKey != null &&
           existingPrivateKey.isNotEmpty) {
-        return DeviceKeyMaterial(
+        final material = DeviceKeyMaterial(
           publicKey: existingPublicKey,
           privateKey: existingPrivateKey,
           algorithm: existingAlgorithm,
         );
+        _cachedMaterial = material;
+        return material;
       }
     } on PlatformException {
       await _clearStoredIdentity();
@@ -68,20 +76,36 @@ class DeviceKeyService {
       await _secretStore.write(key: _algorithmKey, value: _defaultAlgorithm);
     }
 
-    return DeviceKeyMaterial(
+    final material = DeviceKeyMaterial(
       publicKey: publicKey,
       privateKey: privateKey,
       algorithm: _defaultAlgorithm,
     );
+    _cachedMaterial = material;
+    _cachedKeyPair = null;
+    return material;
   }
 
   Future<SimpleKeyPair> getIdentityKeyPair() async {
+    final cachedKeyPair = _cachedKeyPair;
+    if (cachedKeyPair != null) {
+      return cachedKeyPair;
+    }
     final keyMaterial = await getOrCreateKeyMaterial();
     final privateKeyBytes = base64Decode(keyMaterial.privateKey);
-    return _algorithm.newKeyPairFromSeed(privateKeyBytes);
+    final publicKeyBytes = base64Decode(keyMaterial.publicKey);
+    final keyPair = SimpleKeyPairData(
+      privateKeyBytes,
+      publicKey: SimplePublicKey(publicKeyBytes, type: KeyPairType.x25519),
+      type: KeyPairType.x25519,
+    );
+    _cachedKeyPair = keyPair;
+    return keyPair;
   }
 
   Future<void> _clearStoredIdentity() async {
+    _cachedMaterial = null;
+    _cachedKeyPair = null;
     try {
       await _secretStore.delete(_publicKeyKey);
       await _secretStore.delete(_privateKeyKey);

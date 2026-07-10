@@ -4,9 +4,10 @@ import '../../core/models/session_user.dart';
 import 'data/auth_repository.dart';
 
 class SessionController extends ChangeNotifier {
-  SessionController({required this.authRepository});
+  SessionController({required this.authRepository, this.onSessionChanged});
 
   final AuthRepository authRepository;
+  final Future<void> Function(SessionUser? sessionUser)? onSessionChanged;
 
   SessionUser? _sessionUser;
   bool _isLoading = true;
@@ -21,6 +22,7 @@ class SessionController extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     _sessionUser = await authRepository.restoreSession();
+    await onSessionChanged?.call(_sessionUser);
     _isLoading = false;
     notifyListeners();
   }
@@ -31,6 +33,7 @@ class SessionController extends ChangeNotifier {
 
     try {
       _sessionUser = await authRepository.login(username.trim());
+      await onSessionChanged?.call(_sessionUser);
       return true;
     } catch (error) {
       _error = error.toString();
@@ -45,6 +48,7 @@ class SessionController extends ChangeNotifier {
     await authRepository.logout();
     _sessionUser = null;
     _error = null;
+    await onSessionChanged?.call(null);
     _setLoading(false);
   }
 
@@ -52,7 +56,28 @@ class SessionController extends ChangeNotifier {
     await authRepository.logout(clearRememberedIdentity: false);
     _sessionUser = null;
     _error = 'Session expired. Please log in again.';
+    await onSessionChanged?.call(null);
     notifyListeners();
+  }
+
+  Future<void> switchWorkspace(int workspaceId) async {
+    final sessionUser = _sessionUser;
+    if (sessionUser == null || sessionUser.activeWorkspaceId == workspaceId) {
+      return;
+    }
+    _setLoading(true);
+    _error = null;
+    try {
+      _sessionUser = await authRepository.switchWorkspace(
+        sessionUser,
+        workspaceId,
+      );
+      await onSessionChanged?.call(_sessionUser);
+    } catch (error) {
+      _error = error.toString();
+    } finally {
+      _setLoading(false);
+    }
   }
 
   void clearError() {

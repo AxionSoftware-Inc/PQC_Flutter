@@ -2,6 +2,155 @@ from django.conf import settings
 from django.db import models
 
 
+class Organization(models.Model):
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=255, unique=True)
+    brand_color = models.CharField(max_length=32, blank=True)
+    brand_logo_url = models.URLField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_organizations',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class Workspace(models.Model):
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='workspaces',
+    )
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=255)
+    policy_flags = models.JSONField(default=dict, blank=True)
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['id']
+        unique_together = ('organization', 'slug')
+
+    def __str__(self) -> str:
+        return f'{self.organization_id}:{self.name}'
+
+
+class OrganizationMember(models.Model):
+    class Role(models.TextChoices):
+        OWNER = 'owner', 'Owner'
+        ADMIN = 'admin', 'Admin'
+        MEMBER = 'member', 'Member'
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='members',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='organization_memberships',
+    )
+    role = models.CharField(
+        max_length=32,
+        choices=Role.choices,
+        default=Role.MEMBER,
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['id']
+        unique_together = ('organization', 'user')
+
+    def __str__(self) -> str:
+        return f'{self.organization_id}:{self.user_id}:{self.role}'
+
+
+class WorkspaceMember(models.Model):
+    workspace = models.ForeignKey(
+        Workspace,
+        on_delete=models.CASCADE,
+        related_name='members',
+    )
+    organization_member = models.ForeignKey(
+        OrganizationMember,
+        on_delete=models.CASCADE,
+        related_name='workspace_memberships',
+    )
+    role = models.CharField(
+        max_length=32,
+        choices=OrganizationMember.Role.choices,
+        default=OrganizationMember.Role.MEMBER,
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['id']
+        unique_together = ('workspace', 'organization_member')
+
+    def __str__(self) -> str:
+        return f'{self.workspace_id}:{self.organization_member.user_id}:{self.role}'
+
+
+class Invitation(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        ACCEPTED = 'accepted', 'Accepted'
+        REVOKED = 'revoked', 'Revoked'
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='invitations',
+    )
+    workspace = models.ForeignKey(
+        Workspace,
+        on_delete=models.CASCADE,
+        related_name='invitations',
+    )
+    invited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sent_invitations',
+    )
+    email = models.EmailField()
+    role = models.CharField(
+        max_length=32,
+        choices=OrganizationMember.Role.choices,
+        default=OrganizationMember.Role.MEMBER,
+    )
+    invite_code = models.CharField(max_length=64, unique=True)
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-id']
+
+    def __str__(self) -> str:
+        return f'{self.email}:{self.workspace_id}:{self.status}'
+
+
 class UserDevice(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

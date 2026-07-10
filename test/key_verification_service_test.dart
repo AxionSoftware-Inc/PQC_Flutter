@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pqc_chat_app/core/database/app_database.dart';
 import 'package:pqc_chat_app/core/models/app_user.dart';
 import 'package:pqc_chat_app/core/models/conversation.dart';
 import 'package:pqc_chat_app/features/security/key_verification_service.dart';
@@ -12,7 +13,8 @@ final _validMlDsa65PublicKey = base64Encode(List<int>.filled(1952, 0));
 void main() {
   test('user key can be verified and later key change is detected', () async {
     SharedPreferences.setMockInitialValues({});
-    final service = KeyVerificationService();
+    final database = AppDatabase.inMemory();
+    final service = KeyVerificationService(database: database);
     const firstUser = AppUser(
       id: 2,
       username: 'bob',
@@ -24,7 +26,6 @@ void main() {
           platform: 'android',
           identityPublicKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
           keyAlgorithm: 'x25519',
-          preKeys: [],
         ),
       ],
     );
@@ -39,7 +40,6 @@ void main() {
           platform: 'android',
           identityPublicKey: 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=',
           keyAlgorithm: 'x25519',
-          preKeys: [],
         ),
       ],
     );
@@ -53,11 +53,13 @@ void main() {
     expect(verifiedTrust.hasKeyChanged, isFalse);
     expect(rotatedTrust.isVerified, isFalse);
     expect(rotatedTrust.hasKeyChanged, isTrue);
+    await database.close();
   });
 
   test('private conversation trust uses peer verification state', () async {
     SharedPreferences.setMockInitialValues({});
-    final service = KeyVerificationService();
+    final database = AppDatabase.inMemory();
+    final service = KeyVerificationService(database: database);
     final conversation = Conversation(
       id: 1,
       type: 'private',
@@ -79,7 +81,6 @@ void main() {
             platform: 'android',
             identityPublicKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
             keyAlgorithm: 'x25519',
-            preKeys: [],
           ),
         ],
       ),
@@ -95,13 +96,15 @@ void main() {
     expect(trust.peerUser?.id, 2);
     expect(trust.isVerified, isFalse);
     expect(trust.fingerprint, isNotNull);
+    await database.close();
   });
 
   test(
     'enterprise trust tracks pqc kem and signing verification together',
     () async {
       SharedPreferences.setMockInitialValues({});
-      final service = KeyVerificationService();
+      final database = AppDatabase.inMemory();
+      final service = KeyVerificationService(database: database);
       final user = AppUser(
         id: 2,
         username: 'bob',
@@ -117,7 +120,6 @@ void main() {
             pqcAlgorithm: 'ml-kem-768',
             pqcSigningPublicKey: _validMlDsa65PublicKey,
             pqcSigningAlgorithm: 'ml-dsa-65',
-            preKeys: const [],
           ),
         ],
       );
@@ -133,6 +135,7 @@ void main() {
       expect(afterVerify.isPqcVerified, isTrue);
       expect(afterVerify.isSigningVerified, isTrue);
       expect(afterVerify.isEnterpriseVerified, isTrue);
+      await database.close();
     },
   );
 }

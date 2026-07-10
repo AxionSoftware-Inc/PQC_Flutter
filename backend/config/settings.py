@@ -1,4 +1,5 @@
 import os
+import socket
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -17,11 +18,30 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', '').lower() == 'true'
 
+def _default_allowed_hosts():
+    hosts = {
+        '127.0.0.1',
+        'localhost',
+        '0.0.0.0',
+        '91.108.121.56',
+    }
+
+    try:
+        hosts.add(socket.gethostname())
+        for item in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if item:
+                hosts.add(item)
+    except OSError:
+        pass
+
+    return sorted(hosts)
+
+
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.environ.get(
         'DJANGO_ALLOWED_HOSTS',
-        '127.0.0.1,localhost,91.108.121.56',
+        ','.join(_default_allowed_hosts()),
     ).split(',')
     if host.strip()
 ]
@@ -36,6 +56,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'channels',
     'rest_framework',
     'rest_framework.authtoken',
     'users.apps.UsersConfig',
@@ -70,6 +91,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
 
 
 # Database
@@ -122,6 +144,15 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR.parent / 'shared' / 'media'
+MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    }
+}
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [

@@ -1,29 +1,43 @@
 from django.contrib.auth import get_user_model
+from django.core.files.storage import default_storage
 from django.db import transaction
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from rest_framework import generics, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from chat.models import Conversation, Message
+from chat.models import Conversation, Message, MessageAttachment
 from chat.serializers import (
+    AttachmentUploadSerializer,
     ConversationSerializer,
     ConversationKeyEnvelopeSerializer,
     ConversationKeyEnvelopeSyncSerializer,
     MessageCreateSerializer,
+    MessageAttachmentSerializer,
     MessageSerializer,
     PrivateConversationSerializer,
     get_or_create_private_conversation,
 )
-from users.models import UserDevice
+from users.models import UserDevice, WorkspaceMember
 
 
 User = get_user_model()
 
 
-def get_user_conversation_or_404(user, conversation_id):
+def get_user_conversation_or_404(request, conversation_id):
+    workspace, error_response = get_request_workspace_or_403(request)
+    if error_response is not None:
+        raise PermissionDenied(error_response.data['detail'])
     return generics.get_object_or_404(
-        Conversation.objects.filter(participants=user).distinct(),
+        Conversation.objects.filter(
+            participants=request.user,
+            workspace=workspace,
+            workspace__members__organization_member__user=request.user,
+            workspace__members__organization_member__is_active=True,
+            workspace__members__is_active=True,
+        ).distinct(),
         pk=conversation_id,
     )
 
@@ -48,11 +62,54 @@ def get_request_device_or_400(request):
     return device, None
 
 
+def get_request_workspace_or_403(request):
+    workspace_id = request.headers.get('X-Workspace-Id', '').strip()
+    memberships = WorkspaceMember.objects.select_related(
+        'workspace',
+        'organization_member',
+    ).filter(
+        organization_member__user=request.user,
+        organization_member__is_active=True,
+        is_active=True,
+    )
+    if workspace_id.isdigit():
+        membership = memberships.filter(workspace_id=int(workspace_id)).first()
+        if membership is not None:
+            return membership.workspace, None
+    membership = memberships.order_by('-workspace__is_default', 'workspace_id').first()
+    if membership is None:
+        return None, Response(
+            {'detail': 'No active workspace available.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    return membership.workspace, None
+
+
+def publish_workspace_event(workspace_id, event_type, payload):
+    channel_layer = get_channel_layer()
+    if channel_layer is None:
+        return
+    async_to_sync(channel_layer.group_send)(
+        f'workspace_{workspace_id}',
+        {
+            'type': 'chat.event',
+            'event': event_type,
+            'payload': payload,
+        },
+    )
+
+
 class ConversationListView(APIView):
     def get(self, request):
         updated_after = request.query_params.get('updated_after', '').strip()
+        workspace, error_response = get_request_workspace_or_403(request)
+        if error_response is not None:
+            return error_response
         conversations = (
-            Conversation.objects.filter(participants=request.user)
+            Conversation.objects.filter(
+                participants=request.user,
+                workspace=workspace,
+            )
             .prefetch_related('participants', 'messages')
             .distinct()
         )
@@ -76,26 +133,30 @@ class PrivateConversationView(APIView):
                 {'detail': 'Cannot create private chat with yourself.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        workspace, error_response = get_request_workspace_or_403(request)
+        if error_response is not None:
+            return error_response
 
         conversation, _ = get_or_create_private_conversation(
             request.user,
             other_user,
+            workspace,
         )
         return Response(ConversationSerializer(conversation).data)
 
 
 class MessageListCreateView(APIView):
     def get(self, request, conversation_id):
-        conversation = get_user_conversation_or_404(request.user, conversation_id)
+        conversation = get_user_conversation_or_404(request, conversation_id)
         after_id = request.query_params.get('after_id', '').strip()
-        messages = conversation.messages.select_related('sender').all()
+        messages = conversation.messages.select_related('sender').prefetch_related('attachments').all()
         if after_id.isdigit():
             messages = messages.filter(id__gt=int(after_id))
         return Response(MessageSerializer(messages, many=True).data)
 
     @transaction.atomic
     def post(self, request, conversation_id):
-        conversation = get_user_conversation_or_404(request.user, conversation_id)
+        conversation = get_user_conversation_or_404(request, conversation_id)
         serializer = MessageCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -117,17 +178,45 @@ class MessageListCreateView(APIView):
             sender=request.user,
             body=serializer.validated_data['body'].strip(),
             client_message_id=client_message_id,
+            message_type=serializer.validated_data['message_type'],
         )
+        attachments = MessageAttachment.objects.filter(
+            id__in=serializer.validated_data['attachment_ids'],
+            conversation=conversation,
+            workspace=conversation.workspace,
+            uploaded_by=request.user,
+            message__isnull=True,
+        )
+        attachment_count = attachments.count()
+        if attachment_count:
+            attachments.update(message=message)
+            message.attachment_count = attachment_count
+            message.save(update_fields=['attachment_count'])
         conversation.save(update_fields=['updated_at'])
+        serialized = MessageSerializer(message).data
+        publish_workspace_event(
+            conversation.workspace_id,
+            'message.created',
+            serialized,
+        )
+        publish_workspace_event(
+            conversation.workspace_id,
+            'conversation.updated',
+            {
+                'id': conversation.id,
+                'workspace_id': conversation.workspace_id,
+                'updated_at': conversation.updated_at.isoformat(),
+            },
+        )
         return Response(
-            MessageSerializer(message).data,
+            serialized,
             status=status.HTTP_201_CREATED,
         )
 
 
 class ConversationKeyEnvelopeView(APIView):
     def get(self, request, conversation_id):
-        conversation = get_user_conversation_or_404(request.user, conversation_id)
+        conversation = get_user_conversation_or_404(request, conversation_id)
         device, error_response = get_request_device_or_400(request)
         if error_response is not None:
             return error_response
@@ -141,7 +230,7 @@ class ConversationKeyEnvelopeView(APIView):
 
     @transaction.atomic
     def post(self, request, conversation_id):
-        conversation = get_user_conversation_or_404(request.user, conversation_id)
+        conversation = get_user_conversation_or_404(request, conversation_id)
         sender_device, error_response = get_request_device_or_400(request)
         if error_response is not None:
             return error_response
@@ -218,5 +307,31 @@ class ConversationKeyEnvelopeView(APIView):
 
         return Response(
             ConversationKeyEnvelopeSerializer(saved, many=True).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AttachmentUploadView(APIView):
+    @transaction.atomic
+    def post(self, request, conversation_id):
+        conversation = get_user_conversation_or_404(request, conversation_id)
+        serializer = AttachmentUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        uploaded = serializer.validated_data['file']
+        storage_key = default_storage.save(
+            f'attachments/{conversation.workspace_id}/{conversation.id}/{uploaded.name}',
+            uploaded,
+        )
+        attachment = MessageAttachment.objects.create(
+            conversation=conversation,
+            workspace=conversation.workspace,
+            uploaded_by=request.user,
+            filename=uploaded.name,
+            mime_type=getattr(uploaded, 'content_type', 'application/octet-stream'),
+            size_bytes=uploaded.size,
+            storage_key=storage_key,
+        )
+        return Response(
+            MessageAttachmentSerializer(attachment).data,
             status=status.HTTP_201_CREATED,
         )

@@ -1,8 +1,10 @@
 import '../../../core/models/app_user.dart';
+import '../../../core/models/attachment.dart';
 import '../../../core/models/chat_message.dart';
 import '../../../core/models/conversation.dart';
 import '../../../core/models/conversation_key_envelope.dart';
 import '../../../core/network/api_client.dart';
+import 'package:http/http.dart' as http;
 
 class ChatRemoteDataSource {
   ChatRemoteDataSource({required this.apiClient});
@@ -14,26 +16,6 @@ class ChatRemoteDataSource {
     return response
         .map((item) => AppUser.fromJson(item as Map<String, dynamic>))
         .toList();
-  }
-
-  Future<ClaimedAppUserPreKey?> claimPreKey({
-    required int userId,
-    required String deviceId,
-  }) async {
-    try {
-      final response =
-          await apiClient.post(
-                '/users/$userId/devices/$deviceId/claim-prekey',
-                {},
-              )
-              as Map<String, dynamic>;
-      return ClaimedAppUserPreKey.fromJson(response);
-    } on ApiException catch (error) {
-      if (error.message == 'No available prekeys for this device.') {
-        return null;
-      }
-      rethrow;
-    }
   }
 
   Future<List<Conversation>> fetchConversations({
@@ -82,14 +64,35 @@ class ChatRemoteDataSource {
     int conversationId,
     String body, {
     String clientMessageId = '',
+    String messageType = 'text',
+    List<int> attachmentIds = const [],
   }) async {
     final response =
         await apiClient.post('/conversations/$conversationId/messages', {
               'body': body,
               'client_message_id': clientMessageId,
+              'message_type': messageType,
+              'attachment_ids': attachmentIds,
             })
             as Map<String, dynamic>;
     return ChatMessage.fromJson(response);
+  }
+
+  Future<ChatAttachment> uploadAttachment(
+    int conversationId, {
+    required String filename,
+    required List<int> bytes,
+    String mimeType = 'application/octet-stream',
+  }) async {
+    final decoded =
+        await apiClient.multipartPost(
+              '/conversations/$conversationId/attachments',
+              files: [
+                http.MultipartFile.fromBytes('file', bytes, filename: filename),
+              ],
+            )
+            as Map<String, dynamic>;
+    return ChatAttachment.fromJson(decoded);
   }
 
   Future<List<ConversationKeyEnvelope>> fetchConversationKeyEnvelopes(

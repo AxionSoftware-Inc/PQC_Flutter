@@ -35,19 +35,26 @@ class DevicePqcSigningKeyService {
 
   final LocalSecretStore _secretStore;
   final DilithiumParams _params;
+  DevicePqcSigningKeyMaterial? _cachedMaterial;
 
   Future<DevicePqcSigningKeyMaterial> getOrCreateKeyMaterial() async {
+    final cachedMaterial = _cachedMaterial;
+    if (cachedMaterial != null) {
+      return cachedMaterial;
+    }
     final existingPublicKey = await _secretStore.read(_publicKeyKey);
     final existingSecretKey = await _secretStore.read(_secretKeyKey);
     final existingAlgorithm = await _secretStore.read(_algorithmKey);
     if (_isUsablePublicKey(existingPublicKey) &&
         _isUsableSecretKey(existingSecretKey) &&
         existingAlgorithm == algorithmName) {
-      return DevicePqcSigningKeyMaterial(
+      final material = DevicePqcSigningKeyMaterial(
         publicKey: existingPublicKey!,
         secretKey: existingSecretKey!,
         algorithm: existingAlgorithm!,
       );
+      _cachedMaterial = material;
+      return material;
     }
 
     final (publicKey, secretKey) = MlDsa.generateKeyPair(_params);
@@ -59,6 +66,7 @@ class DevicePqcSigningKeyService {
     await _secretStore.write(key: _publicKeyKey, value: material.publicKey);
     await _secretStore.write(key: _secretKeyKey, value: material.secretKey);
     await _secretStore.write(key: _algorithmKey, value: material.algorithm);
+    _cachedMaterial = material;
     return material;
   }
 

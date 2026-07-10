@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pqc_chat_app/core/database/app_database.dart';
 import 'package:pqc_chat_app/core/models/chat_message.dart';
 import 'package:pqc_chat_app/features/chat/data/outbox_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,7 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   test('outbox store persists and removes queued messages', () async {
     SharedPreferences.setMockInitialValues({});
-    final store = OutboxStore();
+    final database = AppDatabase.inMemory();
+    final store = OutboxStore(database: database);
     final queued = QueuedOutgoingMessage(
       clientMessageId: 'msg-1',
       conversationId: 1,
@@ -24,5 +26,6 @@ void main() {
 
     expect(saved.single.clientMessageId, 'msg-1');
     expect(cleared, isEmpty);
+    await database.close();
   });
 }

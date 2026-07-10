@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.utils import timezone
+from django.utils.text import slugify
 from uuid import uuid4
 
 from rest_framework import permissions, status
@@ -9,12 +9,25 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from chat.models import Conversation, ConversationParticipant
-from users.models import UserDevice, UserDevicePreKey
+from users.models import (
+    Invitation,
+    Organization,
+    OrganizationMember,
+    UserDevice,
+    Workspace,
+    WorkspaceMember,
+)
 from users.serializers import (
-    ClaimedDevicePreKeySerializer,
     DeviceSyncSerializer,
+    InvitationAcceptSerializer,
+    InvitationCreateSerializer,
+    InvitationSerializer,
     LoginSerializer,
+    OrganizationSerializer,
     UserSerializer,
+    WorkspaceMemberSerializer,
+    WorkspaceSerializer,
+    WorkspaceSwitchSerializer,
 )
 
 
@@ -26,6 +39,109 @@ def create_account_for_display_name(display_name):
         username=f'account_{uuid4().hex[:24]}',
         first_name=display_name,
     )
+
+
+def _workspace_memberships_for_user(user):
+    return WorkspaceMember.objects.select_related(
+        'workspace',
+        'workspace__organization',
+        'organization_member',
+    ).filter(
+        organization_member__user=user,
+        organization_member__is_active=True,
+        is_active=True,
+    )
+
+
+def _serialize_org_context(user):
+    workspace_memberships = list(_workspace_memberships_for_user(user))
+    orgs = []
+    roles_by_org = {}
+    workspaces_by_org = {}
+    seen_org_ids = set()
+
+    for membership in workspace_memberships:
+        org = membership.workspace.organization
+        if org.id not in seen_org_ids:
+            seen_org_ids.add(org.id)
+            orgs.append(org)
+        roles_by_org[org.id] = membership.organization_member.role
+        workspaces_by_org.setdefault(org.id, []).append(membership.workspace)
+
+    return OrganizationSerializer(
+        orgs,
+        many=True,
+        context={
+            'roles_by_org': roles_by_org,
+            'workspace_memberships_by_org': workspaces_by_org,
+        },
+    ).data
+
+
+def _resolve_active_workspace_for_user(user, requested_workspace_id=''):
+    memberships = _workspace_memberships_for_user(user)
+    if requested_workspace_id and requested_workspace_id.isdigit():
+        membership = memberships.filter(workspace_id=int(requested_workspace_id)).first()
+        if membership is not None:
+            return membership.workspace
+    default_membership = memberships.order_by('-workspace__is_default', 'workspace_id').first()
+    return None if default_membership is None else default_membership.workspace
+
+
+def _get_request_active_workspace(request):
+    workspace = _resolve_active_workspace_for_user(
+        request.user,
+        request.headers.get('X-Workspace-Id', '').strip(),
+    )
+    if workspace is None:
+        return None, Response(
+            {'detail': 'Active workspace was not found for this user.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    return workspace, None
+
+
+def _ensure_default_workspace_membership(user):
+    org, _ = Organization.objects.get_or_create(
+        slug='default-org',
+        defaults={
+            'name': 'Default Organization',
+            'created_by': user,
+        },
+    )
+    workspace, _ = Workspace.objects.get_or_create(
+        organization=org,
+        slug='main-workspace',
+        defaults={
+            'name': 'Main Workspace',
+            'is_default': True,
+            'policy_flags': {
+                'attachments_enabled': True,
+                'typing_presence_enabled': True,
+            },
+        },
+    )
+    org_member, created = OrganizationMember.objects.get_or_create(
+        organization=org,
+        user=user,
+        defaults={
+            'role': OrganizationMember.Role.OWNER,
+        },
+    )
+    if not created and not org_member.is_active:
+        org_member.is_active = True
+        org_member.save(update_fields=['is_active', 'updated_at'])
+    workspace_member, created = WorkspaceMember.objects.get_or_create(
+        workspace=workspace,
+        organization_member=org_member,
+        defaults={
+            'role': org_member.role,
+        },
+    )
+    if not created and not workspace_member.is_active:
+        workspace_member.is_active = True
+        workspace_member.save(update_fields=['is_active', 'updated_at'])
+    return org, workspace
 
 
 def upsert_user_device(
@@ -93,26 +209,6 @@ def upsert_user_device(
             device.save(update_fields=updated_fields + ['updated_at'])
 
     return device, None
-
-
-def sync_device_prekeys(*, device, prekeys):
-    if not prekeys:
-        return
-
-    incoming_ids = {item['key_id'] for item in prekeys}
-    device.prekeys.filter(used_at__isnull=True).exclude(key_id__in=incoming_ids).delete()
-
-    for item in prekeys:
-        UserDevicePreKey.objects.update_or_create(
-            device=device,
-            key_id=item['key_id'],
-            defaults={
-                'public_key': item['public_key'],
-                'used_at': None,
-            },
-        )
-
-
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -133,7 +229,6 @@ class LoginView(APIView):
         pqc_algorithm = serializer.validated_data['pqc_algorithm'].strip()
         pqc_signing_public_key = serializer.validated_data['pqc_signing_public_key'].strip()
         pqc_signing_algorithm = serializer.validated_data['pqc_signing_algorithm'].strip()
-        prekeys = serializer.validated_data['prekeys']
 
         if not display_name or not device_id:
             return Response(
@@ -167,11 +262,13 @@ class LoginView(APIView):
         )
         if error_response is not None:
             return error_response
-        sync_device_prekeys(device=device, prekeys=prekeys)
+
+        organization, workspace = _ensure_default_workspace_membership(user)
 
         group, _ = Conversation.objects.get_or_create(
             type=Conversation.ConversationType.GROUP,
             title='General Group',
+            workspace=workspace,
         )
         ConversationParticipant.objects.get_or_create(
             conversation=group,
@@ -184,6 +281,8 @@ class LoginView(APIView):
                 'token': token.key,
                 'account_id': user.id,
                 'device_id': device.device_id,
+                'active_workspace_id': workspace.id,
+                'organizations': _serialize_org_context(user),
                 'user': UserSerializer(user).data,
             }
         )
@@ -191,12 +290,29 @@ class LoginView(APIView):
 
 class MeView(APIView):
     def get(self, request):
-        return Response(UserSerializer(request.user).data)
+        workspace, error_response = _get_request_active_workspace(request)
+        if error_response is not None:
+            return error_response
+        user_data = UserSerializer(request.user).data
+        return Response(
+            {
+                **user_data,
+                'active_workspace_id': workspace.id,
+                'organizations': _serialize_org_context(request.user),
+                'user': user_data,
+            }
+        )
 
 
 class UserListView(APIView):
     def get(self, request):
-        users = User.objects.order_by('id')
+        workspace, error_response = _get_request_active_workspace(request)
+        if error_response is not None:
+            return error_response
+        users = User.objects.filter(
+            organization_memberships__workspace_memberships__workspace=workspace,
+            organization_memberships__workspace_memberships__is_active=True,
+        ).distinct().order_by('id')
         return Response(UserSerializer(users, many=True).data)
 
 
@@ -227,10 +343,6 @@ class DeviceSyncView(APIView):
         )
         if error_response is not None:
             return error_response
-        sync_device_prekeys(
-            device=device,
-            prekeys=serializer.validated_data['prekeys'],
-        )
 
         return Response(
             {
@@ -241,45 +353,147 @@ class DeviceSyncView(APIView):
                 'pqc_algorithm': device.pqc_algorithm,
                 'pqc_signing_public_key': device.pqc_signing_public_key,
                 'pqc_signing_algorithm': device.pqc_signing_algorithm,
+                'organizations': _serialize_org_context(request.user),
             }
         )
 
 
-class ClaimDevicePreKeyView(APIView):
-    @transaction.atomic
-    def post(self, request, user_id, device_id):
-        if request.user.id == user_id:
-            return Response(
-                {'detail': 'Cannot claim a prekey from your own device.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+class OrganizationListView(APIView):
+    def get(self, request):
+        return Response(_serialize_org_context(request.user))
 
-        device = UserDevice.objects.select_for_update().filter(
-            user_id=user_id,
-            device_id=device_id,
-        ).first()
-        if device is None:
-            return Response(
-                {'detail': 'Target device was not found.'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
 
-        prekey = device.prekeys.filter(used_at__isnull=True).order_by('id').first()
-        if prekey is None:
-            return Response(
-                {'detail': 'No available prekeys for this device.'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        prekey.used_at = timezone.now()
-        prekey.save(update_fields=['used_at'])
-
-        return Response(
-            ClaimedDevicePreKeySerializer(
-                {
-                    'device_id': device.device_id,
-                    'key_id': prekey.key_id,
-                    'public_key': prekey.public_key,
-                }
-            ).data
+class WorkspaceSwitchView(APIView):
+    def post(self, request):
+        serializer = WorkspaceSwitchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        workspace = _resolve_active_workspace_for_user(
+            request.user,
+            str(serializer.validated_data['workspace_id']),
         )
+        if workspace is None:
+            return Response(
+                {'detail': 'Workspace not found for this user.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(
+            {
+                'active_workspace_id': workspace.id,
+                'workspace': WorkspaceSerializer(workspace).data,
+            }
+        )
+
+
+class InvitationListCreateView(APIView):
+    @transaction.atomic
+    def get(self, request):
+        invitations = Invitation.objects.filter(
+            workspace__members__organization_member__user=request.user,
+        ).distinct().order_by('-id')
+        return Response(InvitationSerializer(invitations, many=True).data)
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = InvitationCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        workspace = Workspace.objects.filter(
+            id=serializer.validated_data['workspace_id'],
+            members__organization_member__user=request.user,
+            members__role__in=[
+                OrganizationMember.Role.OWNER,
+                OrganizationMember.Role.ADMIN,
+            ],
+            members__is_active=True,
+        ).select_related('organization').first()
+        if workspace is None:
+            return Response(
+                {'detail': 'Workspace not found or admin rights missing.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        invitation = Invitation.objects.create(
+            organization=workspace.organization,
+            workspace=workspace,
+            invited_by=request.user,
+            email=serializer.validated_data['email'],
+            role=serializer.validated_data['role'],
+            invite_code=uuid4().hex,
+        )
+        return Response(
+            InvitationSerializer(invitation).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class InvitationAcceptView(APIView):
+    @transaction.atomic
+    def post(self, request):
+        serializer = InvitationAcceptSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        invitation = Invitation.objects.select_related(
+            'organization',
+            'workspace',
+        ).filter(
+            invite_code=serializer.validated_data['invite_code'],
+            status=Invitation.Status.PENDING,
+        ).first()
+        if invitation is None:
+            return Response(
+                {'detail': 'Invitation not found or no longer active.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        org_member, _ = OrganizationMember.objects.get_or_create(
+            organization=invitation.organization,
+            user=request.user,
+            defaults={'role': invitation.role},
+        )
+        if not org_member.is_active:
+            org_member.is_active = True
+            org_member.save(update_fields=['is_active', 'updated_at'])
+        workspace_member, _ = WorkspaceMember.objects.get_or_create(
+            workspace=invitation.workspace,
+            organization_member=org_member,
+            defaults={'role': invitation.role},
+        )
+        if not workspace_member.is_active:
+            workspace_member.is_active = True
+            workspace_member.save(update_fields=['is_active', 'updated_at'])
+        invitation.status = Invitation.Status.ACCEPTED
+        invitation.save(update_fields=['status', 'updated_at'])
+        return Response(
+            {
+                'active_workspace_id': invitation.workspace_id,
+                'organizations': _serialize_org_context(request.user),
+            }
+        )
+
+
+class WorkspaceMemberDeactivateView(APIView):
+    @transaction.atomic
+    def post(self, request, member_id):
+        membership = WorkspaceMember.objects.select_related(
+            'workspace',
+            'organization_member',
+            'organization_member__organization',
+        ).filter(id=member_id).first()
+        if membership is None:
+            return Response(
+                {'detail': 'Workspace member not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        is_admin = WorkspaceMember.objects.filter(
+            workspace=membership.workspace,
+            organization_member__user=request.user,
+            role__in=[
+                OrganizationMember.Role.OWNER,
+                OrganizationMember.Role.ADMIN,
+            ],
+            is_active=True,
+        ).exists()
+        if not is_admin:
+            return Response(
+                {'detail': 'Admin rights required.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        membership.is_active = False
+        membership.save(update_fields=['is_active', 'updated_at'])
+        return Response(WorkspaceMemberSerializer(membership).data)

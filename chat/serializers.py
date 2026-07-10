@@ -1,7 +1,13 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from chat.models import Conversation, ConversationKeyEnvelope, ConversationParticipant, Message
+from chat.models import (
+    Conversation,
+    ConversationKeyEnvelope,
+    ConversationParticipant,
+    Message,
+    MessageAttachment,
+)
 
 
 User = get_user_model()
@@ -12,12 +18,54 @@ class PrivateConversationSerializer(serializers.Serializer):
 
 
 class MessageCreateSerializer(serializers.Serializer):
-    body = serializers.CharField(allow_blank=False, trim_whitespace=True)
+    body = serializers.CharField(allow_blank=True, trim_whitespace=True, default='')
     client_message_id = serializers.CharField(
         required=False,
         allow_blank=True,
         default='',
     )
+    message_type = serializers.ChoiceField(
+        choices=Message.MessageType.choices,
+        default=Message.MessageType.TEXT,
+    )
+    attachment_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        default=list,
+    )
+
+    def validate(self, attrs):
+        if not attrs.get('body', '').strip() and not attrs.get('attachment_ids'):
+            raise serializers.ValidationError(
+                'body or attachment_ids must be provided.'
+            )
+        return attrs
+
+
+class AttachmentUploadSerializer(serializers.Serializer):
+    file = serializers.FileField()
+
+
+class AttachmentFinalizeSerializer(serializers.Serializer):
+    attachment_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        default=list,
+    )
+
+
+class MessageAttachmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MessageAttachment
+        fields = [
+            'id',
+            'filename',
+            'mime_type',
+            'size_bytes',
+            'storage_key',
+            'thumbnail_key',
+            'created_at',
+        ]
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -26,6 +74,9 @@ class MessageSerializer(serializers.ModelSerializer):
     sender_name = serializers.SerializerMethodField()
     client_message_id = serializers.CharField()
     delivery_state = serializers.SerializerMethodField()
+    message_type = serializers.CharField()
+    attachment_count = serializers.IntegerField()
+    attachments = MessageAttachmentSerializer(many=True, read_only=True)
 
     class Meta:
         model = Message
@@ -36,6 +87,9 @@ class MessageSerializer(serializers.ModelSerializer):
             'sender_name',
             'client_message_id',
             'delivery_state',
+            'message_type',
+            'attachment_count',
+            'attachments',
             'body',
             'created_at',
         ]
@@ -78,11 +132,13 @@ class ConversationKeyEnvelopeSyncSerializer(serializers.Serializer):
 class ConversationSerializer(serializers.ModelSerializer):
     participant_ids = serializers.SerializerMethodField()
     last_message_preview = serializers.SerializerMethodField()
+    workspace_id = serializers.IntegerField(source='workspace.id', allow_null=True)
 
     class Meta:
         model = Conversation
         fields = [
             'id',
+            'workspace_id',
             'type',
             'title',
             'participant_ids',
@@ -105,9 +161,12 @@ class ConversationSerializer(serializers.ModelSerializer):
         return message.body
 
 
-def get_or_create_private_conversation(user, other_user):
+def get_or_create_private_conversation(user, other_user, workspace):
     existing = (
-        Conversation.objects.filter(type=Conversation.ConversationType.PRIVATE)
+        Conversation.objects.filter(
+            type=Conversation.ConversationType.PRIVATE,
+            workspace=workspace,
+        )
         .filter(participants=user)
         .filter(participants=other_user)
     )
@@ -123,6 +182,7 @@ def get_or_create_private_conversation(user, other_user):
     conversation = Conversation.objects.create(
         type=Conversation.ConversationType.PRIVATE,
         title='',
+        workspace=workspace,
     )
     ConversationParticipant.objects.bulk_create(
         [

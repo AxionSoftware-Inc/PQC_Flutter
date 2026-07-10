@@ -1,6 +1,7 @@
 class Conversation {
   const Conversation({
     required this.id,
+    this.workspaceId = 0,
     required this.type,
     required this.title,
     required this.participantIds,
@@ -10,6 +11,7 @@ class Conversation {
   }) : createdAt = createdAt ?? updatedAt;
 
   final int id;
+  final int workspaceId;
   final String type;
   final String title;
   final List<int> participantIds;
@@ -26,6 +28,7 @@ class Conversation {
 
   Conversation copyWith({
     int? id,
+    int? workspaceId,
     String? type,
     String? title,
     List<int>? participantIds,
@@ -35,6 +38,7 @@ class Conversation {
   }) {
     return Conversation(
       id: id ?? this.id,
+      workspaceId: workspaceId ?? this.workspaceId,
       type: type ?? this.type,
       title: title ?? this.title,
       participantIds: participantIds ?? this.participantIds,
@@ -47,6 +51,7 @@ class Conversation {
   factory Conversation.fromJson(Map<String, dynamic> json) {
     return Conversation(
       id: json['id'] as int,
+      workspaceId: json['workspace_id'] as int? ?? 0,
       type: json['type'] as String,
       title: json['title'] as String? ?? '',
       participantIds: (json['participant_ids'] as List<dynamic>).cast<int>(),

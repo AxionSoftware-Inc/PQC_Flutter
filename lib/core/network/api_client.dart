@@ -32,6 +32,7 @@ class ApiClient {
   final http.Client _client = http.Client();
   String? _token;
   String? _deviceId;
+  String? _workspaceId;
 
   void setToken(String? token) {
     _token = token;
@@ -39,6 +40,15 @@ class ApiClient {
 
   void setDeviceId(String? deviceId) {
     _deviceId = deviceId;
+  }
+
+  void setWorkspaceId(String? workspaceId) {
+    _workspaceId = workspaceId;
+  }
+
+  String websocketUrl(String path, {Map<String, String>? queryParameters}) {
+    final uri = _buildUri(path, queryParameters: queryParameters);
+    return uri.replace(scheme: uri.scheme == 'https' ? 'wss' : 'ws').toString();
   }
 
   Future<dynamic> get(
@@ -65,6 +75,24 @@ class ApiClient {
     return _decode(response);
   }
 
+  Future<dynamic> multipartPost(
+    String path, {
+    required List<http.MultipartFile> files,
+    Map<String, String>? fields,
+  }) async {
+    final request = http.MultipartRequest('POST', _buildUri(path));
+    request.headers.addAll(_headers()..remove('Content-Type'));
+    if (fields != null) {
+      request.fields.addAll(fields);
+    }
+    request.files.addAll(files);
+    final response = await _send(() async {
+      final streamed = await request.send();
+      return http.Response.fromStream(streamed);
+    });
+    return _decode(response);
+  }
+
   Uri _buildUri(String path, {Map<String, String>? queryParameters}) {
     final normalizedBase = ApiConfig.baseUrl.endsWith('/')
         ? ApiConfig.baseUrl.substring(0, ApiConfig.baseUrl.length - 1)
@@ -84,6 +112,8 @@ class ApiClient {
       'Content-Type': 'application/json',
       if (_token != null) 'Authorization': 'Token $_token',
       if (_deviceId != null && _deviceId!.isNotEmpty) 'X-Device-Id': _deviceId!,
+      if (_workspaceId != null && _workspaceId!.isNotEmpty)
+        'X-Workspace-Id': _workspaceId!,
     };
   }
 

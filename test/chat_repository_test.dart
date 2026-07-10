@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pqc_chat_app/core/database/app_database.dart';
 import 'package:pqc_chat_app/core/models/app_user.dart';
 import 'package:pqc_chat_app/core/models/chat_message.dart';
 import 'package:pqc_chat_app/core/models/conversation.dart';
@@ -16,37 +19,39 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   SharedPreferences.setMockInitialValues({});
-  final keyVerificationService = _FakeKeyVerificationService(
-    const ConversationKeyTrust(
-      isAvailable: true,
-      isEnterpriseReady: false,
-      isVerified: false,
-      isEnterpriseVerified: false,
-      hasKeyChanged: true,
-      hasEnterpriseKeyChanged: true,
-      fingerprint: 'dead beef',
-      pqcFingerprint: null,
-      signingFingerprint: null,
-      peerUser: AppUser(
-        id: 2,
-        username: 'bob',
-        displayName: 'Bob',
-        devices: [],
-      ),
-    ),
-  );
   test('private send is blocked when verified peer key changed', () async {
+    final database = AppDatabase.inMemory();
     final remote = _FakeChatRemoteDataSource();
+    final keyVerificationService = _FakeKeyVerificationService(
+      const ConversationKeyTrust(
+        isAvailable: true,
+        isEnterpriseReady: false,
+        isVerified: false,
+        isEnterpriseVerified: false,
+        hasKeyChanged: true,
+        hasEnterpriseKeyChanged: true,
+        fingerprint: 'dead beef',
+        pqcFingerprint: null,
+        signingFingerprint: null,
+        peerUser: AppUser(
+          id: 2,
+          username: 'bob',
+          displayName: 'Bob',
+          devices: [],
+        ),
+      ),
+      database: database,
+    );
     final repository = ChatRepository(
       remoteDataSource: remote,
       cipherService: _FakeChatCipherService(),
       keyVerificationService: keyVerificationService,
       privateConversationSecurityCoordinator:
           PrivateConversationSecurityCoordinator(
-            remoteDataSource: remote,
             keyVerificationService: keyVerificationService,
           ),
-      outboxStore: OutboxStore(),
+      database: database,
+      outboxStore: OutboxStore(database: database),
     );
 
     await repository.fetchUsers();
@@ -59,11 +64,13 @@ void main() {
       ),
       throwsA(isA<ChatEncryptionException>()),
     );
+    await database.close();
   });
 
   test(
     'send delegates payload handling to the routed cipher service',
     () async {
+      final database = AppDatabase.inMemory();
       final remote = _FakeChatRemoteDataSource();
       final cipherService = _FakeChatCipherService();
       final repository = ChatRepository(
@@ -87,10 +94,12 @@ void main() {
               devices: [],
             ),
           ),
+          database: database,
         ),
         privateConversationSecurityCoordinator:
-            _NoopPrivateConversationSecurityCoordinator(),
-        outboxStore: OutboxStore(),
+            _NoopPrivateConversationSecurityCoordinator(database: database),
+        database: database,
+        outboxStore: OutboxStore(database: database),
       );
 
       await repository.fetchUsers();
@@ -102,8 +111,59 @@ void main() {
       );
 
       expect(cipherService.lastEncryptedPlaintext, 'hello');
-      expect(cipherService.lastDecryptPayload, 'cipher::hello');
-      expect(sent.body, 'decoded::cipher::hello');
+      expect(cipherService.lastDecryptPayload, isNull);
+      expect(sent.body, 'hello');
+      await database.close();
+    },
+  );
+
+  test(
+    'private send refreshes users when peer pqc device metadata was stale',
+    () async {
+      final database = AppDatabase.inMemory();
+      final remote = _RefreshingUsersChatRemoteDataSource();
+      final cipherService = _PqcAwareChatCipherService();
+      final repository = ChatRepository(
+        remoteDataSource: remote,
+        cipherService: cipherService,
+        keyVerificationService: _FakeKeyVerificationService(
+          const ConversationKeyTrust(
+            isAvailable: true,
+            isEnterpriseReady: true,
+            isVerified: false,
+            isEnterpriseVerified: false,
+            hasKeyChanged: false,
+            hasEnterpriseKeyChanged: false,
+            fingerprint: 'dead beef',
+            pqcFingerprint: 'bead feed',
+            signingFingerprint: 'cafe babe',
+            peerUser: AppUser(
+              id: 2,
+              username: 'bob',
+              displayName: 'Bob',
+              devices: [],
+            ),
+          ),
+          database: database,
+        ),
+        privateConversationSecurityCoordinator:
+            _NoopPrivateConversationSecurityCoordinator(database: database),
+        database: database,
+        outboxStore: OutboxStore(database: database),
+      );
+
+      await repository.fetchUsers();
+
+      final sent = await repository.sendMessage(
+        _privateConversation,
+        currentUserId: 1,
+        text: 'hello pqc',
+      );
+
+      expect(remote.fetchUsersCallCount, 2);
+      expect(cipherService.encryptAttempts, 1);
+      expect(sent.body, 'hello pqc');
+      await database.close();
     },
   );
 }
@@ -112,6 +172,9 @@ const _users = [
   AppUser(id: 1, username: 'alice', displayName: 'Alice', devices: []),
   AppUser(id: 2, username: 'bob', displayName: 'Bob', devices: []),
 ];
+
+final _validMlKem768PublicKey = base64Encode(List<int>.filled(1184, 7));
+final _validMlDsa65PublicKey = base64Encode(List<int>.filled(1952, 9));
 
 final _privateConversation = Conversation(
   id: 2,
@@ -130,18 +193,12 @@ class _FakeChatRemoteDataSource extends ChatRemoteDataSource {
   Future<List<AppUser>> fetchUsers() async => _users;
 
   @override
-  Future<ClaimedAppUserPreKey?> claimPreKey({
-    required int userId,
-    required String deviceId,
-  }) async {
-    return null;
-  }
-
-  @override
   Future<ChatMessage> sendMessage(
     int conversationId,
     String body, {
+    List<int> attachmentIds = const [],
     String clientMessageId = '',
+    String messageType = 'text',
   }) async {
     return ChatMessage(
       id: 1,
@@ -178,8 +235,35 @@ class _FakeChatCipherService implements ChatCipherService {
   }
 }
 
+class _PqcAwareChatCipherService implements ChatCipherService {
+  int encryptAttempts = 0;
+
+  @override
+  Future<String> decrypt({
+    required ChatCryptoContext context,
+    required String payload,
+  }) async {
+    return 'decoded::$payload';
+  }
+
+  @override
+  Future<String> encrypt({
+    required ChatCryptoContext context,
+    required String plaintext,
+  }) async {
+    encryptAttempts += 1;
+    final peerUser = context.usersById[2];
+    if (peerUser?.preferredPqcDevice == null) {
+      throw ChatEncryptionException(
+        'Peer PQC device key is not ready yet. Ask them to reopen the app.',
+      );
+    }
+    return 'cipher::$plaintext';
+  }
+}
+
 class _FakeKeyVerificationService extends KeyVerificationService {
-  _FakeKeyVerificationService(this.trust);
+  _FakeKeyVerificationService(this.trust, {required super.database});
 
   final ConversationKeyTrust trust;
 
@@ -195,9 +279,8 @@ class _FakeKeyVerificationService extends KeyVerificationService {
 
 class _NoopPrivateConversationSecurityCoordinator
     extends PrivateConversationSecurityCoordinator {
-  _NoopPrivateConversationSecurityCoordinator()
+  _NoopPrivateConversationSecurityCoordinator({required AppDatabase database})
     : super(
-        remoteDataSource: _FakeChatRemoteDataSource(),
         keyVerificationService: _FakeKeyVerificationService(
           const ConversationKeyTrust(
             isAvailable: true,
@@ -211,6 +294,7 @@ class _NoopPrivateConversationSecurityCoordinator
             signingFingerprint: null,
             peerUser: null,
           ),
+          database: database,
         ),
       );
 
@@ -221,4 +305,58 @@ class _NoopPrivateConversationSecurityCoordinator
     required Map<int, AppUser> usersById,
     required void Function(AppUser user) onUserUpdated,
   }) async {}
+}
+
+class _RefreshingUsersChatRemoteDataSource extends ChatRemoteDataSource {
+  _RefreshingUsersChatRemoteDataSource() : super(apiClient: ApiClient());
+
+  int fetchUsersCallCount = 0;
+
+  @override
+  Future<List<AppUser>> fetchUsers() async {
+    fetchUsersCallCount += 1;
+    if (fetchUsersCallCount == 1) {
+      return _users;
+    }
+    return [
+      _users.first,
+      AppUser(
+        id: 2,
+        username: 'bob',
+        displayName: 'Bob',
+        devices: [
+          AppUserDevice(
+            deviceId: 'bob-device',
+            deviceName: 'Bob Phone',
+            platform: 'android',
+            identityPublicKey: '',
+            keyAlgorithm: '',
+            pqcPublicKey: _validMlKem768PublicKey,
+            pqcAlgorithm: 'ml-kem-768',
+            pqcSigningPublicKey: _validMlDsa65PublicKey,
+            pqcSigningAlgorithm: 'ml-dsa-65',
+          ),
+        ],
+      ),
+    ];
+  }
+
+  @override
+  Future<ChatMessage> sendMessage(
+    int conversationId,
+    String body, {
+    List<int> attachmentIds = const [],
+    String clientMessageId = '',
+    String messageType = 'text',
+  }) async {
+    return ChatMessage(
+      id: 2,
+      conversationId: conversationId,
+      senderId: 1,
+      senderName: 'Alice',
+      body: body,
+      createdAt: DateTime.parse('2026-07-04T00:00:00Z'),
+      clientMessageId: clientMessageId,
+    );
+  }
 }

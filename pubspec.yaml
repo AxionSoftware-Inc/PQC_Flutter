@@ -32,13 +32,21 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   cryptography: ^2.7.0
+  drift: ^2.28.1
+  file_picker: ^10.3.2
   flutter_secure_storage: ^9.2.4
   http: ^1.5.0
+  path: ^1.9.1
+  path_provider: ^2.1.5
   pqcrypto: ^0.4.0
   shared_preferences: ^2.5.3
+  sqlite3_flutter_libs: ^0.5.39
   uuid: ^4.5.1
+  web_socket_channel: ^3.0.3
 
 dev_dependencies:
+  build_runner: ^2.7.0
+  drift_dev: ^2.28.1
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
