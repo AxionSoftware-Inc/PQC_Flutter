@@ -85,6 +85,10 @@ Local API:
 
 `http://127.0.0.1:8000/api`
 
+PostgreSQL bilan ishlatish:
+
+- [POSTGRES_SETUP.md](/Users/macbookpro/Documents/PQC%20Chat%20app/POSTGRES_SETUP.md)
+
 ## Flutter Setup
 
 ```bash

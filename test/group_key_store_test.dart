@@ -1,9 +1,9 @@
 import 'dart:convert';
 
-import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pqc_chat_app/core/device/device_identity_service.dart';
-import 'package:pqc_chat_app/core/device/device_key_service.dart';
+import 'package:pqc_chat_app/core/device/device_pqc_key_service.dart';
+import 'package:pqc_chat_app/core/device/device_pqc_signing_key_service.dart';
 import 'package:pqc_chat_app/core/models/app_user.dart';
 import 'package:pqc_chat_app/core/models/conversation.dart';
 import 'package:pqc_chat_app/core/models/conversation_key_envelope.dart';
@@ -24,17 +24,20 @@ void main() {
   );
 
   test(
-    'group key store rejects send when any participant lacks usable device key',
+    'group key store rejects send when any participant lacks usable pqc device key',
     () async {
-      final algorithm = X25519();
-      final alicePair = await algorithm.newKeyPair();
-      final alicePairData = await alicePair.extract();
+      final aliceSecrets = _MemorySecretStore();
+      final alicePqc = DevicePqcKeyService(secretStore: aliceSecrets);
+      final aliceSigning = DevicePqcSigningKeyService(
+        secretStore: aliceSecrets,
+      );
+      final alicePqcMaterial = await alicePqc.getOrCreateKeyMaterial();
+      final aliceSigningMaterial = await aliceSigning.getOrCreateKeyMaterial();
+
       final store = GroupKeyStore(
         deviceIdentityService: _FakeDeviceIdentityService('alice-device'),
-        deviceKeyService: _FakeDeviceKeyService(
-          keyPairData: alicePairData,
-          privateKeyBytes: await alicePair.extractPrivateKeyBytes(),
-        ),
+        devicePqcKeyService: alicePqc,
+        devicePqcSigningKeyService: aliceSigning,
         remoteDataSource: _FakeChatRemoteDataSource(),
         secretStore: _MemorySecretStore(),
       );
@@ -52,10 +55,12 @@ void main() {
                   deviceId: 'alice-device',
                   deviceName: 'Alice Phone',
                   platform: 'android',
-                  identityPublicKey: base64Encode(
-                    alicePairData.publicKey.bytes,
-                  ),
-                  keyAlgorithm: 'x25519',
+                  identityPublicKey: '',
+                  keyAlgorithm: '',
+                  pqcPublicKey: alicePqcMaterial.publicKey,
+                  pqcAlgorithm: alicePqcMaterial.algorithm,
+                  pqcSigningPublicKey: aliceSigningMaterial.publicKey,
+                  pqcSigningAlgorithm: aliceSigningMaterial.algorithm,
                 ),
               ],
             ),
@@ -73,20 +78,25 @@ void main() {
   );
 
   test(
-    'group key store uploads envelopes for every usable participant device',
+    'group key store uploads pqc envelopes for every usable participant device',
     () async {
-      final algorithm = X25519();
-      final alicePair = await algorithm.newKeyPair();
-      final bobPair = await algorithm.newKeyPair();
-      final alicePairData = await alicePair.extract();
-      final bobPairData = await bobPair.extract();
+      final aliceSecrets = _MemorySecretStore();
+      final bobSecrets = _MemorySecretStore();
+      final alicePqc = DevicePqcKeyService(secretStore: aliceSecrets);
+      final bobPqc = DevicePqcKeyService(secretStore: bobSecrets);
+      final aliceSigning = DevicePqcSigningKeyService(
+        secretStore: aliceSecrets,
+      );
+      final bobSigning = DevicePqcSigningKeyService(secretStore: bobSecrets);
+      final alicePqcMaterial = await alicePqc.getOrCreateKeyMaterial();
+      final bobPqcMaterial = await bobPqc.getOrCreateKeyMaterial();
+      final aliceSigningMaterial = await aliceSigning.getOrCreateKeyMaterial();
+      final bobSigningMaterial = await bobSigning.getOrCreateKeyMaterial();
       final remote = _FakeChatRemoteDataSource();
       final store = GroupKeyStore(
         deviceIdentityService: _FakeDeviceIdentityService('alice-device'),
-        deviceKeyService: _FakeDeviceKeyService(
-          keyPairData: alicePairData,
-          privateKeyBytes: await alicePair.extractPrivateKeyBytes(),
-        ),
+        devicePqcKeyService: alicePqc,
+        devicePqcSigningKeyService: aliceSigning,
         remoteDataSource: remote,
         secretStore: _MemorySecretStore(),
       );
@@ -103,8 +113,12 @@ void main() {
                 deviceId: 'alice-device',
                 deviceName: 'Alice Phone',
                 platform: 'android',
-                identityPublicKey: base64Encode(alicePairData.publicKey.bytes),
-                keyAlgorithm: 'x25519',
+                identityPublicKey: '',
+                keyAlgorithm: '',
+                pqcPublicKey: alicePqcMaterial.publicKey,
+                pqcAlgorithm: alicePqcMaterial.algorithm,
+                pqcSigningPublicKey: aliceSigningMaterial.publicKey,
+                pqcSigningAlgorithm: aliceSigningMaterial.algorithm,
               ),
             ],
           ),
@@ -117,8 +131,12 @@ void main() {
                 deviceId: 'bob-device',
                 deviceName: 'Bob Phone',
                 platform: 'android',
-                identityPublicKey: base64Encode(bobPairData.publicKey.bytes),
-                keyAlgorithm: 'x25519',
+                identityPublicKey: '',
+                keyAlgorithm: '',
+                pqcPublicKey: bobPqcMaterial.publicKey,
+                pqcAlgorithm: bobPqcMaterial.algorithm,
+                pqcSigningPublicKey: bobSigningMaterial.publicKey,
+                pqcSigningAlgorithm: bobSigningMaterial.algorithm,
               ),
             ],
           ),
@@ -126,19 +144,109 @@ void main() {
       );
 
       expect(remote.lastSyncConversationId, 1);
+      expect(remote.lastAlgorithm, 'group-ml-kem-768-aesgcm-v1');
       expect(remote.lastEnvelopes.length, 2);
       expect(remote.lastEnvelopes.map((item) => item.targetDeviceId).toSet(), {
         'alice-device',
         'bob-device',
       });
+      expect(
+        remote.lastEnvelopes.first.wrappedKey,
+        startsWith('group-wrap:pqc:v1:'),
+      );
     },
   );
+
+  test('group key store decrypts pqc envelopes for current device', () async {
+    final aliceSecrets = _MemorySecretStore();
+    final bobSecrets = _MemorySecretStore();
+    final alicePqc = DevicePqcKeyService(secretStore: aliceSecrets);
+    final bobPqc = DevicePqcKeyService(secretStore: bobSecrets);
+    final aliceSigning = DevicePqcSigningKeyService(secretStore: aliceSecrets);
+    final bobSigning = DevicePqcSigningKeyService(secretStore: bobSecrets);
+    final alicePqcMaterial = await alicePqc.getOrCreateKeyMaterial();
+    final bobPqcMaterial = await bobPqc.getOrCreateKeyMaterial();
+    final aliceSigningMaterial = await aliceSigning.getOrCreateKeyMaterial();
+    final bobSigningMaterial = await bobSigning.getOrCreateKeyMaterial();
+    final remote = _FakeChatRemoteDataSource();
+
+    final aliceStore = GroupKeyStore(
+      deviceIdentityService: _FakeDeviceIdentityService('alice-device'),
+      devicePqcKeyService: alicePqc,
+      devicePqcSigningKeyService: aliceSigning,
+      remoteDataSource: remote,
+      secretStore: _MemorySecretStore(),
+    );
+    final bobStore = GroupKeyStore(
+      deviceIdentityService: _FakeDeviceIdentityService('bob-device'),
+      devicePqcKeyService: bobPqc,
+      devicePqcSigningKeyService: bobSigning,
+      remoteDataSource: remote,
+      secretStore: _MemorySecretStore(),
+    );
+
+    final usersById = {
+      1: AppUser(
+        id: 1,
+        username: 'alice',
+        displayName: 'Alice',
+        devices: [
+          AppUserDevice(
+            deviceId: 'alice-device',
+            deviceName: 'Alice Phone',
+            platform: 'android',
+            identityPublicKey: '',
+            keyAlgorithm: '',
+            pqcPublicKey: alicePqcMaterial.publicKey,
+            pqcAlgorithm: alicePqcMaterial.algorithm,
+            pqcSigningPublicKey: aliceSigningMaterial.publicKey,
+            pqcSigningAlgorithm: aliceSigningMaterial.algorithm,
+          ),
+        ],
+      ),
+      2: AppUser(
+        id: 2,
+        username: 'bob',
+        displayName: 'Bob',
+        devices: [
+          AppUserDevice(
+            deviceId: 'bob-device',
+            deviceName: 'Bob Phone',
+            platform: 'android',
+            identityPublicKey: '',
+            keyAlgorithm: '',
+            pqcPublicKey: bobPqcMaterial.publicKey,
+            pqcAlgorithm: bobPqcMaterial.algorithm,
+            pqcSigningPublicKey: bobSigningMaterial.publicKey,
+            pqcSigningAlgorithm: bobSigningMaterial.algorithm,
+          ),
+        ],
+      ),
+    };
+
+    final aliceKey = await aliceStore.getOrCreateKey(
+      conversation: groupConversation,
+      usersById: usersById,
+    );
+    final bobKey = await bobStore.getExistingKey(
+      conversation: groupConversation,
+      usersById: usersById,
+      requestedKeyId: aliceKey.keyId,
+    );
+
+    expect(bobKey, isNotNull);
+    expect(
+      base64Encode(bobKey!.secretKeyBytes),
+      base64Encode(aliceKey.secretKeyBytes),
+    );
+  });
 }
 
 class _FakeChatRemoteDataSource extends ChatRemoteDataSource {
   _FakeChatRemoteDataSource() : super(apiClient: ApiClient());
 
   int? lastSyncConversationId;
+  String? lastAlgorithm;
   List<ConversationKeyEnvelopeUpload> lastEnvelopes = const [];
   final List<ConversationKeyEnvelope> stored = [];
 
@@ -157,31 +265,24 @@ class _FakeChatRemoteDataSource extends ChatRemoteDataSource {
     required List<ConversationKeyEnvelopeUpload> envelopes,
   }) async {
     lastSyncConversationId = conversationId;
+    lastAlgorithm = algorithm;
     lastEnvelopes = envelopes;
-  }
-}
-
-class _FakeDeviceKeyService extends DeviceKeyService {
-  _FakeDeviceKeyService({
-    required this.keyPairData,
-    required this.privateKeyBytes,
-  });
-
-  final SimpleKeyPairData keyPairData;
-  final List<int> privateKeyBytes;
-
-  @override
-  Future<DeviceKeyMaterial> getOrCreateKeyMaterial() async {
-    return DeviceKeyMaterial(
-      publicKey: base64Encode(keyPairData.publicKey.bytes),
-      privateKey: base64Encode(privateKeyBytes),
-      algorithm: 'x25519',
-    );
-  }
-
-  @override
-  Future<SimpleKeyPair> getIdentityKeyPair() async {
-    return keyPairData.copy();
+    final now = DateTime.parse('2026-07-11T00:00:00Z');
+    stored
+      ..clear()
+      ..addAll(
+        envelopes.map(
+          (item) => ConversationKeyEnvelope(
+            keyId: keyId,
+            algorithm: algorithm,
+            targetDeviceId: item.targetDeviceId,
+            senderDeviceId: 'alice-device',
+            wrappedKey: item.wrappedKey,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ),
+      );
   }
 }
 

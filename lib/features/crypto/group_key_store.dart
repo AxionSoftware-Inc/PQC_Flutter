@@ -2,12 +2,14 @@
 
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/device/device_identity_service.dart';
-import '../../core/device/device_key_service.dart';
+import '../../core/device/device_pqc_key_service.dart';
+import '../../core/device/device_pqc_signing_key_service.dart';
 import '../../core/models/app_user.dart';
 import '../../core/models/conversation.dart';
 import '../../core/models/conversation_key_envelope.dart';
@@ -38,31 +40,32 @@ abstract class GroupKeyProvider {
 class GroupKeyStore implements GroupKeyProvider {
   GroupKeyStore({
     required DeviceIdentityService deviceIdentityService,
-    required DeviceKeyService deviceKeyService,
+    required DevicePqcKeyService devicePqcKeyService,
+    required DevicePqcSigningKeyService devicePqcSigningKeyService,
     required ChatRemoteDataSource remoteDataSource,
     LocalSecretStore? secretStore,
-    X25519? keyExchange,
     Hkdf? hkdf,
     AesGcm? cipher,
     Uuid? uuid,
   }) : _deviceIdentityService = deviceIdentityService,
-       _deviceKeyService = deviceKeyService,
+       _devicePqcKeyService = devicePqcKeyService,
+       _devicePqcSigningKeyService = devicePqcSigningKeyService,
        _remoteDataSource = remoteDataSource,
        _secretStore = secretStore ?? LocalSecretStore(),
-       _keyExchange = keyExchange ?? X25519(),
        _hkdf = hkdf ?? Hkdf(hmac: Hmac.sha256(), outputLength: 32),
        _cipher = cipher ?? AesGcm.with256bits(),
        _uuid = uuid ?? const Uuid();
 
   static const _localKeyPrefix = 'group_secret_key';
   static const _participantSignaturePrefix = 'group_participant_signature';
+  static const _wrapPrefix = 'group-wrap:pqc:v1';
   static final _random = Random.secure();
 
   final DeviceIdentityService _deviceIdentityService;
-  final DeviceKeyService _deviceKeyService;
+  final DevicePqcKeyService _devicePqcKeyService;
+  final DevicePqcSigningKeyService _devicePqcSigningKeyService;
   final ChatRemoteDataSource _remoteDataSource;
   final LocalSecretStore _secretStore;
-  final X25519 _keyExchange;
   final Hkdf _hkdf;
   final AesGcm _cipher;
   final Uuid _uuid;
@@ -92,7 +95,6 @@ class GroupKeyStore implements GroupKeyProvider {
     }
 
     final deviceIdentity = await _deviceIdentityService.getIdentity();
-    final localKeyPair = await _deviceKeyService.getIdentityKeyPair();
     final keyId = _uuid.v4();
     final secretKeyBytes = List<int>.generate(32, (_) => _random.nextInt(256));
     final envelopes = <ConversationKeyEnvelopeUpload>[];
@@ -106,7 +108,6 @@ class GroupKeyStore implements GroupKeyProvider {
             keyId: keyId,
             senderDeviceId: deviceIdentity.id,
             targetDevice: device,
-            localKeyPair: localKeyPair,
             secretKeyBytes: secretKeyBytes,
           ),
         ),
@@ -122,7 +123,7 @@ class GroupKeyStore implements GroupKeyProvider {
     await _remoteDataSource.syncConversationKeyEnvelopes(
       conversationId: conversation.id,
       keyId: keyId,
-      algorithm: 'group-x25519-aesgcm-v1',
+      algorithm: 'group-ml-kem-768-aesgcm-v1',
       envelopes: envelopes,
     );
     await _saveLocalKey(
@@ -218,15 +219,14 @@ class GroupKeyStore implements GroupKeyProvider {
     required String keyId,
     required String senderDeviceId,
     required AppUserDevice targetDevice,
-    required SimpleKeyPair localKeyPair,
     required List<int> secretKeyBytes,
   }) async {
+    final localSigningMaterial = await _devicePqcSigningKeyService
+        .getOrCreateKeyMaterial();
+    final (kemCiphertext, sharedSecret) = await _devicePqcKeyService
+        .encapsulateForPublicKey(targetDevice.pqcPublicKey);
     final wrappingKey = await _deriveWrappingKey(
-      localKeyPair: localKeyPair,
-      remotePublicKey: SimplePublicKey(
-        base64Decode(targetDevice.identityPublicKey),
-        type: KeyPairType.x25519,
-      ),
+      sharedSecret: sharedSecret,
       info:
           '${conversation.id}|$keyId|$senderDeviceId|${targetDevice.deviceId}',
     );
@@ -236,12 +236,18 @@ class GroupKeyStore implements GroupKeyProvider {
       secretKey: wrappingKey,
       nonce: nonce,
     );
-    return [
-      'group-wrap:v1',
+    final payloadParts = [
+      senderDeviceId,
+      localSigningMaterial.publicKey,
+      kemCiphertext,
       base64Encode(secretBox.nonce),
       base64Encode(secretBox.cipherText),
       base64Encode(secretBox.mac.bytes),
-    ].join(':');
+    ];
+    final signature = await _devicePqcSigningKeyService.sign(
+      Uint8List.fromList(([_wrapPrefix, ...payloadParts]).join(':').codeUnits),
+    );
+    return [_wrapPrefix, ...payloadParts, signature].join(':');
   }
 
   Future<List<int>?> _unwrapGroupKeyFromEnvelope({
@@ -252,30 +258,46 @@ class GroupKeyStore implements GroupKeyProvider {
     required String wrappedKey,
   }) async {
     try {
-      if (!wrappedKey.startsWith('group-wrap:v1:')) {
+      if (!wrappedKey.startsWith('$_wrapPrefix:')) {
         return null;
       }
 
-      final parts = wrappedKey.substring('group-wrap:v1:'.length).split(':');
-      if (parts.length != 3) {
+      final parts = wrappedKey.substring(_wrapPrefix.length + 1).split(':');
+      if (parts.length != 7) {
         return null;
       }
-
-      final localKeyPair = await _deviceKeyService.getIdentityKeyPair();
-      final wrappingKey = await _deriveWrappingKey(
-        localKeyPair: localKeyPair,
-        remotePublicKey: SimplePublicKey(
-          base64Decode(senderDevice.identityPublicKey),
-          type: KeyPairType.x25519,
+      final senderDeviceId = parts[0];
+      final signingPublicKey = parts[1];
+      final kemCiphertext = parts[2];
+      final signature = parts[6];
+      if (senderDevice.deviceId != senderDeviceId ||
+          !senderDevice.hasUsableMlDsaKey ||
+          senderDevice.pqcSigningPublicKey != signingPublicKey) {
+        return null;
+      }
+      final verified = _devicePqcSigningKeyService.verify(
+        publicKeyBase64: signingPublicKey,
+        signatureBase64: signature,
+        message: Uint8List.fromList(
+          ([_wrapPrefix, ...parts.sublist(0, 6)]).join(':').codeUnits,
         ),
+      );
+      if (!verified) {
+        return null;
+      }
+      final sharedSecret = await _devicePqcKeyService.decapsulate(
+        kemCiphertext,
+      );
+      final wrappingKey = await _deriveWrappingKey(
+        sharedSecret: sharedSecret,
         info:
             '${conversation.id}|$keyId|${senderDevice.deviceId}|$targetDeviceId',
       );
       final secretBytes = await _cipher.decrypt(
         SecretBox(
-          base64Decode(parts[1]),
-          nonce: base64Decode(parts[0]),
-          mac: Mac(base64Decode(parts[2])),
+          base64Decode(parts[4]),
+          nonce: base64Decode(parts[3]),
+          mac: Mac(base64Decode(parts[5])),
         ),
         secretKey: wrappingKey,
       );
@@ -286,18 +308,13 @@ class GroupKeyStore implements GroupKeyProvider {
   }
 
   Future<SecretKey> _deriveWrappingKey({
-    required SimpleKeyPair localKeyPair,
-    required SimplePublicKey remotePublicKey,
+    required Uint8List sharedSecret,
     required String info,
   }) async {
-    final sharedSecret = await _keyExchange.sharedSecretKey(
-      keyPair: localKeyPair,
-      remotePublicKey: remotePublicKey,
-    );
     return _hkdf.deriveKey(
-      secretKey: sharedSecret,
+      secretKey: SecretKey(sharedSecret),
       nonce: utf8.encode(info),
-      info: utf8.encode('pqc-chat-group-key-wrap'),
+      info: utf8.encode('pqc-chat-group-key-wrap-v1'),
     );
   }
 
@@ -349,8 +366,12 @@ class GroupKeyStore implements GroupKeyProvider {
         continue;
       }
       final devices =
-          user.usableX25519Devices
-              .map((item) => '${item.deviceId}:${item.identityPublicKey}')
+          user.devices
+              .where((item) => item.hasUsableMlKemKey && item.hasUsableMlDsaKey)
+              .map(
+                (item) =>
+                    '${item.deviceId}:${item.pqcPublicKey}:${item.pqcSigningPublicKey}',
+              )
               .toList()
             ..sort();
       if (devices.isEmpty) {
@@ -376,7 +397,11 @@ class GroupKeyStore implements GroupKeyProvider {
         continue;
       }
 
-      final usableDevices = user.usableX25519Devices;
+      final usableDevices = user.devices
+          .where(
+            (device) => device.hasUsableMlKemKey && device.hasUsableMlDsaKey,
+          )
+          .toList();
       if (usableDevices.isEmpty) {
         missingUsers.add(user.displayName);
         continue;

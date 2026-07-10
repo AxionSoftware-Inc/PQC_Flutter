@@ -221,6 +221,7 @@ class ChatRepository {
   }) async {
     _activeCurrentUserId = currentUserId;
     await _ensureUsersLoaded();
+    await _refreshUsersForSecureSend();
     await _refreshPrivateUsersIfNeeded(
       conversation: conversation,
       currentUserId: currentUserId,
@@ -370,6 +371,16 @@ class ChatRepository {
       return;
     }
     await fetchUsers();
+  }
+
+  Future<void> _refreshUsersForSecureSend() async {
+    try {
+      await fetchUsers();
+    } on ApiException catch (error) {
+      if (!error.isRetryable) {
+        rethrow;
+      }
+    }
   }
 
   Future<void> _refreshPrivateUsersIfNeeded({
