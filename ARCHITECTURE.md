@@ -154,9 +154,10 @@ PQC chat uchun ikki bosqichli model tavsiya etiladi:
 
 Hozirgi ishlab turgan yondashuv:
 
-1. Private chat uchun bitta stabil yozish formati ishlatiladi: `enc:v1`
-2. Group chat uchun alohida format ishlatiladi: `group:v1`
-3. Eski `x25519:*`, `hybrid:*`, `session:*` payloadlar faqat backward-compatible decrypt uchun saqlanadi
+1. Private chat uchun aktiv yozish formati ishlatiladi: `pqc:v1`
+2. Private payload `ML-KEM-768` + `AES-GCM` + `ML-DSA-65` modelida ishlaydi
+3. Group chat uchun `group:v1` payload va `group-wrap:pqc:v1` envelope ishlatiladi
+4. Eski klassik payloadlar endi aktiv write path emas
 
 Bu yondashuv platformalararo barqarorlikni tiklaydi va Flutter kod bazasini bir xil saqlab turadi.
 
@@ -171,9 +172,9 @@ Shu sabab crypto qatlam algoritmga qattiq bog'lanmasligi kerak. Hozirgi tavsiya:
 
 1. User device o'z identity key'ini yaratadi.
 2. Public key serverga yuboriladi.
-3. Private chat uchun stabil shared secret qatlam ishlatiladi.
-4. Group chat uchun alohida wrapped-key oqimi ishlatiladi.
-5. Legacy transportlar faqat tarixiy decrypt uchun qoldiriladi.
+3. Private chat uchun PQC KEM orqali content key wrapping ishlatiladi.
+4. Group chat uchun alohida PQC wrapped-key oqimi ishlatiladi.
+5. Payload integrity uchun device-level PQC signature ishlatiladi.
 
 ### 5.4 Xavfsizlik Talablari
 

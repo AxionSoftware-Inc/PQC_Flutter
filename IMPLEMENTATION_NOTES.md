@@ -48,25 +48,19 @@ Muhim implementatsiya eslatmalari:
 5. verified key o'zgarsa UI warning ko'rsatiladi
 6. group key participant/device signature o'zgarsa qayta yaratiladi
 7. Android secretlar secure storage'ga qaytarildi, legacy local secretlar read vaqtida migratsiya qilinadi
-8. device login/sync vaqtida one-time prekey batch ham yuboriladi
-9. private chat payload hozir `x25519:v4` bo'lsa prekey bootstrap ishlatadi
-10. prekey yo'q holatda `x25519:v3` fallback ishlaydi
-11. private transport hozir reliability uchun stateless-by-default; yangi private xabarlar asosan `x25519:v4` yoki fallback `x25519:v3` bilan yuboriladi
-12. self-sent encrypted payload local plaintext cache'ga yoziladi, shuning uchun history reload'da ham user o'z yuborgan xabarini ko'radi
-13. peer identity key o'zgarsa stale private session avtomatik tashlab yuboriladi
+8. device login/sync vaqtida `ml-kem-768` va `ml-dsa-65` public key'lar backendga yuboriladi
+9. private chat payload hozir `pqc:v1` formatida yoziladi
+10. private payload ichida content key `ML-KEM-768` bilan self va peer device uchun wrap qilinadi
+11. content plaintext `AES-GCM` bilan shifrlanadi
+12. payload `ML-DSA-65` bilan imzolanadi
+13. self-sent encrypted payload local plaintext cache'ga yoziladi, shuning uchun history reload'da ham user o'z yuborgan xabarini ko'radi
 14. oldin verified bo'lgan peer key o'zgarsa private send vaqtincha bloklanadi, user yangi key'ni qayta verify qilishi kerak
-15. x25519:v4 bootstrap decode muvaffaqiyatli bo'lsa local one-time prekey ham delete qilinadi
-16. decoder successful decryptlardan keyin plaintext payload cache'ga yozadi, shuning uchun history qayta o'qilganda bootstrap/prekey state'ga qaramlik kamayadi
-17. group key create/sync vaqtida usable participant device'larning hammasi qamrab olinishi shart
-18. groupda biror participant usable device key'siz bo'lsa xabar yuborish to'xtatiladi, partial envelope upload qilinmaydi
-19. eski `session:v1` payloadlari uchun backward-compatible decrypt qatlami saqlangan
-20. legacy yoki buzilgan local private sessionlar read vaqtida auto-invalid bo'ladi
-21. outbound/inbound plaintext cache capped bo'lib yuradi va logout paytida tozalanadi
-22. peer device `ml-kem-768` public key e'lon qilgan bo'lsa private send `hybrid:v1` yoki `hybrid:v0` payload bilan yuboriladi
-23. hybrid final secret `X25519` va `ML-KEM-768` shared secret kombinatsiyasidan derive qilinadi
-24. peer PQC key yo'q bo'lsa flow avtomatik klassik `x25519:v4` yoki `x25519:v3` ga fallback qiladi
-25. peer device `ml-dsa-65` signing key e'lon qilgan bo'lsa private payload oxiriga signing public key va signature qo'shiladi
-26. decrypt paytida signed private payload `ML-DSA-65` bilan verify qilinadi; imzo yaroqsiz bo'lsa payload reject qilinadi
+15. decoder successful decryptlardan keyin plaintext payload cache'ga yozadi
+16. group key create/sync vaqtida usable participant device'larning hammasi qamrab olinishi shart
+17. groupda biror participant usable PQC device key'siz bo'lsa xabar yuborish to'xtatiladi, partial envelope upload qilinmaydi
+18. group key envelope `group-wrap:pqc:v1` formatida yaratiladi
+19. group wrap `ML-KEM-768` bilan encapsulate qilinadi va `ML-DSA-65` bilan imzolanadi
+20. outbound/inbound plaintext cache capped bo'lib yuradi va logout paytida tozalanadi
 
 ## Current Backend Notes
 
@@ -88,7 +82,7 @@ Muhim qarorlar:
 1. server faqat transport, auth va metadata roli bajaradi
 2. private key serverga chiqmaydi
 3. group key faqat wrapped envelope sifatida serverga boradi
-4. `x25519` public key noto'g'ri bo'lsa backend reject qiladi
+4. `ml-kem-768` yoki `ml-dsa-65` public key noto'g'ri bo'lsa backend reject qiladi
 
 ## Deploy Notes
 
