@@ -1,6 +1,7 @@
 import os
 import socket
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -94,19 +95,63 @@ WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
 
+def _sqlite_database_config():
+    path = os.environ.get(
+        'SQLITE_PATH',
+        str(BASE_DIR.parent / 'shared' / 'db.sqlite3'),
+    )
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    return {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': path,
+        'OPTIONS': {
+            'timeout': int(os.environ.get('SQLITE_TIMEOUT_SECONDS', '30')),
+        },
+    }
+
+
+def _postgres_database_config():
+    database_url = os.environ.get('DATABASE_URL', '').strip()
+    if database_url:
+        parsed = urlparse(database_url)
+        if parsed.scheme not in {'postgres', 'postgresql'}:
+            raise ValueError('DATABASE_URL must use postgres:// or postgresql://')
+        return {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': unquote(parsed.path.lstrip('/')),
+            'USER': unquote(parsed.username or ''),
+            'PASSWORD': unquote(parsed.password or ''),
+            'HOST': parsed.hostname or '',
+            'PORT': str(parsed.port or '5432'),
+            'CONN_MAX_AGE': int(os.environ.get('POSTGRES_CONN_MAX_AGE', '0')),
+        }
+
+    return {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('POSTGRES_DB', 'pqc_chat_app'),
+        'USER': os.environ.get('POSTGRES_USER', 'pqc_chat_app'),
+        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', ''),
+        'HOST': os.environ.get('POSTGRES_HOST', '127.0.0.1'),
+        'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+        'CONN_MAX_AGE': int(os.environ.get('POSTGRES_CONN_MAX_AGE', '0')),
+    }
+
+
+def _database_config():
+    database_backend = os.environ.get('DB_BACKEND', '').strip().lower()
+    if database_backend in {'postgres', 'postgresql'}:
+        return _postgres_database_config()
+    if os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_DB'):
+        return _postgres_database_config()
+    return _sqlite_database_config()
+
+
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.environ.get(
-            'SQLITE_PATH',
-            str(BASE_DIR.parent / 'shared' / 'db.sqlite3'),
-        ),
-    }
+    'default': _database_config(),
 }
-Path(DATABASES['default']['NAME']).parent.mkdir(parents=True, exist_ok=True)
 
 
 # Password validation

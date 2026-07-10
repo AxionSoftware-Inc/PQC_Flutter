@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils.text import slugify
 from uuid import uuid4
 
@@ -102,14 +102,16 @@ def _get_request_active_workspace(request):
 
 
 def _ensure_default_workspace_membership(user):
-    org, _ = Organization.objects.get_or_create(
+    org, _ = _safe_get_or_create(
+        Organization,
         slug='default-org',
         defaults={
             'name': 'Default Organization',
             'created_by': user,
         },
     )
-    workspace, _ = Workspace.objects.get_or_create(
+    workspace, _ = _safe_get_or_create(
+        Workspace,
         organization=org,
         slug='main-workspace',
         defaults={
@@ -121,7 +123,8 @@ def _ensure_default_workspace_membership(user):
             },
         },
     )
-    org_member, created = OrganizationMember.objects.get_or_create(
+    org_member, created = _safe_get_or_create(
+        OrganizationMember,
         organization=org,
         user=user,
         defaults={
@@ -131,7 +134,8 @@ def _ensure_default_workspace_membership(user):
     if not created and not org_member.is_active:
         org_member.is_active = True
         org_member.save(update_fields=['is_active', 'updated_at'])
-    workspace_member, created = WorkspaceMember.objects.get_or_create(
+    workspace_member, created = _safe_get_or_create(
+        WorkspaceMember,
         workspace=workspace,
         organization_member=org_member,
         defaults={
@@ -142,6 +146,13 @@ def _ensure_default_workspace_membership(user):
         workspace_member.is_active = True
         workspace_member.save(update_fields=['is_active', 'updated_at'])
     return org, workspace
+
+
+def _safe_get_or_create(model, defaults=None, **lookup):
+    try:
+        return model.objects.get_or_create(defaults=defaults or {}, **lookup)
+    except IntegrityError:
+        return model.objects.get(**lookup), False
 
 
 def upsert_user_device(

@@ -37,7 +37,8 @@ Future<void> main() async {
   final keyVerificationService = KeyVerificationService(database: appDatabase);
   final groupKeyStore = GroupKeyStore(
     deviceIdentityService: deviceIdentityService,
-    deviceKeyService: deviceKeyService,
+    devicePqcKeyService: devicePqcKeyService,
+    devicePqcSigningKeyService: devicePqcSigningKeyService,
     remoteDataSource: remoteDataSource,
   );
   final authRepository = AuthRepository(
