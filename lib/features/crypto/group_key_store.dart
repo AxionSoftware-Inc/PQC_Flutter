@@ -150,6 +150,15 @@ class GroupKeyStore implements GroupKeyProvider {
     required Map<int, AppUser> usersById,
     String? requestedKeyId,
   }) async {
+    if (requestedKeyId != null) {
+      final cached = await _readLocalKey(
+        conversationId: conversation.id,
+        keyId: requestedKeyId,
+      );
+      if (cached != null) {
+        return GroupKeyMaterial(keyId: requestedKeyId, secretKeyBytes: cached);
+      }
+    }
     final deviceIdentity = await _deviceIdentityService.getIdentity();
     final envelopes = await _remoteDataSource.fetchConversationKeyEnvelopes(
       conversation.id,

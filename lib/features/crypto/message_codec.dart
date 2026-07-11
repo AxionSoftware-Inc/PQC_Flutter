@@ -10,6 +10,8 @@ import '../../core/device/device_pqc_signing_key_service.dart';
 import '../../core/models/app_user.dart';
 import '../../core/models/conversation.dart';
 import '../chat/application/conversation_device_policy.dart';
+import 'durability/crypto_durability_models.dart';
+import 'durability/key_material_registry.dart';
 import 'chat_crypto_exceptions.dart';
 import 'group_key_store.dart';
 
@@ -18,12 +20,19 @@ class PqcPrivateMessageCodec {
     required this.deviceIdentityService,
     required this.devicePqcKeyService,
     required this.devicePqcSigningKeyService,
+    KeyMaterialRegistry? keyMaterialRegistry,
     ConversationDevicePolicy? devicePolicy,
     AesGcm? cipher,
     Hkdf? hkdf,
   }) : _cipher = cipher ?? AesGcm.with256bits(),
        _hkdf = hkdf ?? Hkdf(hmac: Hmac.sha256(), outputLength: 32),
-       _devicePolicy = devicePolicy ?? const ConversationDevicePolicy();
+       _devicePolicy = devicePolicy ?? const ConversationDevicePolicy(),
+       _keyMaterialRegistry =
+           keyMaterialRegistry ??
+           KeyMaterialRegistry(
+             devicePqcKeyService: devicePqcKeyService,
+             devicePqcSigningKeyService: devicePqcSigningKeyService,
+           );
 
   static const prefix = 'pqc:v1';
   static final _random = Random.secure();
@@ -32,6 +41,7 @@ class PqcPrivateMessageCodec {
   final DevicePqcKeyService devicePqcKeyService;
   final DevicePqcSigningKeyService devicePqcSigningKeyService;
   final ConversationDevicePolicy _devicePolicy;
+  final KeyMaterialRegistry _keyMaterialRegistry;
   final AesGcm _cipher;
   final Hkdf _hkdf;
 
@@ -127,7 +137,18 @@ class PqcPrivateMessageCodec {
         return '[decrypt-error]';
       }
       final localIdentity = await deviceIdentityService.getIdentity();
+      final availableKeysets = await _keyMaterialRegistry.readHistoricalDecryptKeysets();
+      KeysetSnapshot? matchingHistoricalKeyset;
+      for (final keyset in availableKeysets) {
+        if (keyset.deviceId == senderDeviceId ||
+            keyset.deviceId == targetDeviceId) {
+          matchingHistoricalKeyset = keyset;
+          break;
+        }
+      }
       late final _WrappedContentKeyEnvelope wrap;
+      late final String unwrapTargetDeviceId;
+      late final String unwrapSecretKey;
       if (localIdentity.id == senderDeviceId) {
         wrap = _WrappedContentKeyEnvelope(
           kemCiphertext: parts[3],
@@ -135,6 +156,9 @@ class PqcPrivateMessageCodec {
           cipherText: base64Decode(parts[5]),
           macBytes: base64Decode(parts[6]),
         );
+        unwrapTargetDeviceId = localIdentity.id;
+        unwrapSecretKey =
+            (await devicePqcKeyService.getOrCreateKeyMaterial()).secretKey;
       } else if (localIdentity.id == targetDeviceId) {
         wrap = _WrappedContentKeyEnvelope(
           kemCiphertext: parts[7],
@@ -142,14 +166,28 @@ class PqcPrivateMessageCodec {
           cipherText: base64Decode(parts[9]),
           macBytes: base64Decode(parts[10]),
         );
+        unwrapTargetDeviceId = localIdentity.id;
+        unwrapSecretKey =
+            (await devicePqcKeyService.getOrCreateKeyMaterial()).secretKey;
+      } else if (matchingHistoricalKeyset != null) {
+        final isSelfWrap = matchingHistoricalKeyset.deviceId == senderDeviceId;
+        wrap = _WrappedContentKeyEnvelope(
+          kemCiphertext: isSelfWrap ? parts[3] : parts[7],
+          nonce: base64Decode(isSelfWrap ? parts[4] : parts[8]),
+          cipherText: base64Decode(isSelfWrap ? parts[5] : parts[9]),
+          macBytes: base64Decode(isSelfWrap ? parts[6] : parts[10]),
+        );
+        unwrapTargetDeviceId = matchingHistoricalKeyset.deviceId;
+        unwrapSecretKey = matchingHistoricalKeyset.pqcSecretKey;
       } else {
         return '[decrypt-error]';
       }
       final contentKeyBytes = await _unwrapContentKeyForCurrentDevice(
         senderDeviceId: senderDeviceId,
-        localDeviceId: localIdentity.id,
+        localDeviceId: unwrapTargetDeviceId,
         conversation: conversation,
         wrap: wrap,
+        secretKeyBase64: unwrapSecretKey,
       );
       final clearBytes = await _cipher.decrypt(
         SecretBox(
@@ -199,9 +237,11 @@ class PqcPrivateMessageCodec {
     required String localDeviceId,
     required Conversation conversation,
     required _WrappedContentKeyEnvelope wrap,
+    required String secretKeyBase64,
   }) async {
-    final sharedSecret = await devicePqcKeyService.decapsulate(
-      wrap.kemCiphertext,
+    final sharedSecret = await devicePqcKeyService.decapsulateWithSecretKey(
+      ciphertextBase64: wrap.kemCiphertext,
+      secretKeyBase64: secretKeyBase64,
     );
     final wrapKey = await _deriveWrapKey(
       sharedSecret: sharedSecret,

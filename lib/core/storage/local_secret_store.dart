@@ -78,6 +78,10 @@ class LocalSecretStore {
     await _clearManagedKeysRegistry();
   }
 
+  Future<List<String>> listManagedKeys() {
+    return _readManagedKeys();
+  }
+
   Future<String?> _migrateLegacyAndroidValueIfNeeded(String key) async {
     final preferences = await SharedPreferences.getInstance();
     final legacyValue = preferences.getString(key);

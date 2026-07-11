@@ -2,6 +2,7 @@ import '../../core/device/device_identity_service.dart';
 import '../../core/device/device_pqc_key_service.dart';
 import '../../core/device/device_pqc_signing_key_service.dart';
 import '../../core/models/conversation.dart';
+import 'durability/key_material_registry.dart';
 import 'chat_cipher_service.dart';
 import 'chat_crypto_context.dart';
 import 'group_key_store.dart';
@@ -52,6 +53,7 @@ class PqcPrivateChatAlgorithm implements ChatCipherAlgorithm {
     required DeviceIdentityService deviceIdentityService,
     required DevicePqcKeyService devicePqcKeyService,
     required DevicePqcSigningKeyService devicePqcSigningKeyService,
+    KeyMaterialRegistry? keyMaterialRegistry,
     PqcPrivateMessageCodec? codec,
   }) : _codec =
            codec ??
@@ -59,6 +61,7 @@ class PqcPrivateChatAlgorithm implements ChatCipherAlgorithm {
              deviceIdentityService: deviceIdentityService,
              devicePqcKeyService: devicePqcKeyService,
              devicePqcSigningKeyService: devicePqcSigningKeyService,
+             keyMaterialRegistry: keyMaterialRegistry,
            );
 
   final PqcPrivateMessageCodec _codec;

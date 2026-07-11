@@ -24,6 +24,9 @@ import 'features/chat/data/outbox_store.dart';
 import 'features/chat/data/private_conversation_security_coordinator.dart';
 import 'features/crypto/chat_cipher_algorithms.dart';
 import 'features/crypto/chat_cipher_service.dart';
+import 'features/crypto/durability/crypto_backup_service.dart';
+import 'features/crypto/durability/crypto_core_facade.dart';
+import 'features/crypto/durability/key_material_registry.dart';
 import 'features/crypto/group_key_store.dart';
 import 'features/crypto/outbound_message_cache.dart';
 import 'features/security/key_verification_service.dart';
@@ -54,6 +57,12 @@ Future<void> main() async {
     localDataProtector: localDataProtector,
   );
   final keyVerificationService = KeyVerificationService(database: appDatabase);
+  final keyMaterialRegistry = KeyMaterialRegistry(
+    deviceIdentityService: deviceIdentityService,
+    deviceKeyService: deviceKeyService,
+    devicePqcKeyService: devicePqcKeyService,
+    devicePqcSigningKeyService: devicePqcSigningKeyService,
+  );
   final groupKeyStore = GroupKeyStore(
     deviceIdentityService: deviceIdentityService,
     devicePqcKeyService: devicePqcKeyService,
@@ -81,9 +90,18 @@ Future<void> main() async {
         deviceIdentityService: deviceIdentityService,
         devicePqcKeyService: devicePqcKeyService,
         devicePqcSigningKeyService: devicePqcSigningKeyService,
+        keyMaterialRegistry: keyMaterialRegistry,
       ),
     ],
     outboundMessageCache: outboundMessageCache,
+  );
+  final cryptoCoreFacade = CryptoCoreFacade(
+    cipherService: chatCipherService,
+    groupKeyStore: groupKeyStore,
+    keyMaterialRegistry: keyMaterialRegistry,
+    backupService: CryptoBackupService(
+      keyMaterialRegistry: keyMaterialRegistry,
+    ),
   );
   final privateConversationSecurityCoordinator =
       PrivateConversationSecurityCoordinator(
@@ -102,7 +120,10 @@ Future<void> main() async {
       privateConversationSecurityCoordinator:
           privateConversationSecurityCoordinator,
     ),
-    cryptoService: ChatCryptoService(cipherService: chatCipherService),
+    cryptoService: ChatCryptoService(
+      cipherService: chatCipherService,
+      cryptoCoreFacade: cryptoCoreFacade,
+    ),
   );
   final sessionController = SessionController(
     authRepository: authRepository,
@@ -129,5 +150,6 @@ Future<void> main() async {
     ),
   );
 
+  await cryptoCoreFacade.initialize();
   unawaited(sessionController.initialize());
 }

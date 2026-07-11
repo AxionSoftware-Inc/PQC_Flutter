@@ -83,12 +83,10 @@ class DevicePqcKeyService {
 
   Future<Uint8List> decapsulate(String ciphertextBase64) async {
     final material = await getOrCreateKeyMaterial();
-    final secretKey = base64Decode(material.secretKey);
-    final ciphertext = base64Decode(ciphertextBase64);
-    if (ciphertext.length != ciphertextLength) {
-      throw ArgumentError('Invalid ML-KEM ciphertext length.');
-    }
-    return _kem.decapsulate(secretKey, ciphertext);
+    return decapsulateWithSecretKey(
+      ciphertextBase64: ciphertextBase64,
+      secretKeyBase64: material.secretKey,
+    );
   }
 
   Future<(String ciphertext, Uint8List sharedSecret)> encapsulateForPublicKey(
@@ -100,6 +98,21 @@ class DevicePqcKeyService {
     }
     final (ciphertext, sharedSecret) = _kem.encapsulate(publicKey);
     return (base64Encode(ciphertext), sharedSecret);
+  }
+
+  Future<Uint8List> decapsulateWithSecretKey({
+    required String ciphertextBase64,
+    required String secretKeyBase64,
+  }) async {
+    final secretKey = base64Decode(secretKeyBase64);
+    final ciphertext = base64Decode(ciphertextBase64);
+    if (ciphertext.length != ciphertextLength) {
+      throw ArgumentError('Invalid ML-KEM ciphertext length.');
+    }
+    if (secretKey.length != secretKeyLength) {
+      throw ArgumentError('Invalid ML-KEM secret key length.');
+    }
+    return _kem.decapsulate(secretKey, ciphertext);
   }
 
   bool isUsablePublicKey(String? publicKeyBase64) =>
