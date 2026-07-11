@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -5,15 +9,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class LocalSecretStore {
   static const _managedKeysRegistry = 'local_secret_store_managed_keys';
+  static const _fallbackMasterKey = 'local_secret_store_fallback_master_key';
+  static const _fallbackPrefix = 'local_secret:v1';
+  static final _random = Random.secure();
 
-  LocalSecretStore({FlutterSecureStorage? secureStorage})
+  LocalSecretStore({FlutterSecureStorage? secureStorage, AesGcm? cipher})
     : _secureStorage =
           secureStorage ??
           const FlutterSecureStorage(
             aOptions: AndroidOptions(resetOnError: true),
-          );
+          ),
+      _cipher = cipher ?? AesGcm.with256bits();
 
   final FlutterSecureStorage _secureStorage;
+  final AesGcm _cipher;
 
   bool get _shouldMigrateLegacyAndroidSharedPrefs =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -32,10 +41,10 @@ class LocalSecretStore {
   }
 
   Future<void> write({required String key, required String value}) async {
-    await _writeSecureValue(key: key, value: value);
+    final wroteToSecureStorage = await _writeSecureValue(key: key, value: value);
     await _registerManagedKey(key);
 
-    if (_shouldMigrateLegacyAndroidSharedPrefs) {
+    if (_shouldMigrateLegacyAndroidSharedPrefs && wroteToSecureStorage) {
       final preferences = await SharedPreferences.getInstance();
       await preferences.remove(key);
     }
@@ -121,12 +130,100 @@ class LocalSecretStore {
     try {
       return await _secureStorage.read(key: key);
     } on MissingPluginException {
+      return _readFallbackValue(key);
+    } on PlatformException {
+      return _readFallbackValue(key);
+    }
+  }
+
+  Future<bool> _writeSecureValue({
+    required String key,
+    required String value,
+  }) async {
+    try {
+      await _secureStorage.write(key: key, value: value);
+      return true;
+    } on MissingPluginException {
+      await _writeFallbackValue(key: key, value: value);
+      return false;
+    } on PlatformException {
+      await _writeFallbackValue(key: key, value: value);
+      return false;
+    }
+  }
+
+  Future<void> _deleteSecureValue(String key) async {
+    try {
+      await _secureStorage.delete(key: key);
+    } on MissingPluginException {
       final preferences = await SharedPreferences.getInstance();
-      return _readSharedPreferencesValue(preferences, key);
+      await preferences.remove(key);
     } on PlatformException {
       final preferences = await SharedPreferences.getInstance();
-      return _readSharedPreferencesValue(preferences, key);
+      await preferences.remove(key);
     }
+  }
+
+  Future<String?> _readFallbackValue(String key) async {
+    final preferences = await SharedPreferences.getInstance();
+    final stored = _readSharedPreferencesValue(preferences, key);
+    if (stored == null || stored.isEmpty) {
+      return null;
+    }
+    if (!stored.startsWith('$_fallbackPrefix:')) {
+      await _writeFallbackValue(key: key, value: stored);
+      return stored;
+    }
+
+    final parts = stored.substring(_fallbackPrefix.length + 1).split(':');
+    if (parts.length != 3) {
+      return null;
+    }
+    try {
+      final nonce = base64Decode(parts[0]);
+      final cipherText = base64Decode(parts[1]);
+      final mac = base64Decode(parts[2]);
+      final secretBox = SecretBox(cipherText, nonce: nonce, mac: Mac(mac));
+      final secretKey = await _fallbackSecretKey();
+      final clearBytes = await _cipher.decrypt(secretBox, secretKey: secretKey);
+      return utf8.decode(clearBytes);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writeFallbackValue({
+    required String key,
+    required String value,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    final nonce = List<int>.generate(12, (_) => _random.nextInt(256));
+    final secretBox = await _cipher.encrypt(
+      utf8.encode(value),
+      secretKey: await _fallbackSecretKey(),
+      nonce: nonce,
+    );
+    await preferences.setString(
+      key,
+      [
+        _fallbackPrefix,
+        base64Encode(secretBox.nonce),
+        base64Encode(secretBox.cipherText),
+        base64Encode(secretBox.mac.bytes),
+      ].join(':'),
+    );
+  }
+
+  Future<SecretKey> _fallbackSecretKey() async {
+    final preferences = await SharedPreferences.getInstance();
+    final existing = preferences.getString(_fallbackMasterKey);
+    if (existing != null && existing.isNotEmpty) {
+      return SecretKey(base64Decode(existing));
+    }
+
+    final keyBytes = List<int>.generate(32, (_) => _random.nextInt(256));
+    await preferences.setString(_fallbackMasterKey, base64Encode(keyBytes));
+    return SecretKey(keyBytes);
   }
 
   String? _readSharedPreferencesValue(
@@ -144,32 +241,5 @@ class LocalSecretStore {
       return value.toString();
     }
     return null;
-  }
-
-  Future<void> _writeSecureValue({
-    required String key,
-    required String value,
-  }) async {
-    try {
-      await _secureStorage.write(key: key, value: value);
-    } on MissingPluginException {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.setString(key, value);
-    } on PlatformException {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.setString(key, value);
-    }
-  }
-
-  Future<void> _deleteSecureValue(String key) async {
-    try {
-      await _secureStorage.delete(key: key);
-    } on MissingPluginException {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.remove(key);
-    } on PlatformException {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.remove(key);
-    }
   }
 }

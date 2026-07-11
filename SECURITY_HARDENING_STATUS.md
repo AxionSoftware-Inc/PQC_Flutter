@@ -13,6 +13,13 @@
 - Persistent outbox queue added on Flutter side
 - Retryable vs permanent send failures added to UI
 - macOS secret store no longer uses SharedPreferences as the primary secret store
+- Fallback secret persistence now stores wrapped values instead of plaintext
+- Legacy plaintext fallback values are auto-migrated on read
+- Backend now rejects plaintext private payloads and requires `pqc:v1`
+- Backend now rejects plaintext group payloads and requires `group:v1`
+- Backend group key sync now accepts only PQC envelope algorithm/prefixes
+- Local message previews, message plaintext cache, and outbox plaintext are now protected at rest
+- Private send now requires enterprise-ready verified peer trust
 
 ## Still not fully closed
 - Full HTTPS/TLS termination is not complete until the live server is served over HTTPS with a valid certificate/domain

@@ -11,6 +11,10 @@ from chat.models import (
 
 
 User = get_user_model()
+PRIVATE_MESSAGE_PREFIX = 'pqc:v1:'
+GROUP_MESSAGE_PREFIX = 'group:v1:'
+GROUP_ENVELOPE_PREFIX = 'group-wrap:pqc:v1:'
+GROUP_ENVELOPE_ALGORITHM = 'group-ml-kem-768-aesgcm-v1'
 
 
 class PrivateConversationSerializer(serializers.Serializer):
@@ -35,10 +39,26 @@ class MessageCreateSerializer(serializers.Serializer):
     )
 
     def validate(self, attrs):
-        if not attrs.get('body', '').strip() and not attrs.get('attachment_ids'):
+        body = attrs.get('body', '').strip()
+        attachment_ids = attrs.get('attachment_ids') or []
+        if not body and not attachment_ids:
             raise serializers.ValidationError(
                 'body or attachment_ids must be provided.'
             )
+        conversation = self.context.get('conversation')
+        if conversation is None or not body:
+            return attrs
+        if conversation.type == Conversation.ConversationType.PRIVATE:
+            if not body.startswith(PRIVATE_MESSAGE_PREFIX):
+                raise serializers.ValidationError(
+                    {'body': 'Private chat messages must use pqc:v1 payloads.'}
+                )
+            return attrs
+        if conversation.type == Conversation.ConversationType.GROUP:
+            if not body.startswith(GROUP_MESSAGE_PREFIX):
+                raise serializers.ValidationError(
+                    {'body': 'Group chat messages must use group:v1 payloads.'}
+                )
         return attrs
 
 
@@ -122,11 +142,25 @@ class ConversationKeyEnvelopeInputSerializer(serializers.Serializer):
     target_device_id = serializers.CharField()
     wrapped_key = serializers.CharField()
 
+    def validate_wrapped_key(self, value):
+        if not value.startswith(GROUP_ENVELOPE_PREFIX):
+            raise serializers.ValidationError(
+                'wrapped_key must use group-wrap:pqc:v1 payloads.'
+            )
+        return value
+
 
 class ConversationKeyEnvelopeSyncSerializer(serializers.Serializer):
     key_id = serializers.CharField()
     algorithm = serializers.CharField()
     envelopes = ConversationKeyEnvelopeInputSerializer(many=True)
+
+    def validate_algorithm(self, value):
+        if value != GROUP_ENVELOPE_ALGORITHM:
+            raise serializers.ValidationError(
+                'Only group-ml-kem-768-aesgcm-v1 is accepted.'
+            )
+        return value
 
 
 class ConversationSerializer(serializers.ModelSerializer):

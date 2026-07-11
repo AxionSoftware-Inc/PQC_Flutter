@@ -6,6 +6,7 @@ import '../../../core/models/chat_message.dart';
 import '../../../core/models/conversation.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/database/app_database.dart';
+import '../../../core/storage/local_data_protector.dart';
 import 'package:drift/drift.dart' as drift;
 import '../../crypto/chat_cipher_service.dart';
 import '../../crypto/chat_crypto_context.dart';
@@ -27,6 +28,7 @@ class ChatRepository {
     required PrivateConversationSecurityCoordinator
     privateConversationSecurityCoordinator,
     AppDatabase? database,
+    LocalDataProtector? localDataProtector,
     ChatRealtimeService? realtimeService,
     OutboxStore? outboxStore,
   }) : this._internal(
@@ -36,6 +38,7 @@ class ChatRepository {
          privateConversationSecurityCoordinator:
              privateConversationSecurityCoordinator,
          database: database ?? AppDatabase(),
+         localDataProtector: localDataProtector ?? LocalDataProtector(),
          realtimeService: realtimeService,
          outboxStore: outboxStore,
        );
@@ -46,10 +49,16 @@ class ChatRepository {
     required this.keyVerificationService,
     required this.privateConversationSecurityCoordinator,
     required AppDatabase database,
+    required LocalDataProtector localDataProtector,
     required this.realtimeService,
     OutboxStore? outboxStore,
   }) : _database = database,
-       outboxStore = outboxStore ?? OutboxStore(database: database) {
+       _localDataProtector = localDataProtector,
+       outboxStore = outboxStore ??
+           OutboxStore(
+             database: database,
+             localDataProtector: localDataProtector,
+           ) {
     realtimeService?.events.listen(_handleRealtimeEvent);
   }
 
@@ -59,6 +68,7 @@ class ChatRepository {
   final PrivateConversationSecurityCoordinator
   privateConversationSecurityCoordinator;
   final AppDatabase _database;
+  final LocalDataProtector _localDataProtector;
   final ChatRealtimeService? realtimeService;
   final OutboxStore outboxStore;
   final Map<int, AppUser> _usersById = {};
@@ -116,16 +126,20 @@ class ChatRepository {
           workspaceId: drift.Value(merged.workspaceId),
           type: drift.Value(merged.type),
           title: drift.Value(merged.title),
-          lastMessagePreview: drift.Value(merged.lastMessagePreview),
+          lastMessagePreview: drift.Value(
+            await _localDataProtector.protect(merged.lastMessagePreview),
+          ),
           updatedAt: drift.Value(merged.updatedAt),
           createdAt: drift.Value(merged.createdAt),
         ),
       );
       _conversationsById[merged.id] = merged;
     }
-    final all = (await _database.readConversationsForWorkspace(
-      _activeWorkspaceId,
-    )).map(_mapConversationRow).toList();
+    final rows = await _database.readConversationsForWorkspace(_activeWorkspaceId);
+    final all = <Conversation>[];
+    for (final row in rows) {
+      all.add(await _mapConversationRow(row));
+    }
     return all;
   }
 
@@ -156,9 +170,13 @@ class ChatRepository {
     final existingRows = await _database.readMessagesForConversation(
       conversation.id,
     );
-    final existingById = {for (final row in existingRows) row.id: row};
+    final unprotectedExistingRows = <MessagesTableData>[];
+    for (final row in existingRows) {
+      unprotectedExistingRows.add(await _unprotectMessageRow(row));
+    }
+    final existingById = {for (final row in unprotectedExistingRows) row.id: row};
     final existingByClientId = {
-      for (final row in existingRows)
+      for (final row in unprotectedExistingRows)
         if (row.clientMessageId.isNotEmpty) row.clientMessageId: row,
     };
     for (final message in messages) {
@@ -175,7 +193,9 @@ class ChatRepository {
           conversationId: drift.Value(message.conversationId),
           senderId: drift.Value(message.senderId),
           senderName: drift.Value(message.senderName),
-          plaintextBody: drift.Value(plaintext),
+          plaintextBody: drift.Value(
+            await _localDataProtector.protect(plaintext),
+          ),
           encryptedBody: drift.Value(message.body),
           attachmentsJson: drift.Value(_encodeAttachments(message.attachments)),
           messageType: drift.Value(message.messageType),
@@ -205,9 +225,13 @@ class ChatRepository {
       currentUserId: currentUserId,
     );
     final pending = await outboxStore.readForConversation(conversation.id);
-    final mergedRemote = (await _database.readMessagesForConversation(
+    final mergedRemoteRows = await _database.readMessagesForConversation(
       conversation.id,
-    )).map(_mapMessageRow).toList();
+    );
+    final mergedRemote = <ChatMessage>[];
+    for (final row in mergedRemoteRows) {
+      mergedRemote.add(await _mapMessageRow(row));
+    }
     _messageCacheByConversation[conversation.id] = mergedRemote;
     return _mergeMessages(mergedRemote, pending);
   }
@@ -504,33 +528,37 @@ class ChatRepository {
   }) async {
     final rows = await _database.readMessagesForConversation(conversation.id);
     for (final row in rows) {
-      if (row.plaintextBody != '[decrypt-error]' || row.encryptedBody.isEmpty) {
+      final unprotectedRow = await _unprotectMessageRow(row);
+      if (unprotectedRow.plaintextBody != '[decrypt-error]' ||
+          unprotectedRow.encryptedBody.isEmpty) {
         continue;
       }
       final plaintext = await _decryptPayloadWithUserRefresh(
         conversation: conversation,
         currentUserId: currentUserId,
-        payload: row.encryptedBody,
+        payload: unprotectedRow.encryptedBody,
       );
       if (plaintext == '[decrypt-error]') {
         continue;
       }
       await _database.upsertMessage(
         MessagesTableCompanion(
-          id: drift.Value(row.id),
-          conversationId: drift.Value(row.conversationId),
-          senderId: drift.Value(row.senderId),
-          senderName: drift.Value(row.senderName),
-          plaintextBody: drift.Value(plaintext),
-          encryptedBody: drift.Value(row.encryptedBody),
-          attachmentsJson: drift.Value(row.attachmentsJson),
-          messageType: drift.Value(row.messageType),
-          attachmentCount: drift.Value(row.attachmentCount),
-          clientMessageId: drift.Value(row.clientMessageId),
-          deliveryState: drift.Value(row.deliveryState),
-          failureReason: drift.Value(row.failureReason),
-          isPending: drift.Value(row.isPending),
-          createdAt: drift.Value(row.createdAt),
+          id: drift.Value(unprotectedRow.id),
+          conversationId: drift.Value(unprotectedRow.conversationId),
+          senderId: drift.Value(unprotectedRow.senderId),
+          senderName: drift.Value(unprotectedRow.senderName),
+          plaintextBody: drift.Value(
+            await _localDataProtector.protect(plaintext),
+          ),
+          encryptedBody: drift.Value(unprotectedRow.encryptedBody),
+          attachmentsJson: drift.Value(unprotectedRow.attachmentsJson),
+          messageType: drift.Value(unprotectedRow.messageType),
+          attachmentCount: drift.Value(unprotectedRow.attachmentCount),
+          clientMessageId: drift.Value(unprotectedRow.clientMessageId),
+          deliveryState: drift.Value(unprotectedRow.deliveryState),
+          failureReason: drift.Value(unprotectedRow.failureReason),
+          isPending: drift.Value(unprotectedRow.isPending),
+          createdAt: drift.Value(unprotectedRow.createdAt),
         ),
       );
     }
@@ -585,7 +613,7 @@ class ChatRepository {
         conversationId: drift.Value(decoded.conversationId),
         senderId: drift.Value(decoded.senderId),
         senderName: drift.Value(decoded.senderName),
-        plaintextBody: drift.Value(decoded.body),
+        plaintextBody: drift.Value(await _localDataProtector.protect(decoded.body)),
         encryptedBody: drift.Value(message.body),
         attachmentsJson: drift.Value(_encodeAttachments(decoded.attachments)),
         messageType: drift.Value(decoded.messageType),
@@ -708,7 +736,7 @@ class ChatRepository {
         conversationId: drift.Value(conversationId),
         senderId: drift.Value(event.payload['sender_id'] as int),
         senderName: drift.Value(event.payload['sender_name'] as String? ?? ''),
-        plaintextBody: drift.Value(plaintext),
+        plaintextBody: drift.Value(await _localDataProtector.protect(plaintext)),
         encryptedBody: drift.Value(payload),
         attachmentsJson: drift.Value(
           _encodeAttachments(
@@ -741,26 +769,28 @@ class ChatRepository {
     );
   }
 
-  Conversation _mapConversationRow(ConversationsTableData row) {
+  Future<Conversation> _mapConversationRow(ConversationsTableData row) async {
     return Conversation(
       id: row.id,
       workspaceId: row.workspaceId,
       type: row.type,
       title: row.title,
       participantIds: _conversationsById[row.id]?.participantIds ?? const [],
-      lastMessagePreview: row.lastMessagePreview,
+      lastMessagePreview: await _localDataProtector.unprotect(
+        row.lastMessagePreview,
+      ),
       updatedAt: row.updatedAt,
       createdAt: row.createdAt,
     );
   }
 
-  ChatMessage _mapMessageRow(MessagesTableData row) {
+  Future<ChatMessage> _mapMessageRow(MessagesTableData row) async {
     return ChatMessage(
       id: row.id,
       conversationId: row.conversationId,
       senderId: row.senderId,
       senderName: row.senderName,
-      body: row.plaintextBody,
+      body: await _localDataProtector.unprotect(row.plaintextBody),
       createdAt: row.createdAt,
       attachments: _decodeAttachments(row.attachmentsJson),
       messageType: row.messageType,
@@ -768,6 +798,12 @@ class ChatRepository {
       clientMessageId: row.clientMessageId,
       deliveryState: _deliveryStateFromStored(row.deliveryState),
       failureReason: row.failureReason,
+    );
+  }
+
+  Future<MessagesTableData> _unprotectMessageRow(MessagesTableData row) async {
+    return row.copyWith(
+      plaintextBody: await _localDataProtector.unprotect(row.plaintextBody),
     );
   }
 
