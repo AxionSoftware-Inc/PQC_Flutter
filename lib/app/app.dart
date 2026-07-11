@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../features/auth/session_controller.dart';
+import '../features/chat/application/chat_facade.dart';
 import '../features/auth/presentation/login_page.dart';
-import '../features/chat/data/chat_repository.dart';
 import '../features/chat/presentation/chat_list_page.dart';
 
 class PqcChatApp extends StatelessWidget {
   const PqcChatApp({
     super.key,
     required this.sessionController,
-    required this.chatRepository,
+    required this.chatFacade,
   });
 
   final SessionController sessionController;
-  final ChatRepository chatRepository;
+  final ChatFacade chatFacade;
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +38,7 @@ class PqcChatApp extends StatelessWidget {
 
           return ChatListPage(
             sessionController: sessionController,
-            chatRepository: chatRepository,
+            chatFacade: chatFacade,
           );
         },
       ),

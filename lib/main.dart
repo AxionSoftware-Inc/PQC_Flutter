@@ -15,9 +15,11 @@ import 'core/storage/local_data_protector.dart';
 import 'core/storage/session_storage.dart';
 import 'features/auth/data/auth_repository.dart';
 import 'features/auth/session_controller.dart';
+import 'features/chat/application/chat_facade.dart';
+import 'features/chat/application/chat_local_store.dart';
+import 'features/chat/application/chat_services.dart';
 import 'features/chat/data/chat_remote_data_source.dart';
 import 'features/chat/data/chat_realtime_service.dart';
-import 'features/chat/data/chat_repository.dart';
 import 'features/chat/data/outbox_store.dart';
 import 'features/chat/data/private_conversation_security_coordinator.dart';
 import 'features/crypto/chat_cipher_algorithms.dart';
@@ -87,21 +89,25 @@ Future<void> main() async {
       PrivateConversationSecurityCoordinator(
         keyVerificationService: keyVerificationService,
       );
-  final chatRepository = ChatRepository(
+  final chatFacade = ChatFacade(
     remoteDataSource: remoteDataSource,
-    cipherService: chatCipherService,
-    keyVerificationService: keyVerificationService,
-    privateConversationSecurityCoordinator:
-        privateConversationSecurityCoordinator,
-    database: appDatabase,
-    localDataProtector: localDataProtector,
     realtimeService: chatRealtimeService,
     outboxStore: outboxStore,
+    localStore: ChatLocalStore(
+      database: appDatabase,
+      localDataProtector: localDataProtector,
+    ),
+    trustService: ChatTrustService(
+      keyVerificationService: keyVerificationService,
+      privateConversationSecurityCoordinator:
+          privateConversationSecurityCoordinator,
+    ),
+    cryptoService: ChatCryptoService(cipherService: chatCipherService),
   );
   final sessionController = SessionController(
     authRepository: authRepository,
     onSessionChanged: (sessionUser) async {
-      chatRepository.setActiveWorkspaceId(sessionUser?.activeWorkspaceId ?? 0);
+      chatFacade.switchWorkspaceContext(sessionUser?.activeWorkspaceId ?? 0);
       if (sessionUser == null ||
           sessionUser.token.isEmpty ||
           sessionUser.activeWorkspaceId <= 0) {
@@ -119,7 +125,7 @@ Future<void> main() async {
   runApp(
     PqcChatApp(
       sessionController: sessionController,
-      chatRepository: chatRepository,
+      chatFacade: chatFacade,
     ),
   );
 

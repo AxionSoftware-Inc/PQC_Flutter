@@ -9,6 +9,7 @@ import '../../core/device/device_pqc_key_service.dart';
 import '../../core/device/device_pqc_signing_key_service.dart';
 import '../../core/models/app_user.dart';
 import '../../core/models/conversation.dart';
+import '../chat/application/conversation_device_policy.dart';
 import 'chat_crypto_exceptions.dart';
 import 'group_key_store.dart';
 
@@ -17,10 +18,12 @@ class PqcPrivateMessageCodec {
     required this.deviceIdentityService,
     required this.devicePqcKeyService,
     required this.devicePqcSigningKeyService,
+    ConversationDevicePolicy? devicePolicy,
     AesGcm? cipher,
     Hkdf? hkdf,
   }) : _cipher = cipher ?? AesGcm.with256bits(),
-       _hkdf = hkdf ?? Hkdf(hmac: Hmac.sha256(), outputLength: 32);
+       _hkdf = hkdf ?? Hkdf(hmac: Hmac.sha256(), outputLength: 32),
+       _devicePolicy = devicePolicy ?? const ConversationDevicePolicy();
 
   static const prefix = 'pqc:v1';
   static final _random = Random.secure();
@@ -28,6 +31,7 @@ class PqcPrivateMessageCodec {
   final DeviceIdentityService deviceIdentityService;
   final DevicePqcKeyService devicePqcKeyService;
   final DevicePqcSigningKeyService devicePqcSigningKeyService;
+  final ConversationDevicePolicy _devicePolicy;
   final AesGcm _cipher;
   final Hkdf _hkdf;
 
@@ -258,18 +262,17 @@ class PqcPrivateMessageCodec {
     required Conversation conversation,
     required Map<int, AppUser> usersById,
   }) {
-    final peerUserId = conversation.participantIds.firstWhere(
-      (id) => id != currentUserId,
-      orElse: () => -1,
+    final resolution = _devicePolicy.resolvePrivatePeerPqcDevice(
+      currentUserId: currentUserId,
+      conversation: conversation,
+      usersById: usersById,
     );
-    final peerUser = usersById[peerUserId];
-    final peerDevice = peerUser?.preferredPqcDevice;
-    if (peerUser == null || peerDevice == null) {
+    if (!resolution.isReady || resolution.device == null) {
       throw ChatEncryptionException(
         'Peer PQC device key is not ready yet. Ask them to reopen the app.',
       );
     }
-    return peerDevice;
+    return resolution.device!;
   }
 
   AppUserDevice? _findPeerDeviceById({
@@ -277,17 +280,11 @@ class PqcPrivateMessageCodec {
     required Map<int, AppUser> usersById,
     required String deviceId,
   }) {
-    for (final user in usersById.values) {
-      if (user.id == currentUserId) {
-        continue;
-      }
-      for (final device in user.devices) {
-        if (device.deviceId == deviceId) {
-          return device;
-        }
-      }
-    }
-    return null;
+    return _devicePolicy.findDeviceById(
+      usersById: usersById,
+      deviceId: deviceId,
+      excludeUserId: currentUserId,
+    );
   }
 }
 
