@@ -14,6 +14,8 @@ import '../../core/models/app_user.dart';
 import '../../core/models/conversation.dart';
 import '../../core/models/conversation_key_envelope.dart';
 import '../../core/storage/local_secret_store.dart';
+import '../chat/application/conversation_device_policy.dart';
+import '../chat/application/chat_models.dart';
 import '../chat/data/chat_remote_data_source.dart';
 import 'chat_crypto_exceptions.dart';
 
@@ -43,6 +45,7 @@ class GroupKeyStore implements GroupKeyProvider {
     required DevicePqcKeyService devicePqcKeyService,
     required DevicePqcSigningKeyService devicePqcSigningKeyService,
     required ChatRemoteDataSource remoteDataSource,
+    ConversationDevicePolicy? devicePolicy,
     LocalSecretStore? secretStore,
     Hkdf? hkdf,
     AesGcm? cipher,
@@ -51,6 +54,7 @@ class GroupKeyStore implements GroupKeyProvider {
        _devicePqcKeyService = devicePqcKeyService,
        _devicePqcSigningKeyService = devicePqcSigningKeyService,
        _remoteDataSource = remoteDataSource,
+       _devicePolicy = devicePolicy ?? const ConversationDevicePolicy(),
        _secretStore = secretStore ?? LocalSecretStore(),
        _hkdf = hkdf ?? Hkdf(hmac: Hmac.sha256(), outputLength: 32),
        _cipher = cipher ?? AesGcm.with256bits(),
@@ -65,6 +69,7 @@ class GroupKeyStore implements GroupKeyProvider {
   final DevicePqcKeyService _devicePqcKeyService;
   final DevicePqcSigningKeyService _devicePqcSigningKeyService;
   final ChatRemoteDataSource _remoteDataSource;
+  final ConversationDevicePolicy _devicePolicy;
   final LocalSecretStore _secretStore;
   final Hkdf _hkdf;
   final AesGcm _cipher;
@@ -204,14 +209,10 @@ class GroupKeyStore implements GroupKeyProvider {
     required Map<int, AppUser> usersById,
     required String deviceId,
   }) {
-    for (final user in usersById.values) {
-      for (final device in user.devices) {
-        if (device.deviceId == deviceId) {
-          return device;
-        }
-      }
-    }
-    return null;
+    return _devicePolicy.findDeviceById(
+      usersById: usersById,
+      deviceId: deviceId,
+    );
   }
 
   Future<String> _wrapGroupKeyForDevice({
@@ -357,69 +358,28 @@ class GroupKeyStore implements GroupKeyProvider {
     required Conversation conversation,
     required Map<int, AppUser> usersById,
   }) {
-    final entries = <String>[];
-    final participantIds = [...conversation.participantIds]..sort();
-    for (final userId in participantIds) {
-      final user = usersById[userId];
-      if (user == null) {
-        entries.add('$userId:missing');
-        continue;
-      }
-      final devices =
-          user.devices
-              .where((item) => item.hasUsableMlKemKey && item.hasUsableMlDsaKey)
-              .map(
-                (item) =>
-                    '${item.deviceId}:${item.pqcPublicKey}:${item.pqcSigningPublicKey}',
-              )
-              .toList()
-            ..sort();
-      if (devices.isEmpty) {
-        entries.add('$userId:none');
-        continue;
-      }
-      entries.add('$userId:${devices.join("|")}');
-    }
-    return entries.join('||');
+    return _devicePolicy.buildParticipantSignature(
+      conversation: conversation,
+      usersById: usersById,
+    );
   }
 
   List<AppUserDevice> _resolveTargetDevices({
     required Conversation conversation,
     required Map<int, AppUser> usersById,
   }) {
-    final targetDevices = <AppUserDevice>[];
-    final missingUsers = <String>[];
-
-    for (final userId in conversation.participantIds) {
-      final user = usersById[userId];
-      if (user == null) {
-        missingUsers.add('user-$userId');
-        continue;
-      }
-
-      final usableDevices = user.devices
-          .where(
-            (device) => device.hasUsableMlKemKey && device.hasUsableMlDsaKey,
-          )
-          .toList();
-      if (usableDevices.isEmpty) {
-        missingUsers.add(user.displayName);
-        continue;
-      }
-
-      targetDevices.addAll(usableDevices);
-    }
-
-    if (missingUsers.isNotEmpty) {
+    final resolution = _devicePolicy.resolveGroupTargetDevices(
+      conversation: conversation,
+      usersById: usersById,
+    );
+    if (resolution.issue == DeviceResolutionIssue.missingParticipants) {
       throw ChatEncryptionException(
-        'Group chat ready emas. Key yoq participantlar: ${missingUsers.join(", ")}.',
+        'Group chat ready emas. Key yoq participantlar: ${resolution.missingParticipants.join(", ")}.',
       );
     }
-
-    if (targetDevices.isEmpty) {
+    if (!resolution.isReady) {
       throw ChatEncryptionException('Groupda usable device key topilmadi.');
     }
-
-    return targetDevices;
+    return resolution.devices;
   }
 }

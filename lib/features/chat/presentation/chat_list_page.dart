@@ -6,74 +6,59 @@ import '../../../core/models/organization_context.dart';
 import '../../../core/models/session_user.dart';
 import '../../../core/network/api_client.dart';
 import '../../auth/session_controller.dart';
-import '../../security/key_verification_service.dart';
-import '../data/chat_repository.dart';
+import '../application/chat_controllers.dart';
+import '../application/chat_facade.dart';
 import 'chat_page.dart';
 
 class ChatListPage extends StatefulWidget {
   const ChatListPage({
     super.key,
     required this.sessionController,
-    required this.chatRepository,
+    required this.chatFacade,
   });
 
   final SessionController sessionController;
-  final ChatRepository chatRepository;
+  final ChatFacade chatFacade;
 
   @override
   State<ChatListPage> createState() => _ChatListPageState();
 }
 
 class _ChatListPageState extends State<ChatListPage> {
-  bool _isLoading = true;
-  String? _error;
+  late final ChatListController _controller;
   int _selectedTabIndex = 0;
-  List<AppUser> _users = const [];
-  List<Conversation> _conversations = const [];
-  Map<int, UserKeyTrust> _trustByUserId = const {};
 
   @override
   void initState() {
     super.initState();
+    _controller = ChatListController(
+      chatFacade: widget.chatFacade,
+      currentUserId: widget.sessionController.sessionUser!.id,
+    )..addListener(_onControllerChanged);
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  @override
+  void dispose() {
+    _controller
+      ..removeListener(_onControllerChanged)
+      ..dispose();
+    super.dispose();
+  }
 
+  void _onControllerChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _load() async {
     try {
-      final users = await widget.chatRepository.fetchUsers();
-      final conversations = await widget.chatRepository.fetchConversations(
-        currentUserId: widget.sessionController.sessionUser!.id,
-      );
-      final trustByUserId = await widget.chatRepository.buildUserTrustMap();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _users = users;
-        _conversations = conversations;
-        _trustByUserId = trustByUserId;
-      });
+      await _controller.load();
     } catch (error) {
       if (error is UnauthorizedApiException) {
         await widget.sessionController.invalidateSession();
         return;
-      }
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _error = error.toString();
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
       }
     }
   }
@@ -85,7 +70,7 @@ class _ChatListPageState extends State<ChatListPage> {
           currentUserId: widget.sessionController.sessionUser!.id,
           conversation: conversation,
           title: conversation.title,
-          chatRepository: widget.chatRepository,
+          chatFacade: widget.chatFacade,
           onUnauthorized: widget.sessionController.invalidateSession,
         ),
       ),
@@ -95,9 +80,7 @@ class _ChatListPageState extends State<ChatListPage> {
 
   Future<void> _openPrivateChat(AppUser user) async {
     try {
-      final conversation = await widget.chatRepository.openPrivateConversation(
-        user.id,
-      );
+      final conversation = await _controller.openPrivateConversation(user.id);
       if (!mounted) {
         return;
       }
@@ -107,7 +90,7 @@ class _ChatListPageState extends State<ChatListPage> {
             currentUserId: widget.sessionController.sessionUser!.id,
             conversation: conversation,
             title: user.displayName,
-            chatRepository: widget.chatRepository,
+            chatFacade: widget.chatFacade,
             onUnauthorized: widget.sessionController.invalidateSession,
           ),
         ),
@@ -129,6 +112,7 @@ class _ChatListPageState extends State<ChatListPage> {
 
   Future<void> _switchWorkspace(int workspaceId) async {
     await widget.sessionController.switchWorkspace(workspaceId);
+    _controller.switchWorkspaceContext(workspaceId);
     if (!mounted) {
       return;
     }
@@ -139,8 +123,10 @@ class _ChatListPageState extends State<ChatListPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final sessionUser = widget.sessionController.sessionUser!;
+    final users = _controller.users;
+    final conversationsState = _controller.conversations;
     final currentWorkspace = _currentWorkspace(sessionUser);
-    final allUsersSorted = [..._users]
+    final allUsersSorted = [...users]
       ..sort((a, b) {
         if (a.id == sessionUser.id) {
           return -1;
@@ -152,7 +138,7 @@ class _ChatListPageState extends State<ChatListPage> {
           b.displayName.toLowerCase(),
         );
       });
-    final conversations = [..._conversations]
+    final conversations = [...conversationsState]
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     final groupConversation = conversations
         .where((item) => item.isGroup)
@@ -238,8 +224,8 @@ class _ChatListPageState extends State<ChatListPage> {
       body: SafeArea(
         child: Column(
           children: [
-            if (_isLoading) const LinearProgressIndicator(minHeight: 2),
-            if (_error != null)
+            if (_controller.isLoading) const LinearProgressIndicator(minHeight: 2),
+            if (_controller.error != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: Card(
@@ -255,7 +241,7 @@ class _ChatListPageState extends State<ChatListPage> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            _error!,
+                            _controller.error!,
                             style: TextStyle(
                               color: theme.colorScheme.onErrorContainer,
                             ),
@@ -311,7 +297,7 @@ class _ChatListPageState extends State<ChatListPage> {
                                     (id) => id != sessionUser.id,
                                     orElse: () => -1,
                                   );
-                              final peerUser = _users
+                              final peerUser = users
                                   .where((user) => user.id == peerId)
                                   .firstOrNull;
                               if (peerUser == null) {
@@ -331,7 +317,7 @@ class _ChatListPageState extends State<ChatListPage> {
                         _buildContactsHeader(
                           context: context,
                           totalUsers: allUsersSorted.length,
-                          readyUsers: _users
+                          readyUsers: users
                               .where((user) => user.hasUsablePqcDeviceKey)
                               .length,
                         ),
@@ -431,7 +417,7 @@ class _ChatListPageState extends State<ChatListPage> {
     required Conversation? privateConversation,
   }) {
     final isSelf = user.id == sessionUser.id;
-    final trust = _trustByUserId[user.id];
+    final trust = _controller.trustByUserId[user.id];
     final subtitle = isSelf
         ? 'This device account'
         : user.hasUsablePqcDeviceKey
@@ -562,7 +548,9 @@ class _ChatListPageState extends State<ChatListPage> {
       (id) => id != currentUserId,
       orElse: () => -1,
     );
-    final peerUser = _users.where((user) => user.id == peerId).firstOrNull;
+    final peerUser = _controller.users
+        .where((user) => user.id == peerId)
+        .firstOrNull;
     return peerUser?.displayName ?? conversation.title;
   }
 

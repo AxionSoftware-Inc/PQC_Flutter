@@ -8,8 +8,10 @@ import '../../../core/models/chat_message.dart';
 import '../../../core/models/conversation.dart';
 import '../../../core/network/api_client.dart';
 import '../../crypto/chat_crypto_exceptions.dart';
-import '../data/chat_repository.dart';
 import '../../security/key_verification_service.dart';
+import '../application/chat_controllers.dart';
+import '../application/chat_facade.dart';
+import '../application/chat_models.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -17,14 +19,14 @@ class ChatPage extends StatefulWidget {
     required this.currentUserId,
     required this.conversation,
     required this.title,
-    required this.chatRepository,
+    required this.chatFacade,
     required this.onUnauthorized,
   });
 
   final int currentUserId;
   final Conversation conversation;
   final String title;
-  final ChatRepository chatRepository;
+  final ChatFacade chatFacade;
   final Future<void> Function() onUnauthorized;
 
   @override
@@ -34,134 +36,80 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  List<ChatMessage> _messages = const [];
-  Timer? _pollingTimer;
-  bool _isLoading = true;
-  bool _isSending = false;
-  String? _error;
-  ConversationKeyTrust? _conversationTrust;
+  late final ChatConversationController _controller;
   List<_SelectedAttachment> _selectedAttachments = const [];
 
   @override
   void initState() {
     super.initState();
-    _loadMessages();
-    _loadConversationTrust();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      _loadMessages(showLoader: false);
-      _loadConversationTrust();
-    });
+    _controller = ChatConversationController(
+      chatFacade: widget.chatFacade,
+      currentUserId: widget.currentUserId,
+      conversation: widget.conversation,
+    )..addListener(_onControllerChanged);
+    unawaited(_initialize());
   }
 
   @override
   void dispose() {
-    _pollingTimer?.cancel();
+    _controller
+      ..removeListener(_onControllerChanged)
+      ..dispose();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadMessages({bool showLoader = true}) async {
-    if (showLoader) {
-      setState(() {
-        _isLoading = true;
-      });
-    }
-
+  Future<void> _initialize() async {
     try {
-      final messages = await widget.chatRepository.fetchMessages(
-        conversation: widget.conversation,
-        currentUserId: widget.currentUserId,
-      );
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _messages = messages;
-        _error = null;
-      });
-      _jumpToBottom();
+      await _controller.initialize();
     } catch (error) {
       if (error is UnauthorizedApiException) {
         await widget.onUnauthorized();
-        return;
-      }
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _error = error.toString();
-      });
-    } finally {
-      if (mounted && showLoader) {
-        setState(() {
-          _isLoading = false;
-        });
       }
     }
   }
 
-  Future<void> _loadConversationTrust() async {
-    if (widget.conversation.isGroup) {
+  void _onControllerChanged() {
+    if (!mounted) {
       return;
     }
-
-    try {
-      final trust = await widget.chatRepository.getConversationTrust(
-        currentUserId: widget.currentUserId,
-        conversation: widget.conversation,
-      );
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _conversationTrust = trust;
-      });
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _conversationTrust = null;
-      });
-    }
+    setState(() {});
+    _jumpToBottom();
   }
 
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
-    if ((text.isEmpty && _selectedAttachments.isEmpty) || _isSending) {
+    if ((text.isEmpty && _selectedAttachments.isEmpty) || _controller.isSending) {
       return;
     }
 
-    setState(() {
-      _isSending = true;
-    });
-
     try {
-      await widget.chatRepository.sendMessage(
-        widget.conversation,
-        currentUserId: widget.currentUserId,
-        text: text,
-        messageType: _selectedAttachments.isEmpty
-            ? 'text'
-            : _selectedAttachments.any((item) => item.isImage)
-            ? 'image'
-            : 'file',
-        attachments: _selectedAttachments
-            .map(
-              (item) => PendingAttachmentUpload(
-                filename: item.name,
-                bytes: item.bytes,
-                mimeType: item.mimeType,
-              ),
-            )
-            .toList(),
+      await _controller.sendMessage(
+        SendMessageCommand(
+          conversation: widget.conversation,
+          currentUserId: widget.currentUserId,
+          text: text,
+          messageType: _selectedAttachments.isEmpty
+              ? 'text'
+              : _selectedAttachments.any((item) => item.isImage)
+              ? 'image'
+              : 'file',
+          attachments: _selectedAttachments
+              .map(
+                (item) => PendingAttachmentUpload(
+                  filename: item.name,
+                  bytes: item.bytes,
+                  mimeType: item.mimeType,
+                ),
+              )
+              .toList(),
+        ),
       );
       _messageController.clear();
       setState(() {
         _selectedAttachments = const [];
       });
-      await _loadMessages(showLoader: false);
     } catch (error) {
       if (error is UnauthorizedApiException) {
         await widget.onUnauthorized();
@@ -176,12 +124,6 @@ class _ChatPageState extends State<ChatPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSending = false;
-        });
-      }
     }
   }
 
@@ -217,26 +159,29 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _retryMessage(ChatMessage message) async {
-    await widget.chatRepository.retryMessage(
-      conversation: widget.conversation,
-      currentUserId: widget.currentUserId,
-      clientMessageId: message.clientMessageId,
-    );
-    await _loadMessages(showLoader: false);
+    try {
+      await _controller.retryMessage(message.clientMessageId);
+    } catch (error) {
+      if (error is UnauthorizedApiException) {
+        await widget.onUnauthorized();
+      }
+    }
   }
 
   Future<void> _verifyCurrentKey() async {
-    await widget.chatRepository.verifyConversationPeerKey(
-      currentUserId: widget.currentUserId,
-      conversation: widget.conversation,
-    );
-    await _loadConversationTrust();
-    if (!mounted) {
-      return;
+    try {
+      await _controller.verifyCurrentKey();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Current key verified.')));
+    } catch (error) {
+      if (error is UnauthorizedApiException) {
+        await widget.onUnauthorized();
+      }
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Current key verified.')));
   }
 
   void _jumpToBottom() {
@@ -250,16 +195,17 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
+    final conversationTrust = _controller.trust?.trust;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
         actions: [
           if (!widget.conversation.isGroup &&
-              _conversationTrust?.isAvailable == true)
+              conversationTrust?.isAvailable == true)
             IconButton(
               onPressed: _verifyCurrentKey,
               icon: Icon(
-                _conversationTrust?.isVerified == true
+                conversationTrust?.isVerified == true
                     ? Icons.verified_user
                     : Icons.shield_outlined,
               ),
@@ -268,20 +214,23 @@ class _ChatPageState extends State<ChatPage> {
       ),
       body: Column(
         children: [
-          if (_isLoading) const LinearProgressIndicator(),
-          if (_error != null)
-            Padding(padding: const EdgeInsets.all(8), child: Text(_error!)),
-          if (!widget.conversation.isGroup && _conversationTrust != null)
+          if (_controller.isLoading) const LinearProgressIndicator(),
+          if (_controller.error != null)
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Text(_controller.error!),
+            ),
+          if (!widget.conversation.isGroup && conversationTrust != null)
             _SecurityBanner(
-              trust: _conversationTrust!,
+              trust: conversationTrust,
               onVerify: _verifyCurrentKey,
             ),
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
-              itemCount: _messages.length,
+              itemCount: _controller.messages.length,
               itemBuilder: (context, index) {
-                final message = _messages[index];
+                final message = _controller.messages[index];
                 final isMine = message.senderId == widget.currentUserId;
                 return Align(
                   alignment: isMine
@@ -373,7 +322,8 @@ class _ChatPageState extends State<ChatPage> {
                   Row(
                     children: [
                       IconButton(
-                        onPressed: _isSending ? null : _pickAttachments,
+                        onPressed:
+                            _controller.isSending ? null : _pickAttachments,
                         icon: const Icon(Icons.attach_file),
                       ),
                       Expanded(
@@ -388,8 +338,10 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                       const SizedBox(width: 8),
                       FilledButton(
-                        onPressed: _isSending ? null : _sendMessage,
-                        child: const Text('Send'),
+                        onPressed: _controller.isSending ? null : _sendMessage,
+                        child: Text(
+                          _controller.isSending ? 'Sending...' : 'Send',
+                        ),
                       ),
                     ],
                   ),
