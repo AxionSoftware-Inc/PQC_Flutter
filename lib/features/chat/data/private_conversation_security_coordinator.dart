@@ -17,30 +17,39 @@ class PrivateConversationSecurityCoordinator {
     required void Function(AppUser user) onUserUpdated,
   }) async {
     final _ = onUserUpdated;
-    if (conversation.isGroup) {
-      return;
-    }
-
-    await _guardPrivateConversationTrust(
+    await _guardConversationTrust(
       currentUserId: currentUserId,
       conversation: conversation,
       usersById: usersById,
     );
   }
 
-  Future<void> _guardPrivateConversationTrust({
+  Future<void> _guardConversationTrust({
     required int currentUserId,
     required Conversation conversation,
     required Map<int, AppUser> usersById,
   }) async {
+    if (conversation.isGroup) {
+      return;
+    }
     final trust = await keyVerificationService.getConversationTrust(
       currentUserId: currentUserId,
       conversation: conversation,
       usersById: usersById,
     );
+    if (!trust.isAvailable || !trust.isEnterpriseReady) {
+      throw ChatEncryptionException(
+        '${trust.peerUser?.displayName ?? 'Peer'} PQC security material is not ready yet. Verify both devices are fully synced before sending private messages.',
+      );
+    }
     if (trust.hasEnterpriseKeyChanged) {
       throw ChatEncryptionException(
         '${trust.peerUser?.displayName ?? 'Peer'} key changed. Verify the new key before sending more private messages.',
+      );
+    }
+    if (!trust.isEnterpriseVerified) {
+      throw ChatEncryptionException(
+        'Verify ${trust.peerUser?.displayName ?? 'peer'} security material before sending private messages.',
       );
     }
   }

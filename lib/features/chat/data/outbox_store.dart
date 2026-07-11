@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/models/chat_message.dart';
+import '../../../core/storage/local_data_protector.dart';
 
 class QueuedOutgoingMessage {
   const QueuedOutgoingMessage({
@@ -118,30 +119,35 @@ class OutboxStore {
   static const _storageKey = 'queued_outgoing_messages';
   static const _legacyImportedKey = 'queued_outgoing_messages_imported';
 
-  OutboxStore({AppDatabase? database}) : _database = database ?? AppDatabase();
+  OutboxStore({AppDatabase? database, LocalDataProtector? localDataProtector})
+    : _database = database ?? AppDatabase(),
+      _localDataProtector = localDataProtector ?? LocalDataProtector();
 
   final AppDatabase _database;
+  final LocalDataProtector _localDataProtector;
 
   Future<List<QueuedOutgoingMessage>> readAll() async {
     await _importLegacyIfNeeded();
     final rows = await _database.readAllQueuedMessages();
-    return rows
-        .map(
-          (row) => QueuedOutgoingMessage(
-            clientMessageId: row.clientMessageId,
-            conversationId: row.conversationId,
-            senderId: row.senderId,
-            senderName: row.senderName,
-            plaintext: row.plaintext,
-            encryptedPayload: row.encryptedPayload,
-            createdAt: row.createdAt,
-            retryCount: row.retryCount,
-            nextRetryAt: row.nextRetryAt,
-            deliveryState: _deliveryStateFromStored(row.deliveryState),
-            failureReason: row.failureReason,
-          ),
-        )
-        .toList();
+    final messages = <QueuedOutgoingMessage>[];
+    for (final row in rows) {
+      messages.add(
+        QueuedOutgoingMessage(
+          clientMessageId: row.clientMessageId,
+          conversationId: row.conversationId,
+          senderId: row.senderId,
+          senderName: row.senderName,
+          plaintext: await _localDataProtector.unprotect(row.plaintext),
+          encryptedPayload: row.encryptedPayload,
+          createdAt: row.createdAt,
+          retryCount: row.retryCount,
+          nextRetryAt: row.nextRetryAt,
+          deliveryState: _deliveryStateFromStored(row.deliveryState),
+          failureReason: row.failureReason,
+        ),
+      );
+    }
+    return messages;
   }
 
   Future<List<QueuedOutgoingMessage>> readForConversation(
@@ -160,7 +166,9 @@ class OutboxStore {
         conversationId: drift.Value(message.conversationId),
         senderId: drift.Value(message.senderId),
         senderName: drift.Value(message.senderName),
-        plaintext: drift.Value(message.plaintext),
+        plaintext: drift.Value(
+          await _localDataProtector.protect(message.plaintext),
+        ),
         encryptedPayload: drift.Value(message.encryptedPayload),
         createdAt: drift.Value(message.createdAt),
         retryCount: drift.Value(message.retryCount),
@@ -204,7 +212,9 @@ class OutboxStore {
           conversationId: drift.Value(message.conversationId),
           senderId: drift.Value(message.senderId),
           senderName: drift.Value(message.senderName),
-          plaintext: drift.Value(message.plaintext),
+          plaintext: drift.Value(
+            await _localDataProtector.protect(message.plaintext),
+          ),
           encryptedPayload: drift.Value(message.encryptedPayload),
           createdAt: drift.Value(message.createdAt),
           retryCount: drift.Value(message.retryCount),

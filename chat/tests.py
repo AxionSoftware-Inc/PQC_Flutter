@@ -1,3 +1,5 @@
+import base64
+
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework.test import APITestCase
@@ -9,6 +11,10 @@ from users.models import UserDevice
 User = get_user_model()
 VALID_PUBLIC_KEY_1 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
 VALID_PUBLIC_KEY_2 = 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE='
+VALID_PQC_PUBLIC_KEY_1 = base64.b64encode(bytes(1184)).decode()
+VALID_PQC_PUBLIC_KEY_2 = base64.b64encode(bytes([1]) * 1184).decode()
+VALID_PQC_SIGNING_PUBLIC_KEY_1 = base64.b64encode(bytes(1952)).decode()
+VALID_PQC_SIGNING_PUBLIC_KEY_2 = base64.b64encode(bytes([1]) * 1952).decode()
 
 
 class ChatApiTests(APITestCase):
@@ -20,6 +26,10 @@ class ChatApiTests(APITestCase):
                 'device_id': 'device-1',
                 'identity_public_key': VALID_PUBLIC_KEY_1,
                 'key_algorithm': 'x25519',
+                'pqc_public_key': VALID_PQC_PUBLIC_KEY_1,
+                'pqc_algorithm': 'ml-kem-768',
+                'pqc_signing_public_key': VALID_PQC_SIGNING_PUBLIC_KEY_1,
+                'pqc_signing_algorithm': 'ml-dsa-65',
             },
             format='json',
         )
@@ -75,14 +85,25 @@ class ChatApiTests(APITestCase):
         self.assertEqual(first.data['id'], second.data['id'])
 
     def test_group_chat_accepts_messages(self):
+        payload = _group_payload('hello-group')
+        response = self.client.post(
+            f'/api/conversations/{self.group.id}/messages',
+            {'body': payload},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['body'], payload)
+
+    def test_group_chat_rejects_plaintext_messages(self):
         response = self.client.post(
             f'/api/conversations/{self.group.id}/messages',
             {'body': 'hello group'},
             format='json',
         )
 
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data['body'], 'hello group')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('group:v1', str(response.data))
 
     def test_non_participant_cannot_post(self):
         self.client.post(
@@ -108,29 +129,32 @@ class ChatApiTests(APITestCase):
     def test_messages_are_returned_in_created_order(self):
         self.client.post(
             f'/api/conversations/{self.group.id}/messages',
-            {'body': 'first'},
+            {'body': _group_payload('first')},
             format='json',
         )
         self.client.post(
             f'/api/conversations/{self.group.id}/messages',
-            {'body': 'second'},
+            {'body': _group_payload('second')},
             format='json',
         )
 
         response = self.client.get(f'/api/conversations/{self.group.id}/messages')
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([item['body'] for item in response.data][-2:], ['first', 'second'])
+        self.assertEqual(
+            [item['body'] for item in response.data][-2:],
+            [_group_payload('first'), _group_payload('second')],
+        )
 
     def test_message_create_is_idempotent_for_client_message_id(self):
         first = self.client.post(
             f'/api/conversations/{self.group.id}/messages',
-            {'body': 'once', 'client_message_id': 'msg-1'},
+            {'body': _group_payload('once'), 'client_message_id': 'msg-1'},
             format='json',
         )
         second = self.client.post(
             f'/api/conversations/{self.group.id}/messages',
-            {'body': 'once', 'client_message_id': 'msg-1'},
+            {'body': _group_payload('once'), 'client_message_id': 'msg-1'},
             format='json',
         )
 
@@ -141,12 +165,12 @@ class ChatApiTests(APITestCase):
     def test_messages_support_incremental_after_id_sync(self):
         self.client.post(
             f'/api/conversations/{self.group.id}/messages',
-            {'body': 'first'},
+            {'body': _group_payload('first')},
             format='json',
         )
         second = self.client.post(
             f'/api/conversations/{self.group.id}/messages',
-            {'body': 'second'},
+            {'body': _group_payload('second')},
             format='json',
         )
 
@@ -157,7 +181,7 @@ class ChatApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]['body'], 'second')
+        self.assertEqual(response.data[0]['body'], _group_payload('second'))
 
     def test_conversations_support_incremental_updated_after_sync(self):
         first = self.client.get('/api/conversations')
@@ -165,7 +189,7 @@ class ChatApiTests(APITestCase):
 
         self.client.post(
             f'/api/conversations/{self.group.id}/messages',
-            {'body': 'updated'},
+            {'body': _group_payload('updated')},
             format='json',
         )
 
@@ -184,7 +208,7 @@ class ChatApiTests(APITestCase):
         for index in range(total_messages):
             response = self.client.post(
                 f'/api/conversations/{self.group.id}/messages',
-                {'body': f'group-message-{index:03d}'},
+                {'body': _group_payload(f'group-message-{index:03d}')},
                 format='json',
             )
             self.assertEqual(response.status_code, 201)
@@ -193,14 +217,21 @@ class ChatApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), total_messages)
-        self.assertEqual(response.data[0]['body'], 'group-message-000')
-        self.assertEqual(response.data[-1]['body'], 'group-message-179')
+        self.assertEqual(response.data[0]['body'], _group_payload('group-message-000'))
+        self.assertEqual(response.data[-1]['body'], _group_payload('group-message-179'))
 
     def test_private_chat_handles_heavy_back_and_forth(self):
         other_client = APIClient()
         other_login = other_client.post(
             '/api/auth/login',
-            {'username': 'laylo', 'device_id': 'device-4'},
+            {
+                'username': 'laylo',
+                'device_id': 'device-4',
+                'pqc_public_key': VALID_PQC_PUBLIC_KEY_2,
+                'pqc_algorithm': 'ml-kem-768',
+                'pqc_signing_public_key': VALID_PQC_SIGNING_PUBLIC_KEY_2,
+                'pqc_signing_algorithm': 'ml-dsa-65',
+            },
             format='json',
         )
         self.assertEqual(other_login.status_code, 200)
@@ -223,7 +254,7 @@ class ChatApiTests(APITestCase):
             sender = 'ali' if index % 2 == 0 else 'laylo'
             response = client.post(
                 f'/api/conversations/{conversation_id}/messages',
-                {'body': f'{sender}-message-{index:03d}'},
+                {'body': _private_payload(f'{sender}-message-{index:03d}')},
                 format='json',
             )
             self.assertEqual(response.status_code, 201)
@@ -235,19 +266,53 @@ class ChatApiTests(APITestCase):
         self.assertEqual(laylo_view.status_code, 200)
         self.assertEqual(len(ali_view.data), total_messages)
         self.assertEqual(len(laylo_view.data), total_messages)
-        self.assertEqual(ali_view.data[0]['body'], 'ali-message-000')
-        self.assertEqual(ali_view.data[-1]['body'], 'laylo-message-119')
+        self.assertEqual(ali_view.data[0]['body'], _private_payload('ali-message-000'))
+        self.assertEqual(
+            ali_view.data[-1]['body'],
+            _private_payload('laylo-message-119'),
+        )
+
+    def test_private_chat_rejects_plaintext_messages(self):
+        self.client.post(
+            '/api/auth/login',
+            {
+                'username': 'vali',
+                'device_id': 'device-2',
+                'pqc_public_key': VALID_PQC_PUBLIC_KEY_2,
+                'pqc_algorithm': 'ml-kem-768',
+                'pqc_signing_public_key': VALID_PQC_SIGNING_PUBLIC_KEY_2,
+                'pqc_signing_algorithm': 'ml-dsa-65',
+            },
+            format='json',
+        )
+        other = User.objects.get(devices__device_id='device-2')
+        private_chat = self.client.post(
+            '/api/private-conversations',
+            {'other_user_id': other.id},
+            format='json',
+        )
+        response = self.client.post(
+            f"/api/conversations/{private_chat.data['id']}/messages",
+            {'body': 'plaintext-private'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('pqc:v1', str(response.data))
 
     def test_repeated_polling_reads_remain_stable_after_many_messages(self):
         for index in range(90):
             response = self.client.post(
                 f'/api/conversations/{self.group.id}/messages',
-                {'body': f'poll-message-{index:03d}'},
+                {'body': _group_payload(f'poll-message-{index:03d}')},
                 format='json',
             )
             self.assertEqual(response.status_code, 201)
 
-        expected_tail = [f'poll-message-{index:03d}' for index in range(85, 90)]
+        expected_tail = [
+            _group_payload(f'poll-message-{index:03d}')
+            for index in range(85, 90)
+        ]
 
         for _ in range(15):
             response = self.client.get(f'/api/conversations/{self.group.id}/messages')
@@ -261,7 +326,14 @@ class ChatApiTests(APITestCase):
     def test_conversation_list_stays_consistent_after_chat_load(self):
         self.client.post(
             '/api/auth/login',
-            {'username': 'vali', 'device_id': 'device-2'},
+            {
+                'username': 'vali',
+                'device_id': 'device-2',
+                'pqc_public_key': VALID_PQC_PUBLIC_KEY_2,
+                'pqc_algorithm': 'ml-kem-768',
+                'pqc_signing_public_key': VALID_PQC_SIGNING_PUBLIC_KEY_2,
+                'pqc_signing_algorithm': 'ml-dsa-65',
+            },
             format='json',
         )
         other = User.objects.get(devices__device_id='device-2')
@@ -276,12 +348,12 @@ class ChatApiTests(APITestCase):
         for index in range(40):
             group_response = self.client.post(
                 f'/api/conversations/{self.group.id}/messages',
-                {'body': f'group-burst-{index:03d}'},
+                {'body': _group_payload(f'group-burst-{index:03d}')},
                 format='json',
             )
             private_response = self.client.post(
                 f'/api/conversations/{private_id}/messages',
-                {'body': f'private-burst-{index:03d}'},
+                {'body': _private_payload(f'private-burst-{index:03d}')},
                 format='json',
             )
             self.assertEqual(group_response.status_code, 201)
@@ -292,8 +364,8 @@ class ChatApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(len(response.data), 2)
         previews = {item['id']: item['last_message_preview'] for item in response.data}
-        self.assertEqual(previews[self.group.id], 'group-burst-039')
-        self.assertEqual(previews[private_id], 'private-burst-039')
+        self.assertEqual(previews[self.group.id], _group_payload('group-burst-039'))
+        self.assertEqual(previews[private_id], _private_payload('private-burst-039'))
 
     def test_group_key_envelopes_round_trip_for_registered_device(self):
         other_login = self.client.post(
@@ -303,6 +375,10 @@ class ChatApiTests(APITestCase):
                 'device_id': 'device-2',
                 'identity_public_key': VALID_PUBLIC_KEY_2,
                 'key_algorithm': 'x25519',
+                'pqc_public_key': VALID_PQC_PUBLIC_KEY_2,
+                'pqc_algorithm': 'ml-kem-768',
+                'pqc_signing_public_key': VALID_PQC_SIGNING_PUBLIC_KEY_2,
+                'pqc_signing_algorithm': 'ml-dsa-65',
             },
             format='json',
         )
@@ -312,15 +388,15 @@ class ChatApiTests(APITestCase):
             f'/api/conversations/{self.group.id}/keys',
             {
                 'key_id': 'group-key-1',
-                'algorithm': 'group-x25519-aesgcm-v1',
+                'algorithm': 'group-ml-kem-768-aesgcm-v1',
                 'envelopes': [
                     {
                         'target_device_id': 'device-1',
-                        'wrapped_key': 'group-wrap:v1:nonce:cipher:mac',
+                        'wrapped_key': 'group-wrap:pqc:v1:device-1:sign:kem:nonce:cipher:mac:signature',
                     },
                     {
                         'target_device_id': 'device-2',
-                        'wrapped_key': 'group-wrap:v1:nonce2:cipher2:mac2',
+                        'wrapped_key': 'group-wrap:pqc:v1:device-1:sign:kem2:nonce2:cipher2:mac2:signature2',
                     },
                 ],
             },
@@ -361,19 +437,21 @@ class ChatApiTests(APITestCase):
         outsider_device = UserDevice.objects.create(
             user=outsider,
             device_id='outsider-device',
-            identity_public_key='outsider-public',
-            key_algorithm='x25519',
+            pqc_public_key=VALID_PQC_PUBLIC_KEY_2,
+            pqc_algorithm='ml-kem-768',
+            pqc_signing_public_key=VALID_PQC_SIGNING_PUBLIC_KEY_2,
+            pqc_signing_algorithm='ml-dsa-65',
         )
 
         response = self.client.post(
             f'/api/conversations/{self.group.id}/keys',
             {
                 'key_id': 'group-key-1',
-                'algorithm': 'group-x25519-aesgcm-v1',
+                'algorithm': 'group-ml-kem-768-aesgcm-v1',
                 'envelopes': [
                     {
                         'target_device_id': outsider_device.device_id,
-                        'wrapped_key': 'group-wrap:v1:nonce:cipher:mac',
+                        'wrapped_key': 'group-wrap:pqc:v1:device-1:sign:kem:nonce:cipher:mac:signature',
                     },
                 ],
             },
@@ -390,8 +468,10 @@ class ChatApiTests(APITestCase):
             {
                 'username': 'vali',
                 'device_id': 'device-2',
-                'identity_public_key': VALID_PUBLIC_KEY_2,
-                'key_algorithm': 'x25519',
+                'pqc_public_key': VALID_PQC_PUBLIC_KEY_2,
+                'pqc_algorithm': 'ml-kem-768',
+                'pqc_signing_public_key': VALID_PQC_SIGNING_PUBLIC_KEY_2,
+                'pqc_signing_algorithm': 'ml-dsa-65',
             },
             format='json',
         )
@@ -401,11 +481,11 @@ class ChatApiTests(APITestCase):
             f'/api/conversations/{self.group.id}/keys',
             {
                 'key_id': 'group-key-1',
-                'algorithm': 'group-x25519-aesgcm-v1',
+                'algorithm': 'group-ml-kem-768-aesgcm-v1',
                 'envelopes': [
                     {
                         'target_device_id': 'device-1',
-                        'wrapped_key': 'group-wrap:v1:nonce:cipher:mac',
+                        'wrapped_key': 'group-wrap:pqc:v1:device-1:sign:kem:nonce:cipher:mac:signature',
                     },
                 ],
             },
@@ -425,15 +505,15 @@ class ChatApiTests(APITestCase):
             f'/api/conversations/{self.group.id}/keys',
             {
                 'key_id': 'group-key-1',
-                'algorithm': 'group-x25519-aesgcm-v1',
+                'algorithm': 'group-ml-kem-768-aesgcm-v1',
                 'envelopes': [
                     {
                         'target_device_id': 'device-1',
-                        'wrapped_key': 'group-wrap:v1:nonce:cipher:mac',
+                        'wrapped_key': 'group-wrap:pqc:v1:device-1:sign:kem:nonce:cipher:mac:signature',
                     },
                     {
                         'target_device_id': 'device-1',
-                        'wrapped_key': 'group-wrap:v1:nonce2:cipher2:mac2',
+                        'wrapped_key': 'group-wrap:pqc:v1:device-1:sign:kem2:nonce2:cipher2:mac2:signature2',
                     },
                 ],
             },
@@ -446,3 +526,36 @@ class ChatApiTests(APITestCase):
             response.data['detail'],
             'Duplicate target_device_id entries are not allowed.',
         )
+
+    def test_group_key_envelope_rejects_legacy_algorithm(self):
+        response = self.client.post(
+            f'/api/conversations/{self.group.id}/keys',
+            {
+                'key_id': 'group-key-1',
+                'algorithm': 'group-x25519-aesgcm-v1',
+                'envelopes': [
+                    {
+                        'target_device_id': 'device-1',
+                        'wrapped_key': 'group-wrap:pqc:v1:device-1:sign:kem:nonce:cipher:mac:signature',
+                    },
+                ],
+            },
+            format='json',
+            HTTP_X_DEVICE_ID='device-1',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('group-ml-kem-768-aesgcm-v1', str(response.data))
+
+
+def _group_payload(label):
+    return f'group:v1:key-{label}:nonce-{label}:cipher-{label}:mac-{label}'
+
+
+def _private_payload(label):
+    return (
+        f'pqc:v1:sender:{label}-sign:target:{label}-selfkem:{label}-selfnonce:'
+        f'{label}-selfcipher:{label}-selfmac:{label}-peerkem:{label}-peernonce:'
+        f'{label}-peercipher:{label}-peermac:{label}-contentnonce:'
+        f'{label}-contentcipher:{label}-contentmac:{label}-signature'
+    )

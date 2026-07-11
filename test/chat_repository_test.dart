@@ -6,6 +6,8 @@ import 'package:pqc_chat_app/core/models/app_user.dart';
 import 'package:pqc_chat_app/core/models/chat_message.dart';
 import 'package:pqc_chat_app/core/models/conversation.dart';
 import 'package:pqc_chat_app/core/network/api_client.dart';
+import 'package:pqc_chat_app/core/storage/local_data_protector.dart';
+import 'package:pqc_chat_app/core/storage/local_secret_store.dart';
 import 'package:pqc_chat_app/features/chat/data/chat_remote_data_source.dart';
 import 'package:pqc_chat_app/features/chat/data/chat_repository.dart';
 import 'package:pqc_chat_app/features/chat/data/outbox_store.dart';
@@ -22,12 +24,15 @@ void main() {
   test('private send is blocked when verified peer key changed', () async {
     final database = AppDatabase.inMemory();
     final remote = _FakeChatRemoteDataSource();
+    final localDataProtector = LocalDataProtector(
+      secretStore: _MemorySecretStore(),
+    );
     final keyVerificationService = _FakeKeyVerificationService(
       const ConversationKeyTrust(
         isAvailable: true,
-        isEnterpriseReady: false,
-        isVerified: false,
-        isEnterpriseVerified: false,
+        isEnterpriseReady: true,
+        isVerified: true,
+        isEnterpriseVerified: true,
         hasKeyChanged: true,
         hasEnterpriseKeyChanged: true,
         fingerprint: 'dead beef',
@@ -51,7 +56,11 @@ void main() {
             keyVerificationService: keyVerificationService,
           ),
       database: database,
-      outboxStore: OutboxStore(database: database),
+      localDataProtector: localDataProtector,
+      outboxStore: OutboxStore(
+        database: database,
+        localDataProtector: localDataProtector,
+      ),
     );
 
     await repository.fetchUsers();
@@ -73,20 +82,23 @@ void main() {
       final database = AppDatabase.inMemory();
       final remote = _FakeChatRemoteDataSource();
       final cipherService = _FakeChatCipherService();
+      final localDataProtector = LocalDataProtector(
+        secretStore: _MemorySecretStore(),
+      );
       final repository = ChatRepository(
         remoteDataSource: remote,
         cipherService: cipherService,
         keyVerificationService: _FakeKeyVerificationService(
           const ConversationKeyTrust(
             isAvailable: true,
-            isEnterpriseReady: false,
-            isVerified: false,
-            isEnterpriseVerified: false,
+            isEnterpriseReady: true,
+            isVerified: true,
+            isEnterpriseVerified: true,
             hasKeyChanged: false,
             hasEnterpriseKeyChanged: false,
             fingerprint: 'dead beef',
-            pqcFingerprint: null,
-            signingFingerprint: null,
+            pqcFingerprint: 'bead feed',
+            signingFingerprint: 'cafe babe',
             peerUser: AppUser(
               id: 2,
               username: 'bob',
@@ -99,7 +111,11 @@ void main() {
         privateConversationSecurityCoordinator:
             _NoopPrivateConversationSecurityCoordinator(database: database),
         database: database,
-        outboxStore: OutboxStore(database: database),
+        localDataProtector: localDataProtector,
+        outboxStore: OutboxStore(
+          database: database,
+          localDataProtector: localDataProtector,
+        ),
       );
 
       await repository.fetchUsers();
@@ -113,6 +129,8 @@ void main() {
       expect(cipherService.lastEncryptedPlaintext, 'hello');
       expect(cipherService.lastDecryptPayload, isNull);
       expect(sent.body, 'hello');
+      final rows = await database.readMessagesForConversation(_privateConversation.id);
+      expect(rows.single.plaintextBody, isNot('hello'));
       await database.close();
     },
   );
@@ -123,6 +141,9 @@ void main() {
       final database = AppDatabase.inMemory();
       final remote = _RefreshingUsersChatRemoteDataSource();
       final cipherService = _PqcAwareChatCipherService();
+      final localDataProtector = LocalDataProtector(
+        secretStore: _MemorySecretStore(),
+      );
       final repository = ChatRepository(
         remoteDataSource: remote,
         cipherService: cipherService,
@@ -149,7 +170,11 @@ void main() {
         privateConversationSecurityCoordinator:
             _NoopPrivateConversationSecurityCoordinator(database: database),
         database: database,
-        outboxStore: OutboxStore(database: database),
+        localDataProtector: localDataProtector,
+        outboxStore: OutboxStore(
+          database: database,
+          localDataProtector: localDataProtector,
+        ),
       );
 
       await repository.fetchUsers();
@@ -166,6 +191,25 @@ void main() {
       await database.close();
     },
   );
+}
+
+class _MemorySecretStore extends LocalSecretStore {
+  _MemorySecretStore() : super();
+
+  final Map<String, String> _values = {};
+
+  @override
+  Future<String?> read(String key) async => _values[key];
+
+  @override
+  Future<void> write({required String key, required String value}) async {
+    _values[key] = value;
+  }
+
+  @override
+  Future<void> delete(String key) async {
+    _values.remove(key);
+  }
 }
 
 const _users = [

@@ -35,6 +35,7 @@ Lekin hali:
 4. payload `ML-DSA-65` bilan imzolanadi
 5. sender ham, receiver ham o'ziga tegishli wrapped key orqali decrypt qila oladi
 6. imzo verify bo'lmasa payload reject qilinadi
+7. private send endi enterprise-ready va verified peer bo'lmaguncha o'tmaydi
 
 ### 2.3 Group chat
 
@@ -103,6 +104,19 @@ Zaif tomonlari:
 3. drift-based full local DB source-of-truth hali yakunlanmagan
 4. ops monitoring, alerting, audit trail minimal
 
+## 4.1 Oxirgi Hardening Qatlami
+
+Bu pass davomida quyidagilar qattiqlashtirildi:
+
+1. secure storage ishlamasa fallback secretlar plain text emas, wrapped formatda saqlanadi
+2. legacy plain fallback qiymatlar o'qilish paytida avtomatik protected formatga migratsiya qilinadi
+3. backend private chat uchun plain text body qabul qilmaydi, faqat `pqc:v1`
+4. backend group chat uchun plain text body qabul qilmaydi, faqat `group:v1`
+5. backend group key envelope sync uchun faqat PQC algorithm va PQC envelope format qabul qiladi
+6. group envelope target coverage server tomonda ham PQC device registry bilan tekshiriladi
+7. local message/outbox plaintext endi protected at-rest ko'rinishda saqlanadi
+8. private send endi verified enterprise trust talab qiladi
+
 ## 5. Asosiy Kamchiliklar
 
 Yadro ishlaydi, lekin quyidagilar hali qolgan:
@@ -156,4 +170,3 @@ Productionga yaqinlashish uchun tavsiya etilgan tartib:
 5. attachment metadata + upload foundation
 6. attachment binary encryption
 7. observability, audit, backup, restore, ops checklist
-

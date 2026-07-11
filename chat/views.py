@@ -12,6 +12,7 @@ from chat.models import Conversation, Message, MessageAttachment
 from chat.serializers import (
     AttachmentUploadSerializer,
     ConversationSerializer,
+    GROUP_ENVELOPE_ALGORITHM,
     ConversationKeyEnvelopeSerializer,
     ConversationKeyEnvelopeSyncSerializer,
     MessageCreateSerializer,
@@ -157,7 +158,10 @@ class MessageListCreateView(APIView):
     @transaction.atomic
     def post(self, request, conversation_id):
         conversation = get_user_conversation_or_404(request, conversation_id)
-        serializer = MessageCreateSerializer(data=request.data)
+        serializer = MessageCreateSerializer(
+            data=request.data,
+            context={'conversation': conversation},
+        )
         serializer.is_valid(raise_exception=True)
 
         if not conversation.participants.filter(id=request.user.id).exists():
@@ -244,9 +248,11 @@ class ConversationKeyEnvelopeView(APIView):
         expected_target_ids = set(
             UserDevice.objects.filter(
                 user_id__in=participant_user_ids,
-                key_algorithm='x25519',
+                pqc_algorithm='ml-kem-768',
+                pqc_signing_algorithm='ml-dsa-65',
             )
-            .exclude(identity_public_key='')
+            .exclude(pqc_public_key='')
+            .exclude(pqc_signing_public_key='')
             .values_list('device_id', flat=True)
         )
         submitted_target_ids = []
@@ -284,6 +290,14 @@ class ConversationKeyEnvelopeView(APIView):
                 {
                     'detail': 'Envelope set must exactly match the registered group devices.',
                     'mismatch': parts,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if serializer.validated_data['algorithm'] != GROUP_ENVELOPE_ALGORITHM:
+            return Response(
+                {
+                    'detail': 'Only group-ml-kem-768-aesgcm-v1 is accepted.',
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
