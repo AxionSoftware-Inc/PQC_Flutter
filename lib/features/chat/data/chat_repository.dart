@@ -104,9 +104,16 @@ class ChatRepository {
   }) async {
     _activeCurrentUserId = currentUserId;
     await _ensureUsersLoaded();
-    final conversations = await remoteDataSource.fetchConversations(
-      updatedAfter: _lastConversationSyncAt,
+    final existingRows = await _readVisibleConversationRows();
+    final previousSyncAt = _lastConversationSyncAt;
+    var conversations = await remoteDataSource.fetchConversations(
+      updatedAfter: previousSyncAt,
     );
+    if (conversations.isEmpty &&
+        existingRows.isEmpty &&
+        previousSyncAt != null) {
+      conversations = await remoteDataSource.fetchConversations();
+    }
     _lastConversationSyncAt = DateTime.now().toUtc();
     for (final conversation in conversations) {
       final preview = conversation.lastMessagePreview.isEmpty
@@ -853,13 +860,14 @@ class ChatRepository {
     if (_activeWorkspaceId <= 0) {
       return _database.readConversations();
     }
-    final scopedRows = await _database.readConversationsForWorkspace(
-      _activeWorkspaceId,
-    );
-    if (scopedRows.isNotEmpty) {
-      return scopedRows;
+    final allRows = await _database.readConversations();
+    final visible = allRows.where((row) {
+      return row.workspaceId == _activeWorkspaceId || row.workspaceId == 0;
+    }).toList();
+    if (visible.isNotEmpty) {
+      return visible;
     }
-    return _database.readConversations();
+    return allRows;
   }
 
   String _deliveryStateToStored(MessageDeliveryState state) => switch (state) {
