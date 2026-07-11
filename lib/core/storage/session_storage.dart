@@ -23,6 +23,8 @@ class SessionStorage {
   static const _usernameKey = 'session_username';
   static const _displayNameKey = 'session_display_name';
   static const _deviceIdKey = 'session_device_id';
+  static const _deviceStatusKey = 'session_device_status';
+  static const _profileFingerprintKey = 'session_profile_fingerprint';
   static const _activeWorkspaceIdKey = 'session_active_workspace_id';
   static const _organizationsKey = 'session_organizations';
   static const _apiBaseUrlKey = 'session_api_base_url';
@@ -36,6 +38,8 @@ class SessionStorage {
     final username = await _secretStore.read(_usernameKey);
     final displayName = await _secretStore.read(_displayNameKey);
     final deviceId = await _secretStore.read(_deviceIdKey);
+    final deviceStatus = await _secretStore.read(_deviceStatusKey);
+    final profileFingerprint = await _secretStore.read(_profileFingerprintKey);
     final activeWorkspaceIdValue = await _secretStore.read(
       _activeWorkspaceIdKey,
     );
@@ -67,6 +71,8 @@ class SessionStorage {
       username: username,
       displayName: displayName,
       deviceId: deviceId,
+      deviceStatus: deviceStatus ?? 'active',
+      profileFingerprint: profileFingerprint ?? '',
       activeWorkspaceId: activeWorkspaceId,
       organizations: organizations,
       token: token,
@@ -84,6 +90,11 @@ class SessionStorage {
     await _secretStore.write(key: _usernameKey, value: user.username);
     await _secretStore.write(key: _displayNameKey, value: user.displayName);
     await _secretStore.write(key: _deviceIdKey, value: user.deviceId);
+    await _secretStore.write(key: _deviceStatusKey, value: user.deviceStatus);
+    await _secretStore.write(
+      key: _profileFingerprintKey,
+      value: user.profileFingerprint,
+    );
     await _secretStore.write(
       key: _activeWorkspaceIdKey,
       value: user.activeWorkspaceId.toString(),
@@ -145,6 +156,8 @@ class SessionStorage {
     await _secretStore.delete(_usernameKey);
     await _secretStore.delete(_displayNameKey);
     await _secretStore.delete(_deviceIdKey);
+    await _secretStore.delete(_deviceStatusKey);
+    await _secretStore.delete(_profileFingerprintKey);
     await _secretStore.delete(_activeWorkspaceIdKey);
     await _secretStore.delete(_apiBaseUrlKey);
     await preferences.remove(_organizationsKey);

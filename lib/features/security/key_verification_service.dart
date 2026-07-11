@@ -104,9 +104,9 @@ class KeyVerificationService {
   }
 
   Future<UserKeyTrust> getUserTrust(AppUser user) async {
-    await _importLegacyStateIfNeeded(user.id);
     final device = user.preferredX25519Device;
     if (device == null) {
+      await _importLegacyStateIfNeeded(userId: user.id, deviceId: '');
       return UserKeyTrust(
         userId: user.id,
         hasUsableKey: false,
@@ -124,6 +124,7 @@ class KeyVerificationService {
       );
     }
 
+    await _importLegacyStateIfNeeded(userId: user.id, deviceId: device.deviceId);
     final fingerprint = await _fingerprintForKeyMaterial(
       device.identityPublicKey,
     );
@@ -133,7 +134,10 @@ class KeyVerificationService {
     final signingFingerprint = device.hasUsableMlDsaKey
         ? await _fingerprintForKeyMaterial(device.pqcSigningPublicKey)
         : null;
-    final storedRows = await _database.readVerifiedKeysForUser(user.id);
+    final storedRows = await _database.readVerifiedKeysForDevice(
+      userId: user.id,
+      deviceId: device.deviceId,
+    );
     final storedByKind = {for (final row in storedRows) row.kind: row};
     final verifiedFingerprint = storedByKind['classical']?.verifiedFingerprint;
     final verifiedPqcFingerprint = storedByKind['pqc']?.verifiedFingerprint;
@@ -141,14 +145,16 @@ class KeyVerificationService {
         storedByKind['signing']?.verifiedFingerprint;
 
     await _upsertLastSeenFingerprint(
-      userId: user.id,
-      kind: 'classical',
-      lastSeenFingerprint: fingerprint,
-      verifiedFingerprint: verifiedFingerprint,
+        userId: user.id,
+        deviceId: device.deviceId,
+        kind: 'classical',
+        lastSeenFingerprint: fingerprint,
+        verifiedFingerprint: verifiedFingerprint,
     );
     if (pqcFingerprint != null) {
       await _upsertLastSeenFingerprint(
         userId: user.id,
+        deviceId: device.deviceId,
         kind: 'pqc',
         lastSeenFingerprint: pqcFingerprint,
         verifiedFingerprint: verifiedPqcFingerprint,
@@ -157,6 +163,7 @@ class KeyVerificationService {
     if (signingFingerprint != null) {
       await _upsertLastSeenFingerprint(
         userId: user.id,
+        deviceId: device.deviceId,
         kind: 'signing',
         lastSeenFingerprint: signingFingerprint,
         verifiedFingerprint: verifiedSigningFingerprint,
@@ -260,6 +267,7 @@ class KeyVerificationService {
     );
     await _upsertLastSeenFingerprint(
       userId: user.id,
+      deviceId: device.deviceId,
       kind: 'classical',
       lastSeenFingerprint: fingerprint,
       verifiedFingerprint: fingerprint,
@@ -270,6 +278,7 @@ class KeyVerificationService {
       );
       await _upsertLastSeenFingerprint(
         userId: user.id,
+        deviceId: device.deviceId,
         kind: 'pqc',
         lastSeenFingerprint: pqcFingerprint,
         verifiedFingerprint: pqcFingerprint,
@@ -281,6 +290,7 @@ class KeyVerificationService {
       );
       await _upsertLastSeenFingerprint(
         userId: user.id,
+        deviceId: device.deviceId,
         kind: 'signing',
         lastSeenFingerprint: signingFingerprint,
         verifiedFingerprint: signingFingerprint,
@@ -290,6 +300,7 @@ class KeyVerificationService {
 
   Future<void> _upsertLastSeenFingerprint({
     required int userId,
+    required String deviceId,
     required String kind,
     required String lastSeenFingerprint,
     required String? verifiedFingerprint,
@@ -297,15 +308,23 @@ class KeyVerificationService {
     return _database.upsertVerifiedKey(
       VerifiedKeysTableCompanion.insert(
         userId: userId,
+        deviceId: drift.Value(deviceId),
         kind: kind,
         verifiedFingerprint: drift.Value(verifiedFingerprint),
         lastSeenFingerprint: drift.Value(lastSeenFingerprint),
+        updatedAt: drift.Value(DateTime.now().toUtc()),
       ),
     );
   }
 
-  Future<void> _importLegacyStateIfNeeded(int userId) async {
-    final existing = await _database.readVerifiedKeysForUser(userId);
+  Future<void> _importLegacyStateIfNeeded({
+    required int userId,
+    required String deviceId,
+  }) async {
+    final existing = await _database.readVerifiedKeysForDevice(
+      userId: userId,
+      deviceId: deviceId,
+    );
     if (existing.isNotEmpty) {
       return;
     }
@@ -313,6 +332,7 @@ class KeyVerificationService {
     await _importLegacyFingerprint(
       preferences: preferences,
       userId: userId,
+      deviceId: deviceId,
       kind: 'classical',
       verifiedKey: _verifiedFingerprintKey(userId),
       lastSeenKey: _lastSeenFingerprintKey(userId),
@@ -320,6 +340,7 @@ class KeyVerificationService {
     await _importLegacyFingerprint(
       preferences: preferences,
       userId: userId,
+      deviceId: deviceId,
       kind: 'pqc',
       verifiedKey: _verifiedPqcFingerprintKey(userId),
       lastSeenKey: _lastSeenPqcFingerprintKey(userId),
@@ -327,6 +348,7 @@ class KeyVerificationService {
     await _importLegacyFingerprint(
       preferences: preferences,
       userId: userId,
+      deviceId: deviceId,
       kind: 'signing',
       verifiedKey: _verifiedSigningFingerprintKey(userId),
       lastSeenKey: _lastSeenSigningFingerprintKey(userId),
@@ -336,6 +358,7 @@ class KeyVerificationService {
   Future<void> _importLegacyFingerprint({
     required SharedPreferences preferences,
     required int userId,
+    required String deviceId,
     required String kind,
     required String verifiedKey,
     required String lastSeenKey,
@@ -348,9 +371,11 @@ class KeyVerificationService {
     await _database.upsertVerifiedKey(
       VerifiedKeysTableCompanion.insert(
         userId: userId,
+        deviceId: drift.Value(deviceId),
         kind: kind,
         verifiedFingerprint: drift.Value(verifiedFingerprint),
         lastSeenFingerprint: drift.Value(lastSeenFingerprint),
+        updatedAt: drift.Value(DateTime.now().toUtc()),
       ),
     );
   }

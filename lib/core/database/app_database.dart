@@ -70,12 +70,17 @@ class ConversationSyncStateTable extends Table {
 
 class VerifiedKeysTable extends Table {
   IntColumn get userId => integer()();
+  TextColumn get deviceId => text().withDefault(const Constant(''))();
   TextColumn get kind => text()();
   TextColumn get verifiedFingerprint => text().nullable()();
   TextColumn get lastSeenFingerprint => text().nullable()();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
 
   @override
-  Set<Column<Object>> get primaryKey => {userId, kind};
+  Set<Column<Object>> get primaryKey => {userId, deviceId, kind};
 }
 
 class DraftsTable extends Table {
@@ -111,17 +116,119 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (migrator) async => migrator.createAll(),
     onUpgrade: (migrator, from, to) async {
       if (from < 2) {
-        await migrator.addColumn(messagesTable, messagesTable.attachmentsJson);
+        final messageColumns = await _readColumnNames('messages_table');
+        if (!messageColumns.contains('attachments_json')) {
+          await migrator.addColumn(messagesTable, messagesTable.attachmentsJson);
+        }
+      }
+      if (from < 3) {
+        await _rebuildVerifiedKeysTableV3();
       }
     },
+    beforeOpen: (details) async {
+      await _ensureVerifiedKeysTableIsHealthy();
+    },
   );
+
+  Future<Set<String>> _readColumnNames(String tableName) async {
+    final rows = await customSelect(
+      "PRAGMA table_info('$tableName');",
+    ).get();
+    return rows
+        .map((row) => row.data['name'])
+        .whereType<String>()
+        .toSet();
+  }
+
+  Future<void> _rebuildVerifiedKeysTableV3() async {
+    final existingColumns = await _readColumnNames('verified_keys_table');
+    final hasDeviceId = existingColumns.contains('device_id');
+    final hasCreatedAt = existingColumns.contains('created_at');
+    final hasUpdatedAt = existingColumns.contains('updated_at');
+
+    await customStatement('''
+      CREATE TABLE verified_keys_table_v3 (
+        user_id INTEGER NOT NULL,
+        device_id TEXT NOT NULL DEFAULT '',
+        kind TEXT NOT NULL,
+        verified_fingerprint TEXT NULL,
+        last_seen_fingerprint TEXT NULL,
+        created_at INTEGER NOT NULL DEFAULT (CAST(unixepoch('now') * 1000 AS INTEGER)),
+        updated_at INTEGER NOT NULL DEFAULT (CAST(unixepoch('now') * 1000 AS INTEGER)),
+        PRIMARY KEY (user_id, device_id, kind)
+      );
+    ''');
+
+    await customStatement('''
+      INSERT OR REPLACE INTO verified_keys_table_v3 (
+        user_id,
+        device_id,
+        kind,
+        verified_fingerprint,
+        last_seen_fingerprint,
+        created_at,
+        updated_at
+      )
+      SELECT
+        user_id,
+        ${hasDeviceId ? 'COALESCE(device_id, \'\')' : "''"},
+        kind,
+        verified_fingerprint,
+        last_seen_fingerprint,
+        ${hasCreatedAt ? _verifiedKeysDateConversionSql('created_at') : "(CAST(unixepoch('now') * 1000 AS INTEGER))"},
+        ${hasUpdatedAt ? _verifiedKeysDateConversionSql('updated_at') : "(CAST(unixepoch('now') * 1000 AS INTEGER))"}
+      FROM verified_keys_table;
+    ''');
+
+    await customStatement('DROP TABLE verified_keys_table;');
+    await customStatement(
+      'ALTER TABLE verified_keys_table_v3 RENAME TO verified_keys_table;',
+    );
+  }
+
+  String _verifiedKeysDateConversionSql(String columnName) {
+    return '''
+      CASE
+        WHEN typeof($columnName) = 'integer' THEN $columnName
+        WHEN typeof($columnName) = 'text' THEN CAST(unixepoch($columnName) * 1000 AS INTEGER)
+        ELSE CAST(unixepoch('now') * 1000 AS INTEGER)
+      END
+    ''';
+  }
+
+  Future<void> _ensureVerifiedKeysTableIsHealthy() async {
+    final rows = await customSelect(
+      "PRAGMA table_info('verified_keys_table');",
+    ).get();
+    if (rows.isEmpty) {
+      return;
+    }
+    final names = rows.map((row) => row.data['name']).whereType<String>().toSet();
+    final typesByName = {
+      for (final row in rows)
+        if (row.data['name'] is String)
+          row.data['name'] as String:
+              (row.data['type'] as String? ?? '').toUpperCase(),
+    };
+    final pkColumnCount = rows.where((row) => ((row.data['pk'] as int?) ?? 0) > 0).length;
+    final isHealthy =
+        names.contains('device_id') &&
+        names.contains('created_at') &&
+        names.contains('updated_at') &&
+        pkColumnCount >= 3 &&
+        typesByName['created_at'] == 'INTEGER' &&
+        typesByName['updated_at'] == 'INTEGER';
+    if (!isHealthy) {
+      await _rebuildVerifiedKeysTableV3();
+    }
+  }
 
   Future<void> upsertConversation(ConversationsTableCompanion entry) async {
     await into(conversationsTable).insertOnConflictUpdate(entry);
@@ -213,6 +320,16 @@ class AppDatabase extends _$AppDatabase {
     return (select(
       verifiedKeysTable,
     )..where((tbl) => tbl.userId.equals(userId))).get();
+  }
+
+  Future<List<VerifiedKeysTableData>> readVerifiedKeysForDevice({
+    required int userId,
+    required String deviceId,
+  }) {
+    return (select(verifiedKeysTable)..where(
+          (tbl) => tbl.userId.equals(userId) & tbl.deviceId.equals(deviceId),
+        ))
+        .get();
   }
 
   Future<void> upsertDraft(DraftsTableCompanion entry) async {

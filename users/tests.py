@@ -58,6 +58,9 @@ class AuthApiTests(APITestCase):
             response.data['user']['devices'][0]['pqc_signing_algorithm'],
             'ml-dsa-65',
         )
+        self.assertEqual(response.data['device_status'], 'active')
+        self.assertTrue(response.data['profile_fingerprint'])
+        self.assertEqual(len(response.data['active_devices']), 1)
         self.assertTrue(
             ConversationParticipant.objects.filter(
                 conversation__title='General Group',
@@ -125,7 +128,7 @@ class AuthApiTests(APITestCase):
         self.assertEqual(response.data['account_id'], first.data['account_id'])
         self.assertEqual(response.data['user']['display_name'], 'vali')
 
-    def test_existing_device_public_key_is_updated(self):
+    def test_existing_device_public_key_change_is_rejected(self):
         self.client.post(
             '/api/auth/login',
             {
@@ -148,9 +151,10 @@ class AuthApiTests(APITestCase):
             format='json',
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data['code'], 'device_profile_mismatch')
         device = UserDevice.objects.get(device_id='device-1')
-        self.assertEqual(device.identity_public_key, VALID_PUBLIC_KEY_2)
+        self.assertEqual(device.identity_public_key, VALID_PUBLIC_KEY_1)
 
     def test_same_display_name_on_different_devices_creates_distinct_accounts(self):
         first = self.client.post(
@@ -168,7 +172,7 @@ class AuthApiTests(APITestCase):
         self.assertEqual(second.status_code, 200)
         self.assertNotEqual(first.data['account_id'], second.data['account_id'])
 
-    def test_authenticated_device_sync_updates_registered_device(self):
+    def test_authenticated_device_sync_updates_presence_only(self):
         login = self.client.post(
             '/api/auth/login',
             {
@@ -182,12 +186,12 @@ class AuthApiTests(APITestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {login.data['token']}")
 
         response = self.client.post(
-            '/api/users/me/device',
+            '/api/users/me/device/sync',
             {
                 'device_id': 'device-1',
                 'device_name': 'flutter-android',
                 'platform': 'android',
-                'identity_public_key': VALID_PUBLIC_KEY_2,
+                'identity_public_key': VALID_PUBLIC_KEY_1,
                 'key_algorithm': 'x25519',
             },
             format='json',
@@ -195,8 +199,9 @@ class AuthApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         device = UserDevice.objects.get(device_id='device-1')
-        self.assertEqual(device.identity_public_key, VALID_PUBLIC_KEY_2)
+        self.assertEqual(device.identity_public_key, VALID_PUBLIC_KEY_1)
         self.assertEqual(device.platform, 'android')
+        self.assertEqual(response.data['device_status'], 'active')
 
     def test_login_rejects_invalid_x25519_public_key(self):
         response = self.client.post(
@@ -227,7 +232,7 @@ class AuthApiTests(APITestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {login.data['token']}")
 
         response = self.client.post(
-            '/api/users/me/device',
+            '/api/users/me/device/sync',
             {
                 'device_id': 'device-1',
                 'identity_public_key': 'broken-key',
@@ -238,3 +243,21 @@ class AuthApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('identity_public_key', str(response.data))
+
+    def test_device_list_only_returns_active_devices(self):
+        login = self.client.post(
+            '/api/auth/login',
+            {'username': 'ali', 'device_id': 'device-1'},
+            format='json',
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {login.data['token']}")
+        UserDevice.objects.create(
+            user_id=login.data['account_id'],
+            device_id='device-2',
+            status=UserDevice.Status.REVOKED,
+        )
+
+        response = self.client.get('/api/users/me/devices')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item['device_id'] for item in response.data], ['device-1'])

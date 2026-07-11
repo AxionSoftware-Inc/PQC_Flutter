@@ -152,6 +152,11 @@ class Invitation(models.Model):
 
 
 class UserDevice(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        INACTIVE = 'inactive', 'Inactive'
+        REVOKED = 'revoked', 'Revoked'
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -166,6 +171,22 @@ class UserDevice(models.Model):
     pqc_algorithm = models.CharField(max_length=64, blank=True)
     pqc_signing_public_key = models.TextField(blank=True)
     pqc_signing_algorithm = models.CharField(max_length=64, blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+    )
+    replaced_by = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='replaced_devices',
+    )
+    revoked_reason = models.CharField(max_length=255, blank=True)
+    profile_fingerprint = models.CharField(max_length=128, blank=True)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now_add=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

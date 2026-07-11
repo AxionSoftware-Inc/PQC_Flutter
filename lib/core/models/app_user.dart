@@ -11,8 +11,13 @@ class AppUserDevice {
     this.pqcAlgorithm = '',
     this.pqcSigningPublicKey = '',
     this.pqcSigningAlgorithm = '',
+    this.status = 'active',
+    this.profileFingerprint = '',
+    this.revokedReason = '',
     this.createdAt,
     this.updatedAt,
+    this.firstSeenAt,
+    this.lastSeenAt,
   });
 
   final String deviceId;
@@ -24,8 +29,15 @@ class AppUserDevice {
   final String pqcAlgorithm;
   final String pqcSigningPublicKey;
   final String pqcSigningAlgorithm;
+  final String status;
+  final String profileFingerprint;
+  final String revokedReason;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final DateTime? firstSeenAt;
+  final DateTime? lastSeenAt;
+
+  bool get isActive => status == 'active';
 
   bool get hasUsableX25519Key =>
       keyAlgorithm == 'x25519' && _hasValidX25519PublicKey(identityPublicKey);
@@ -84,8 +96,13 @@ class AppUserDevice {
       pqcAlgorithm: json['pqc_algorithm'] as String? ?? '',
       pqcSigningPublicKey: json['pqc_signing_public_key'] as String? ?? '',
       pqcSigningAlgorithm: json['pqc_signing_algorithm'] as String? ?? '',
+      status: json['status'] as String? ?? 'active',
+      profileFingerprint: json['profile_fingerprint'] as String? ?? '',
+      revokedReason: json['revoked_reason'] as String? ?? '',
       createdAt: _parseDate(json['created_at'] as String?),
       updatedAt: _parseDate(json['updated_at'] as String?),
+      firstSeenAt: _parseDate(json['first_seen_at'] as String?),
+      lastSeenAt: _parseDate(json['last_seen_at'] as String?),
     );
   }
 
@@ -99,8 +116,13 @@ class AppUserDevice {
     String? pqcAlgorithm,
     String? pqcSigningPublicKey,
     String? pqcSigningAlgorithm,
+    String? status,
+    String? profileFingerprint,
+    String? revokedReason,
     DateTime? createdAt,
     DateTime? updatedAt,
+    DateTime? firstSeenAt,
+    DateTime? lastSeenAt,
   }) {
     return AppUserDevice(
       deviceId: deviceId ?? this.deviceId,
@@ -112,8 +134,13 @@ class AppUserDevice {
       pqcAlgorithm: pqcAlgorithm ?? this.pqcAlgorithm,
       pqcSigningPublicKey: pqcSigningPublicKey ?? this.pqcSigningPublicKey,
       pqcSigningAlgorithm: pqcSigningAlgorithm ?? this.pqcSigningAlgorithm,
+      status: status ?? this.status,
+      profileFingerprint: profileFingerprint ?? this.profileFingerprint,
+      revokedReason: revokedReason ?? this.revokedReason,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      firstSeenAt: firstSeenAt ?? this.firstSeenAt,
+      lastSeenAt: lastSeenAt ?? this.lastSeenAt,
     );
   }
 
@@ -143,7 +170,10 @@ class AppUser {
   bool get hasUsablePqcDeviceKey => preferredPqcDevice != null;
 
   List<AppUserDevice> get usableX25519Devices =>
-      devices.where((device) => device.hasUsableX25519Key).toList();
+      activeDevices.where((device) => device.hasUsableX25519Key).toList();
+
+  List<AppUserDevice> get activeDevices =>
+      devices.where((device) => device.isActive).toList();
 
   AppUserDevice? get preferredX25519Device {
     for (final device in usableX25519Devices) {
@@ -155,7 +185,7 @@ class AppUser {
   }
 
   AppUserDevice? get preferredPqcDevice {
-    for (final device in devices) {
+    for (final device in activeDevices) {
       if (device.hasUsableMlKemKey && device.hasUsableMlDsaKey) {
         return device;
       }
