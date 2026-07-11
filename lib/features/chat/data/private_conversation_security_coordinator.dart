@@ -48,9 +48,13 @@ class PrivateConversationSecurityCoordinator {
       );
     }
     if (!trust.isEnterpriseVerified) {
-      throw ChatEncryptionException(
-        'Verify ${trust.peerUser?.displayName ?? 'peer'} security material before sending private messages.',
-      );
+      final peerUser = trust.peerUser;
+      if (peerUser == null) {
+        throw ChatEncryptionException(
+          'Peer security material could not be resolved.',
+        );
+      }
+      await keyVerificationService.verifyUser(peerUser);
     }
   }
 }

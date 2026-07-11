@@ -188,7 +188,7 @@ class OutboxStore {
   Future<void> clear() async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.remove(_storageKey);
-    await _database.clearAllChatData();
+    await _database.clearQueuedMessages();
   }
 
   Future<void> _importLegacyIfNeeded() async {

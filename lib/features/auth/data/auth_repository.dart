@@ -1,8 +1,10 @@
 import '../../../core/device/device_identity_service.dart';
 import '../../../core/config/api_config.dart';
+import '../../../core/database/app_database.dart';
 import '../../../core/device/device_key_service.dart';
 import '../../../core/device/device_pqc_key_service.dart';
 import '../../../core/device/device_pqc_signing_key_service.dart';
+import '../../../core/device/device_security_state_service.dart';
 import '../../../core/models/organization_context.dart';
 import '../../../core/models/session_user.dart';
 import '../../../core/network/api_client.dart';
@@ -21,6 +23,8 @@ class AuthRepository {
     required this.deviceKeyService,
     required this.devicePqcKeyService,
     required this.devicePqcSigningKeyService,
+    required this.deviceSecurityStateService,
+    this.appDatabase,
     this._outboundMessageCache,
     this._outboxStore,
   });
@@ -31,8 +35,28 @@ class AuthRepository {
   final DeviceKeyService deviceKeyService;
   final DevicePqcKeyService devicePqcKeyService;
   final DevicePqcSigningKeyService devicePqcSigningKeyService;
+  final DeviceSecurityStateService deviceSecurityStateService;
+  final AppDatabase? appDatabase;
   final OutboundMessageCache? _outboundMessageCache;
   final OutboxStore? _outboxStore;
+
+  Future<String> suggestedBootstrapName() async {
+    final rememberedIdentity = await sessionStorage.readRememberedIdentity();
+    if (rememberedIdentity != null &&
+        rememberedIdentity.displayName.trim().isNotEmpty) {
+      return rememberedIdentity.displayName.trim();
+    }
+
+    final deviceIdentity = await deviceIdentityService.getIdentity();
+    final suffix = deviceIdentity.id.replaceAll('-', '').substring(0, 6);
+    final platform = deviceIdentity.platform.toUpperCase();
+    return '$platform-$suffix';
+  }
+
+  Future<SessionUser> bootstrapLogin() async {
+    final bootstrapName = await suggestedBootstrapName();
+    return login(bootstrapName);
+  }
 
   Future<SessionUser?> restoreSession() async {
     await _resetLocalStateIfServerChanged();
@@ -66,11 +90,11 @@ class AuthRepository {
 
   Future<SessionUser> login(String username) async {
     await _resetLocalStateIfServerChanged();
-    final deviceIdentity = await deviceIdentityService.getIdentity();
-    final deviceKeyMaterial = await deviceKeyService.getOrCreateKeyMaterial();
-    final pqcSigningKeyMaterial = await devicePqcSigningKeyService
-        .getOrCreateKeyMaterial();
-    final pqcPayload = await _buildPqcRegistrationPayload();
+    final deviceState = await _prepareDeviceState();
+    final deviceIdentity = deviceState.deviceIdentity;
+    final deviceKeyMaterial = deviceState.identityKeyMaterial;
+    final pqcSigningKeyMaterial = deviceState.pqcSigningKeyMaterial;
+    final pqcPayload = _buildPqcRegistrationPayloadFromState(deviceState);
     apiClient.setDeviceId(deviceIdentity.id);
     final response =
         await apiClient.post('/auth/login', {
@@ -142,11 +166,11 @@ class AuthRepository {
   }
 
   Future<void> syncCurrentDevice() async {
-    final deviceIdentity = await deviceIdentityService.getIdentity();
-    final deviceKeyMaterial = await deviceKeyService.getOrCreateKeyMaterial();
-    final pqcSigningKeyMaterial = await devicePqcSigningKeyService
-        .getOrCreateKeyMaterial();
-    final pqcPayload = await _buildPqcRegistrationPayload();
+    final deviceState = await _prepareDeviceState();
+    final deviceIdentity = deviceState.deviceIdentity;
+    final deviceKeyMaterial = deviceState.identityKeyMaterial;
+    final pqcSigningKeyMaterial = deviceState.pqcSigningKeyMaterial;
+    final pqcPayload = _buildPqcRegistrationPayloadFromState(deviceState);
     apiClient.setDeviceId(deviceIdentity.id);
     final response =
         await apiClient.post('/users/me/device', {
@@ -193,17 +217,32 @@ class AuthRepository {
     await sessionStorage.writeApiBaseUrl(ApiConfig.baseUrl);
   }
 
-  Future<_PqcRegistrationPayload> _buildPqcRegistrationPayload() async {
-    if (!devicePqcKeyService.isSupportedOnCurrentPlatform) {
-      await devicePqcKeyService.clearKeyMaterial();
+  _PqcRegistrationPayload _buildPqcRegistrationPayloadFromState(
+    DeviceSecurityStateResolution deviceState,
+  ) {
+    final pqcKeyMaterial = deviceState.pqcKeyMaterial;
+    if (pqcKeyMaterial == null) {
       return const _PqcRegistrationPayload(publicKey: '', algorithm: '');
     }
-
-    final pqcKeyMaterial = await devicePqcKeyService.getOrCreateKeyMaterial();
     return _PqcRegistrationPayload(
       publicKey: pqcKeyMaterial.publicKey,
       algorithm: pqcKeyMaterial.algorithm,
     );
+  }
+
+  Future<DeviceSecurityStateResolution> _prepareDeviceState() async {
+    final deviceState = await deviceSecurityStateService.ensureConsistentState(
+      deviceIdentityService: deviceIdentityService,
+      deviceKeyService: deviceKeyService,
+      devicePqcKeyService: devicePqcKeyService,
+      devicePqcSigningKeyService: devicePqcSigningKeyService,
+    );
+    if (deviceState.didRotateInstallation) {
+      await _outboundMessageCache?.clearAll();
+      await _outboxStore?.clear();
+      await appDatabase?.clearAllChatData();
+    }
+    return deviceState;
   }
 
   List<OrganizationSummary> _parseOrganizations(Map<String, dynamic> response) {

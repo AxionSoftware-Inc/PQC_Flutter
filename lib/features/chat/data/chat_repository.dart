@@ -54,7 +54,8 @@ class ChatRepository {
     OutboxStore? outboxStore,
   }) : _database = database,
        _localDataProtector = localDataProtector,
-       outboxStore = outboxStore ??
+       outboxStore =
+           outboxStore ??
            OutboxStore(
              database: database,
              localDataProtector: localDataProtector,
@@ -120,22 +121,9 @@ class ChatRepository {
             ? preview.substring(0, 80)
             : preview,
       );
-      await _database.upsertConversation(
-        ConversationsTableCompanion(
-          id: drift.Value(merged.id),
-          workspaceId: drift.Value(merged.workspaceId),
-          type: drift.Value(merged.type),
-          title: drift.Value(merged.title),
-          lastMessagePreview: drift.Value(
-            await _localDataProtector.protect(merged.lastMessagePreview),
-          ),
-          updatedAt: drift.Value(merged.updatedAt),
-          createdAt: drift.Value(merged.createdAt),
-        ),
-      );
-      _conversationsById[merged.id] = merged;
+      await _persistConversation(merged);
     }
-    final rows = await _database.readConversationsForWorkspace(_activeWorkspaceId);
+    final rows = await _readVisibleConversationRows();
     final all = <Conversation>[];
     for (final row in rows) {
       all.add(await _mapConversationRow(row));
@@ -143,8 +131,13 @@ class ChatRepository {
     return all;
   }
 
-  Future<Conversation> openPrivateConversation(int otherUserId) =>
-      remoteDataSource.openPrivateConversation(otherUserId);
+  Future<Conversation> openPrivateConversation(int otherUserId) async {
+    final conversation = await remoteDataSource.openPrivateConversation(
+      otherUserId,
+    );
+    await _persistConversation(conversation);
+    return conversation;
+  }
 
   Future<List<ChatMessage>> fetchMessages({
     required Conversation conversation,
@@ -160,21 +153,28 @@ class ChatRepository {
       conversation: conversation,
       currentUserId: currentUserId,
     );
-    final syncState = await _database.readSyncState(conversation.id);
-    final messages = await remoteDataSource.fetchMessages(
-      conversation.id,
-      afterId:
-          syncState?.lastMessageId ??
-          _lastMessageIdByConversation[conversation.id],
-    );
     final existingRows = await _database.readMessagesForConversation(
       conversation.id,
     );
+    final syncState = await _database.readSyncState(conversation.id);
+    final deltaAfterId = existingRows.isEmpty
+        ? null
+        : syncState?.lastMessageId ??
+              _lastMessageIdByConversation[conversation.id];
+    var messages = await remoteDataSource.fetchMessages(
+      conversation.id,
+      afterId: deltaAfterId,
+    );
+    if (messages.isEmpty && existingRows.isEmpty && deltaAfterId != null) {
+      messages = await remoteDataSource.fetchMessages(conversation.id);
+    }
     final unprotectedExistingRows = <MessagesTableData>[];
     for (final row in existingRows) {
       unprotectedExistingRows.add(await _unprotectMessageRow(row));
     }
-    final existingById = {for (final row in unprotectedExistingRows) row.id: row};
+    final existingById = {
+      for (final row in unprotectedExistingRows) row.id: row,
+    };
     final existingByClientId = {
       for (final row in unprotectedExistingRows)
         if (row.clientMessageId.isNotEmpty) row.clientMessageId: row,
@@ -613,7 +613,9 @@ class ChatRepository {
         conversationId: drift.Value(decoded.conversationId),
         senderId: drift.Value(decoded.senderId),
         senderName: drift.Value(decoded.senderName),
-        plaintextBody: drift.Value(await _localDataProtector.protect(decoded.body)),
+        plaintextBody: drift.Value(
+          await _localDataProtector.protect(decoded.body),
+        ),
         encryptedBody: drift.Value(message.body),
         attachmentsJson: drift.Value(_encodeAttachments(decoded.attachments)),
         messageType: drift.Value(decoded.messageType),
@@ -625,6 +627,14 @@ class ChatRepository {
         failureReason: drift.Value(decoded.failureReason),
         isPending: const drift.Value(false),
         createdAt: drift.Value(decoded.createdAt),
+      ),
+    );
+    await _persistConversation(
+      conversation.copyWith(
+        lastMessagePreview: decoded.body.length > 80
+            ? decoded.body.substring(0, 80)
+            : decoded.body,
+        updatedAt: decoded.createdAt,
       ),
     );
     return decoded;
@@ -736,7 +746,9 @@ class ChatRepository {
         conversationId: drift.Value(conversationId),
         senderId: drift.Value(event.payload['sender_id'] as int),
         senderName: drift.Value(event.payload['sender_name'] as String? ?? ''),
-        plaintextBody: drift.Value(await _localDataProtector.protect(plaintext)),
+        plaintextBody: drift.Value(
+          await _localDataProtector.protect(plaintext),
+        ),
         encryptedBody: drift.Value(payload),
         attachmentsJson: drift.Value(
           _encodeAttachments(
@@ -766,6 +778,36 @@ class ChatRepository {
           DateTime.parse(event.payload['created_at'] as String),
         ),
       ),
+    );
+    await _persistConversation(
+      knownConversation.copyWith(
+        lastMessagePreview: plaintext.length > 80
+            ? plaintext.substring(0, 80)
+            : plaintext,
+        updatedAt: DateTime.parse(event.payload['created_at'] as String),
+      ),
+    );
+  }
+
+  Future<void> _persistConversation(Conversation conversation) async {
+    final effectiveWorkspaceId = conversation.workspaceId > 0
+        ? conversation.workspaceId
+        : _activeWorkspaceId;
+    await _database.upsertConversation(
+      ConversationsTableCompanion(
+        id: drift.Value(conversation.id),
+        workspaceId: drift.Value(effectiveWorkspaceId),
+        type: drift.Value(conversation.type),
+        title: drift.Value(conversation.title),
+        lastMessagePreview: drift.Value(
+          await _localDataProtector.protect(conversation.lastMessagePreview),
+        ),
+        updatedAt: drift.Value(conversation.updatedAt),
+        createdAt: drift.Value(conversation.createdAt),
+      ),
+    );
+    _conversationsById[conversation.id] = conversation.copyWith(
+      workspaceId: effectiveWorkspaceId,
     );
   }
 
@@ -805,6 +847,19 @@ class ChatRepository {
     return row.copyWith(
       plaintextBody: await _localDataProtector.unprotect(row.plaintextBody),
     );
+  }
+
+  Future<List<ConversationsTableData>> _readVisibleConversationRows() async {
+    if (_activeWorkspaceId <= 0) {
+      return _database.readConversations();
+    }
+    final scopedRows = await _database.readConversationsForWorkspace(
+      _activeWorkspaceId,
+    );
+    if (scopedRows.isNotEmpty) {
+      return scopedRows;
+    }
+    return _database.readConversations();
   }
 
   String _deliveryStateToStored(MessageDeliveryState state) => switch (state) {

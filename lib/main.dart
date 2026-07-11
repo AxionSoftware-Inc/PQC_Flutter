@@ -6,6 +6,7 @@ import 'core/device/device_identity_service.dart';
 import 'core/device/device_key_service.dart';
 import 'core/device/device_pqc_key_service.dart';
 import 'core/device/device_pqc_signing_key_service.dart';
+import 'core/device/device_security_state_service.dart';
 import 'core/network/api_client.dart';
 import 'core/storage/local_data_protector.dart';
 import 'core/storage/session_storage.dart';
@@ -33,6 +34,7 @@ Future<void> main() async {
   final deviceKeyService = DeviceKeyService();
   final devicePqcKeyService = DevicePqcKeyService();
   final devicePqcSigningKeyService = DevicePqcSigningKeyService();
+  final deviceSecurityStateService = DeviceSecurityStateService();
   final outboundMessageCache = OutboundMessageCache();
   final remoteDataSource = ChatRemoteDataSource(apiClient: apiClient);
   final outboxStore = OutboxStore(
@@ -53,6 +55,8 @@ Future<void> main() async {
     deviceKeyService: deviceKeyService,
     devicePqcKeyService: devicePqcKeyService,
     devicePqcSigningKeyService: devicePqcSigningKeyService,
+    deviceSecurityStateService: deviceSecurityStateService,
+    appDatabase: appDatabase,
     outboundMessageCache: outboundMessageCache,
     outboxStore: outboxStore,
   );

@@ -43,6 +43,26 @@ class SessionController extends ChangeNotifier {
     }
   }
 
+  Future<bool> bootstrapLogin() async {
+    _setLoading(true);
+    _error = null;
+
+    try {
+      _sessionUser = await authRepository.bootstrapLogin();
+      await onSessionChanged?.call(_sessionUser);
+      return true;
+    } catch (error) {
+      _error = error.toString();
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<String> suggestedBootstrapName() {
+    return authRepository.suggestedBootstrapName();
+  }
+
   Future<void> logout() async {
     _setLoading(true);
     await authRepository.logout();
