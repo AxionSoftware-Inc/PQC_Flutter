@@ -20,11 +20,18 @@ class SessionController extends ChangeNotifier {
 
   Future<void> initialize() async {
     _isLoading = true;
+    _error = null;
     notifyListeners();
-    _sessionUser = await authRepository.restoreSession();
-    await onSessionChanged?.call(_sessionUser);
-    _isLoading = false;
-    notifyListeners();
+    try {
+      _sessionUser = await authRepository.restoreSession();
+      await _notifySessionChanged(_sessionUser);
+    } catch (error) {
+      _sessionUser = null;
+      _error = error.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<bool> login(String username) async {
@@ -33,7 +40,7 @@ class SessionController extends ChangeNotifier {
 
     try {
       _sessionUser = await authRepository.login(username.trim());
-      await onSessionChanged?.call(_sessionUser);
+      await _notifySessionChanged(_sessionUser);
       return true;
     } catch (error) {
       _error = error.toString();
@@ -49,7 +56,7 @@ class SessionController extends ChangeNotifier {
 
     try {
       _sessionUser = await authRepository.bootstrapLogin();
-      await onSessionChanged?.call(_sessionUser);
+      await _notifySessionChanged(_sessionUser);
       return true;
     } catch (error) {
       _error = error.toString();
@@ -68,7 +75,7 @@ class SessionController extends ChangeNotifier {
     await authRepository.logout();
     _sessionUser = null;
     _error = null;
-    await onSessionChanged?.call(null);
+    await _notifySessionChanged(null);
     _setLoading(false);
   }
 
@@ -76,7 +83,7 @@ class SessionController extends ChangeNotifier {
     await authRepository.logout(clearRememberedIdentity: false);
     _sessionUser = null;
     _error = 'Session expired. Please log in again.';
-    await onSessionChanged?.call(null);
+    await _notifySessionChanged(null);
     notifyListeners();
   }
 
@@ -92,7 +99,7 @@ class SessionController extends ChangeNotifier {
         sessionUser,
         workspaceId,
       );
-      await onSessionChanged?.call(_sessionUser);
+      await _notifySessionChanged(_sessionUser);
     } catch (error) {
       _error = error.toString();
     } finally {
@@ -108,5 +115,17 @@ class SessionController extends ChangeNotifier {
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
+  }
+
+  Future<void> _notifySessionChanged(SessionUser? sessionUser) async {
+    final callback = onSessionChanged;
+    if (callback == null) {
+      return;
+    }
+    try {
+      await callback(sessionUser).timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // Realtime/session side effects should not block the whole app shell.
+    }
   }
 }

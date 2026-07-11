@@ -112,6 +112,32 @@ Muhim:
 - bu app-side persistent identity
 - test bosqichi uchun ataylab shunday qilingan
 
+## Persistence Rules
+
+App hozir quyidagilarni eslab qoladi:
+
+- `device_id`
+- local device keylar
+- session
+- remembered display name
+- chat conversations
+- message history
+- outbox queue
+- verified key fingerprints
+
+Muhim qoidalar:
+
+- `outbox clear` endi chat history'ni o'chirmaydi
+- local DB bo'sh, lekin sync marker qolib ketgan bo'lsa app full-fetch fallback qiladi
+- agar ayni `device_id` ostida keylar yo'qolib qayta yaralsa, app bu holatni yangi installation deb aylantiradi
+- bu `key changed` spamini kamaytirish uchun qilingan
+
+Qisqa amaliy xulosa:
+
+- app restartdan keyin chatlar qolishi kerak
+- qurilma qayta ochilganda shu device sifatida davom etishi kerak
+- secure storage buzilsa, jim noto'g'ri state bilan yurish o'rniga yangi installation identity olinadi
+
 ## Encryption Snapshot
 
 Private chat:

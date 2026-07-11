@@ -2342,6 +2342,18 @@ class $VerifiedKeysTableTable extends VerifiedKeysTable
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _deviceIdMeta = const VerificationMeta(
+    'deviceId',
+  );
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+    'device_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   static const VerificationMeta _kindMeta = const VerificationMeta('kind');
   @override
   late final GeneratedColumn<String> kind = GeneratedColumn<String>(
@@ -2373,12 +2385,39 @@ class $VerifiedKeysTableTable extends VerifiedKeysTable
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     userId,
+    deviceId,
     kind,
     verifiedFingerprint,
     lastSeenFingerprint,
+    createdAt,
+    updatedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2399,6 +2438,12 @@ class $VerifiedKeysTableTable extends VerifiedKeysTable
       );
     } else if (isInserting) {
       context.missing(_userIdMeta);
+    }
+    if (data.containsKey('device_id')) {
+      context.handle(
+        _deviceIdMeta,
+        deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta),
+      );
     }
     if (data.containsKey('kind')) {
       context.handle(
@@ -2426,11 +2471,23 @@ class $VerifiedKeysTableTable extends VerifiedKeysTable
         ),
       );
     }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
     return context;
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => {userId, kind};
+  Set<GeneratedColumn> get $primaryKey => {userId, deviceId, kind};
   @override
   VerifiedKeysTableData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
@@ -2438,6 +2495,10 @@ class $VerifiedKeysTableTable extends VerifiedKeysTable
       userId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}user_id'],
+      )!,
+      deviceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_id'],
       )!,
       kind: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -2451,6 +2512,14 @@ class $VerifiedKeysTableTable extends VerifiedKeysTable
         DriftSqlType.string,
         data['${effectivePrefix}last_seen_fingerprint'],
       ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
     );
   }
 
@@ -2463,19 +2532,26 @@ class $VerifiedKeysTableTable extends VerifiedKeysTable
 class VerifiedKeysTableData extends DataClass
     implements Insertable<VerifiedKeysTableData> {
   final int userId;
+  final String deviceId;
   final String kind;
   final String? verifiedFingerprint;
   final String? lastSeenFingerprint;
+  final DateTime createdAt;
+  final DateTime updatedAt;
   const VerifiedKeysTableData({
     required this.userId,
+    required this.deviceId,
     required this.kind,
     this.verifiedFingerprint,
     this.lastSeenFingerprint,
+    required this.createdAt,
+    required this.updatedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['user_id'] = Variable<int>(userId);
+    map['device_id'] = Variable<String>(deviceId);
     map['kind'] = Variable<String>(kind);
     if (!nullToAbsent || verifiedFingerprint != null) {
       map['verified_fingerprint'] = Variable<String>(verifiedFingerprint);
@@ -2483,12 +2559,15 @@ class VerifiedKeysTableData extends DataClass
     if (!nullToAbsent || lastSeenFingerprint != null) {
       map['last_seen_fingerprint'] = Variable<String>(lastSeenFingerprint);
     }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
 
   VerifiedKeysTableCompanion toCompanion(bool nullToAbsent) {
     return VerifiedKeysTableCompanion(
       userId: Value(userId),
+      deviceId: Value(deviceId),
       kind: Value(kind),
       verifiedFingerprint: verifiedFingerprint == null && nullToAbsent
           ? const Value.absent()
@@ -2496,6 +2575,8 @@ class VerifiedKeysTableData extends DataClass
       lastSeenFingerprint: lastSeenFingerprint == null && nullToAbsent
           ? const Value.absent()
           : Value(lastSeenFingerprint),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
     );
   }
 
@@ -2506,6 +2587,7 @@ class VerifiedKeysTableData extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return VerifiedKeysTableData(
       userId: serializer.fromJson<int>(json['userId']),
+      deviceId: serializer.fromJson<String>(json['deviceId']),
       kind: serializer.fromJson<String>(json['kind']),
       verifiedFingerprint: serializer.fromJson<String?>(
         json['verifiedFingerprint'],
@@ -2513,6 +2595,8 @@ class VerifiedKeysTableData extends DataClass
       lastSeenFingerprint: serializer.fromJson<String?>(
         json['lastSeenFingerprint'],
       ),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
   @override
@@ -2520,19 +2604,26 @@ class VerifiedKeysTableData extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'userId': serializer.toJson<int>(userId),
+      'deviceId': serializer.toJson<String>(deviceId),
       'kind': serializer.toJson<String>(kind),
       'verifiedFingerprint': serializer.toJson<String?>(verifiedFingerprint),
       'lastSeenFingerprint': serializer.toJson<String?>(lastSeenFingerprint),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
 
   VerifiedKeysTableData copyWith({
     int? userId,
+    String? deviceId,
     String? kind,
     Value<String?> verifiedFingerprint = const Value.absent(),
     Value<String?> lastSeenFingerprint = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
   }) => VerifiedKeysTableData(
     userId: userId ?? this.userId,
+    deviceId: deviceId ?? this.deviceId,
     kind: kind ?? this.kind,
     verifiedFingerprint: verifiedFingerprint.present
         ? verifiedFingerprint.value
@@ -2540,10 +2631,13 @@ class VerifiedKeysTableData extends DataClass
     lastSeenFingerprint: lastSeenFingerprint.present
         ? lastSeenFingerprint.value
         : this.lastSeenFingerprint,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
   );
   VerifiedKeysTableData copyWithCompanion(VerifiedKeysTableCompanion data) {
     return VerifiedKeysTableData(
       userId: data.userId.present ? data.userId.value : this.userId,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
       kind: data.kind.present ? data.kind.value : this.kind,
       verifiedFingerprint: data.verifiedFingerprint.present
           ? data.verifiedFingerprint.value
@@ -2551,6 +2645,8 @@ class VerifiedKeysTableData extends DataClass
       lastSeenFingerprint: data.lastSeenFingerprint.present
           ? data.lastSeenFingerprint.value
           : this.lastSeenFingerprint,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
 
@@ -2558,78 +2654,112 @@ class VerifiedKeysTableData extends DataClass
   String toString() {
     return (StringBuffer('VerifiedKeysTableData(')
           ..write('userId: $userId, ')
+          ..write('deviceId: $deviceId, ')
           ..write('kind: $kind, ')
           ..write('verifiedFingerprint: $verifiedFingerprint, ')
-          ..write('lastSeenFingerprint: $lastSeenFingerprint')
+          ..write('lastSeenFingerprint: $lastSeenFingerprint, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(userId, kind, verifiedFingerprint, lastSeenFingerprint);
+  int get hashCode => Object.hash(
+    userId,
+    deviceId,
+    kind,
+    verifiedFingerprint,
+    lastSeenFingerprint,
+    createdAt,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is VerifiedKeysTableData &&
           other.userId == this.userId &&
+          other.deviceId == this.deviceId &&
           other.kind == this.kind &&
           other.verifiedFingerprint == this.verifiedFingerprint &&
-          other.lastSeenFingerprint == this.lastSeenFingerprint);
+          other.lastSeenFingerprint == this.lastSeenFingerprint &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
 }
 
 class VerifiedKeysTableCompanion
     extends UpdateCompanion<VerifiedKeysTableData> {
   final Value<int> userId;
+  final Value<String> deviceId;
   final Value<String> kind;
   final Value<String?> verifiedFingerprint;
   final Value<String?> lastSeenFingerprint;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const VerifiedKeysTableCompanion({
     this.userId = const Value.absent(),
+    this.deviceId = const Value.absent(),
     this.kind = const Value.absent(),
     this.verifiedFingerprint = const Value.absent(),
     this.lastSeenFingerprint = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   VerifiedKeysTableCompanion.insert({
     required int userId,
+    this.deviceId = const Value.absent(),
     required String kind,
     this.verifiedFingerprint = const Value.absent(),
     this.lastSeenFingerprint = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : userId = Value(userId),
        kind = Value(kind);
   static Insertable<VerifiedKeysTableData> custom({
     Expression<int>? userId,
+    Expression<String>? deviceId,
     Expression<String>? kind,
     Expression<String>? verifiedFingerprint,
     Expression<String>? lastSeenFingerprint,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (userId != null) 'user_id': userId,
+      if (deviceId != null) 'device_id': deviceId,
       if (kind != null) 'kind': kind,
       if (verifiedFingerprint != null)
         'verified_fingerprint': verifiedFingerprint,
       if (lastSeenFingerprint != null)
         'last_seen_fingerprint': lastSeenFingerprint,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
 
   VerifiedKeysTableCompanion copyWith({
     Value<int>? userId,
+    Value<String>? deviceId,
     Value<String>? kind,
     Value<String?>? verifiedFingerprint,
     Value<String?>? lastSeenFingerprint,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
     Value<int>? rowid,
   }) {
     return VerifiedKeysTableCompanion(
       userId: userId ?? this.userId,
+      deviceId: deviceId ?? this.deviceId,
       kind: kind ?? this.kind,
       verifiedFingerprint: verifiedFingerprint ?? this.verifiedFingerprint,
       lastSeenFingerprint: lastSeenFingerprint ?? this.lastSeenFingerprint,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2639,6 +2769,9 @@ class VerifiedKeysTableCompanion
     final map = <String, Expression>{};
     if (userId.present) {
       map['user_id'] = Variable<int>(userId.value);
+    }
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
     }
     if (kind.present) {
       map['kind'] = Variable<String>(kind.value);
@@ -2651,6 +2784,12 @@ class VerifiedKeysTableCompanion
         lastSeenFingerprint.value,
       );
     }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2661,9 +2800,12 @@ class VerifiedKeysTableCompanion
   String toString() {
     return (StringBuffer('VerifiedKeysTableCompanion(')
           ..write('userId: $userId, ')
+          ..write('deviceId: $deviceId, ')
           ..write('kind: $kind, ')
           ..write('verifiedFingerprint: $verifiedFingerprint, ')
           ..write('lastSeenFingerprint: $lastSeenFingerprint, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4147,17 +4289,23 @@ typedef $$ConversationSyncStateTableTableProcessedTableManager =
 typedef $$VerifiedKeysTableTableCreateCompanionBuilder =
     VerifiedKeysTableCompanion Function({
       required int userId,
+      Value<String> deviceId,
       required String kind,
       Value<String?> verifiedFingerprint,
       Value<String?> lastSeenFingerprint,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
       Value<int> rowid,
     });
 typedef $$VerifiedKeysTableTableUpdateCompanionBuilder =
     VerifiedKeysTableCompanion Function({
       Value<int> userId,
+      Value<String> deviceId,
       Value<String> kind,
       Value<String?> verifiedFingerprint,
       Value<String?> lastSeenFingerprint,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
       Value<int> rowid,
     });
 
@@ -4175,6 +4323,11 @@ class $$VerifiedKeysTableTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get kind => $composableBuilder(
     column: $table.kind,
     builder: (column) => ColumnFilters(column),
@@ -4187,6 +4340,16 @@ class $$VerifiedKeysTableTableFilterComposer
 
   ColumnFilters<String> get lastSeenFingerprint => $composableBuilder(
     column: $table.lastSeenFingerprint,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4205,6 +4368,11 @@ class $$VerifiedKeysTableTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get kind => $composableBuilder(
     column: $table.kind,
     builder: (column) => ColumnOrderings(column),
@@ -4217,6 +4385,16 @@ class $$VerifiedKeysTableTableOrderingComposer
 
   ColumnOrderings<String> get lastSeenFingerprint => $composableBuilder(
     column: $table.lastSeenFingerprint,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -4233,6 +4411,9 @@ class $$VerifiedKeysTableTableAnnotationComposer
   GeneratedColumn<int> get userId =>
       $composableBuilder(column: $table.userId, builder: (column) => column);
 
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+
   GeneratedColumn<String> get kind =>
       $composableBuilder(column: $table.kind, builder: (column) => column);
 
@@ -4245,6 +4426,12 @@ class $$VerifiedKeysTableTableAnnotationComposer
     column: $table.lastSeenFingerprint,
     builder: (column) => column,
   );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 }
 
 class $$VerifiedKeysTableTableTableManager
@@ -4288,29 +4475,41 @@ class $$VerifiedKeysTableTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> userId = const Value.absent(),
+                Value<String> deviceId = const Value.absent(),
                 Value<String> kind = const Value.absent(),
                 Value<String?> verifiedFingerprint = const Value.absent(),
                 Value<String?> lastSeenFingerprint = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => VerifiedKeysTableCompanion(
                 userId: userId,
+                deviceId: deviceId,
                 kind: kind,
                 verifiedFingerprint: verifiedFingerprint,
                 lastSeenFingerprint: lastSeenFingerprint,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
               ({
                 required int userId,
+                Value<String> deviceId = const Value.absent(),
                 required String kind,
                 Value<String?> verifiedFingerprint = const Value.absent(),
                 Value<String?> lastSeenFingerprint = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => VerifiedKeysTableCompanion.insert(
                 userId: userId,
+                deviceId: deviceId,
                 kind: kind,
                 verifiedFingerprint: verifiedFingerprint,
                 lastSeenFingerprint: lastSeenFingerprint,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

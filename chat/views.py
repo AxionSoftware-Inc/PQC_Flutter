@@ -54,6 +54,7 @@ def get_request_device_or_400(request):
     device = UserDevice.objects.filter(
         user=request.user,
         device_id=device_id,
+        status=UserDevice.Status.ACTIVE,
     ).first()
     if device is None:
         return None, Response(
@@ -248,6 +249,7 @@ class ConversationKeyEnvelopeView(APIView):
         expected_target_ids = set(
             UserDevice.objects.filter(
                 user_id__in=participant_user_ids,
+                status=UserDevice.Status.ACTIVE,
                 pqc_algorithm='ml-kem-768',
                 pqc_signing_algorithm='ml-dsa-65',
             )
@@ -261,6 +263,7 @@ class ConversationKeyEnvelopeView(APIView):
             target_device = UserDevice.objects.filter(
                 device_id=item['target_device_id'],
                 user_id__in=participant_user_ids,
+                status=UserDevice.Status.ACTIVE,
             ).first()
             if target_device is None:
                 return Response(
@@ -307,6 +310,7 @@ class ConversationKeyEnvelopeView(APIView):
             target_device = UserDevice.objects.get(
                 device_id=item['target_device_id'],
                 user_id__in=participant_user_ids,
+                status=UserDevice.Status.ACTIVE,
             )
             envelope, _ = conversation.key_envelopes.update_or_create(
                 target_device=target_device,

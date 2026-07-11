@@ -135,8 +135,13 @@ class DeviceSerializer(serializers.Serializer):
     pqc_algorithm = serializers.CharField()
     pqc_signing_public_key = serializers.CharField()
     pqc_signing_algorithm = serializers.CharField()
+    status = serializers.CharField()
+    profile_fingerprint = serializers.CharField()
+    revoked_reason = serializers.CharField(allow_blank=True, required=False)
     created_at = serializers.DateTimeField()
     updated_at = serializers.DateTimeField()
+    first_seen_at = serializers.DateTimeField()
+    last_seen_at = serializers.DateTimeField()
 
 
 class DeviceSyncSerializer(serializers.Serializer):
@@ -195,10 +200,17 @@ class UserSerializer(serializers.ModelSerializer):
                     'pqc_algorithm': device.pqc_algorithm,
                     'pqc_signing_public_key': device.pqc_signing_public_key,
                     'pqc_signing_algorithm': device.pqc_signing_algorithm,
+                    'status': device.status,
+                    'profile_fingerprint': device.profile_fingerprint,
+                    'revoked_reason': device.revoked_reason,
                     'created_at': device.created_at,
                     'updated_at': device.updated_at,
+                    'first_seen_at': device.first_seen_at,
+                    'last_seen_at': device.last_seen_at,
                 }
-                for device in obj.devices.order_by('id')
+                for device in obj.devices.filter(
+                    status='active',
+                ).order_by('id')
             ],
             many=True,
         ).data

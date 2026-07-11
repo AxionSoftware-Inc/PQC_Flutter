@@ -1,5 +1,8 @@
+import hashlib
+
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 from django.utils.text import slugify
 from uuid import uuid4
 
@@ -18,6 +21,7 @@ from users.models import (
     WorkspaceMember,
 )
 from users.serializers import (
+    DeviceSerializer,
     DeviceSyncSerializer,
     InvitationAcceptSerializer,
     InvitationCreateSerializer,
@@ -168,6 +172,15 @@ def upsert_user_device(
     pqc_signing_public_key='',
     pqc_signing_algorithm='',
 ):
+    profile_fingerprint = build_device_profile_fingerprint(
+        device_id=device_id,
+        identity_public_key=identity_public_key,
+        key_algorithm=key_algorithm,
+        pqc_public_key=pqc_public_key,
+        pqc_algorithm=pqc_algorithm,
+        pqc_signing_public_key=pqc_signing_public_key,
+        pqc_signing_algorithm=pqc_signing_algorithm,
+    )
     device, device_created = UserDevice.objects.get_or_create(
         device_id=device_id,
         defaults={
@@ -180,18 +193,43 @@ def upsert_user_device(
             'pqc_algorithm': pqc_algorithm,
             'pqc_signing_public_key': pqc_signing_public_key,
             'pqc_signing_algorithm': pqc_signing_algorithm,
+            'status': UserDevice.Status.ACTIVE,
+            'profile_fingerprint': profile_fingerprint,
+            'last_seen_at': timezone.now(),
         },
     )
     if not device_created and device.user_id != user.id:
         return None, Response(
             {
                 'detail': 'This device is already linked to another username.',
+                'code': 'device_owner_mismatch',
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
 
     if not device_created:
-        updated_fields = []
+        if device.status != UserDevice.Status.ACTIVE:
+            return None, Response(
+                {
+                    'detail': 'This device is no longer active.',
+                    'code': 'device_revoked',
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        if device.profile_fingerprint and device.profile_fingerprint != profile_fingerprint:
+            return None, Response(
+                {
+                    'detail': 'This device profile does not match the registered key material.',
+                    'code': 'device_profile_mismatch',
+                    'device_status': device.status,
+                    'profile_fingerprint': device.profile_fingerprint,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        updated_fields = ['last_seen_at']
+        device.last_seen_at = timezone.now()
         if device.device_name != device_name:
             device.device_name = device_name
             updated_fields.append('device_name')
@@ -216,10 +254,37 @@ def upsert_user_device(
         if device.pqc_signing_algorithm != pqc_signing_algorithm:
             device.pqc_signing_algorithm = pqc_signing_algorithm
             updated_fields.append('pqc_signing_algorithm')
+        if not device.profile_fingerprint:
+            device.profile_fingerprint = profile_fingerprint
+            updated_fields.append('profile_fingerprint')
         if updated_fields:
             device.save(update_fields=updated_fields + ['updated_at'])
 
     return device, None
+
+
+def build_device_profile_fingerprint(
+    *,
+    device_id,
+    identity_public_key,
+    key_algorithm,
+    pqc_public_key,
+    pqc_algorithm,
+    pqc_signing_public_key,
+    pqc_signing_algorithm,
+):
+    payload = '|'.join(
+        [
+            device_id,
+            key_algorithm,
+            identity_public_key,
+            pqc_algorithm,
+            pqc_public_key,
+            pqc_signing_algorithm,
+            pqc_signing_public_key,
+        ]
+    )
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -292,8 +357,34 @@ class LoginView(APIView):
                 'token': token.key,
                 'account_id': user.id,
                 'device_id': device.device_id,
+                'device_status': device.status,
+                'profile_fingerprint': device.profile_fingerprint,
                 'active_workspace_id': workspace.id,
                 'organizations': _serialize_org_context(user),
+                'active_devices': DeviceSerializer(
+                    [
+                        {
+                            'device_id': item.device_id,
+                            'device_name': item.device_name,
+                            'platform': item.platform,
+                            'identity_public_key': item.identity_public_key,
+                            'key_algorithm': item.key_algorithm,
+                            'pqc_public_key': item.pqc_public_key,
+                            'pqc_algorithm': item.pqc_algorithm,
+                            'pqc_signing_public_key': item.pqc_signing_public_key,
+                            'pqc_signing_algorithm': item.pqc_signing_algorithm,
+                            'status': item.status,
+                            'profile_fingerprint': item.profile_fingerprint,
+                            'revoked_reason': item.revoked_reason,
+                            'created_at': item.created_at,
+                            'updated_at': item.updated_at,
+                            'first_seen_at': item.first_seen_at,
+                            'last_seen_at': item.last_seen_at,
+                        }
+                        for item in user.devices.filter(status=UserDevice.Status.ACTIVE).order_by('id')
+                    ],
+                    many=True,
+                ).data,
                 'user': UserSerializer(user).data,
             }
         )
@@ -358,6 +449,8 @@ class DeviceSyncView(APIView):
         return Response(
             {
                 'device_id': device.device_id,
+                'device_status': device.status,
+                'profile_fingerprint': device.profile_fingerprint,
                 'identity_public_key': device.identity_public_key,
                 'key_algorithm': device.key_algorithm,
                 'pqc_public_key': device.pqc_public_key,
@@ -365,6 +458,70 @@ class DeviceSyncView(APIView):
                 'pqc_signing_public_key': device.pqc_signing_public_key,
                 'pqc_signing_algorithm': device.pqc_signing_algorithm,
                 'organizations': _serialize_org_context(request.user),
+            }
+        )
+
+
+class DeviceListView(APIView):
+    def get(self, request):
+        devices = request.user.devices.filter(status=UserDevice.Status.ACTIVE).order_by('id')
+        return Response(
+            DeviceSerializer(
+                [
+                    {
+                        'device_id': device.device_id,
+                        'device_name': device.device_name,
+                        'platform': device.platform,
+                        'identity_public_key': device.identity_public_key,
+                        'key_algorithm': device.key_algorithm,
+                        'pqc_public_key': device.pqc_public_key,
+                        'pqc_algorithm': device.pqc_algorithm,
+                        'pqc_signing_public_key': device.pqc_signing_public_key,
+                        'pqc_signing_algorithm': device.pqc_signing_algorithm,
+                        'status': device.status,
+                        'profile_fingerprint': device.profile_fingerprint,
+                        'revoked_reason': device.revoked_reason,
+                        'created_at': device.created_at,
+                        'updated_at': device.updated_at,
+                        'first_seen_at': device.first_seen_at,
+                        'last_seen_at': device.last_seen_at,
+                    }
+                    for device in devices
+                ],
+                many=True,
+            ).data
+        )
+
+
+class DeviceRevokeView(APIView):
+    @transaction.atomic
+    def post(self, request, device_id):
+        device = UserDevice.objects.filter(
+            user=request.user,
+            device_id=device_id,
+        ).first()
+        if device is None:
+            return Response(
+                {'detail': 'Device not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if device.status == UserDevice.Status.REVOKED:
+            return Response(
+                {
+                    'device_id': device.device_id,
+                    'device_status': device.status,
+                    'profile_fingerprint': device.profile_fingerprint,
+                }
+            )
+        device.status = UserDevice.Status.REVOKED
+        device.revoked_reason = 'revoked_by_user'
+        device.last_seen_at = timezone.now()
+        device.save(update_fields=['status', 'revoked_reason', 'last_seen_at', 'updated_at'])
+        return Response(
+            {
+                'device_id': device.device_id,
+                'device_status': device.status,
+                'profile_fingerprint': device.profile_fingerprint,
             }
         )
 

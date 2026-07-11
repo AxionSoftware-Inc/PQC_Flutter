@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 
 import 'app/app.dart';
@@ -6,6 +8,7 @@ import 'core/device/device_identity_service.dart';
 import 'core/device/device_key_service.dart';
 import 'core/device/device_pqc_key_service.dart';
 import 'core/device/device_pqc_signing_key_service.dart';
+import 'core/device/device_state_manager.dart';
 import 'core/device/device_security_state_service.dart';
 import 'core/network/api_client.dart';
 import 'core/storage/local_data_protector.dart';
@@ -35,6 +38,13 @@ Future<void> main() async {
   final devicePqcKeyService = DevicePqcKeyService();
   final devicePqcSigningKeyService = DevicePqcSigningKeyService();
   final deviceSecurityStateService = DeviceSecurityStateService();
+  final deviceStateManager = DeviceStateManager(
+    deviceIdentityService: deviceIdentityService,
+    deviceKeyService: deviceKeyService,
+    devicePqcKeyService: devicePqcKeyService,
+    devicePqcSigningKeyService: devicePqcSigningKeyService,
+    deviceSecurityStateService: deviceSecurityStateService,
+  );
   final outboundMessageCache = OutboundMessageCache();
   final remoteDataSource = ChatRemoteDataSource(apiClient: apiClient);
   final outboxStore = OutboxStore(
@@ -56,6 +66,7 @@ Future<void> main() async {
     devicePqcKeyService: devicePqcKeyService,
     devicePqcSigningKeyService: devicePqcSigningKeyService,
     deviceSecurityStateService: deviceSecurityStateService,
+    deviceStateManager: deviceStateManager,
     appDatabase: appDatabase,
     outboundMessageCache: outboundMessageCache,
     outboxStore: outboxStore,
@@ -105,12 +116,12 @@ Future<void> main() async {
     },
   );
 
-  await sessionController.initialize();
-
   runApp(
     PqcChatApp(
       sessionController: sessionController,
       chatRepository: chatRepository,
     ),
   );
+
+  unawaited(sessionController.initialize());
 }

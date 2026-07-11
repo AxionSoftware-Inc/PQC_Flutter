@@ -116,6 +116,9 @@ Bu pass davomida quyidagilar qattiqlashtirildi:
 6. group envelope target coverage server tomonda ham PQC device registry bilan tekshiriladi
 7. local message/outbox plaintext endi protected at-rest ko'rinishda saqlanadi
 8. private send endi verified enterprise trust talab qiladi
+9. secure storage/key state yo'qolib qayta yaralsa app endi o'sha qurilmani avtomatik yangi installation sifatida aylantiradi
+10. outbox clear endi butun chat tarixini o'chirmaydi, faqat queued message'larni tozalaydi
+11. conversation va message sync bo'sh local state holatida full-fetch fallback bilan tiklanadi
 
 ## 5. Asosiy Kamchiliklar
 
@@ -129,6 +132,68 @@ Yadro ishlaydi, lekin quyidagilar hali qolgan:
 6. websocket realtime hali yo'q
 7. tenant hardening va role policy hali boshlang'ich bosqichda
 8. HTTPS/domain/cert ops hardening alohida yakunlanishi kerak
+
+## 5.1 Persistence Kontrakti
+
+Bu bo'lim eng amaliy savolga javob beradi: "nima eslab qolinadi, nima o'chib ketishi mumkin, nima ataylab tozalanadi".
+
+### Qurilma identity
+
+1. app har installation uchun local persistent `device_id` saqlaydi
+2. `device_id` odatda o'zgarmaydi
+3. agar secure storage/key state yo'qolib, ayni `device_id` ostida yangi keylar paydo bo'lsa:
+   - app bunu "shu device buzilib qayta yaralgan" deb qabul qiladi
+   - eski `device_id`ni ushlab turmaydi
+   - yangi installation identity yaratadi
+4. bu qaror key-change shovqinini kamaytirish uchun kiritilgan
+
+### Device keylar
+
+1. `X25519`, `ML-KEM-768`, `ML-DSA-65` keylar local secret store'da saqlanadi
+2. secure storage ishlamasa wrapped fallback storage ishlatiladi
+3. app jim holda eski keyni yangisiga almashtirib yubormasligi kerak
+4. key material haqiqatan almashsa, bu endi yangi installation sifatida ko'riladi
+
+### Session
+
+1. session token localda saqlanadi
+2. app qayta ochilganda session restore qilinadi
+3. remembered display name saqlanadi
+4. server o'zgarsa session va outbox reset bo'ladi
+
+### Chatlar va xabarlar
+
+1. `conversations` va `messages` Drift database'da saqlanadi
+2. `Chats` tab local DB + server sync orqali tiklanadi
+3. local preview/message plaintext protected at-rest ko'rinishda saqlanadi
+4. app qayta ishga tushganda chat list va history qayta tiklanishi kerak
+5. agar local DB bo'sh, lekin sync marker qolib ketgan bo'lsa:
+   - app full-fetch fallback qiladi
+   - chat list yoki message history yo'qolib qolmasligi kerak
+
+### Outbox
+
+1. pending private/group sendlar local queue'da saqlanadi
+2. queue retry state bilan birga saqlanadi
+3. outbox clear faqat queued itemlarni tozalaydi
+4. outbox clear endi chat history'ni o'chirmaydi
+
+### Trust state
+
+1. verified fingerprint holati local DB'da saqlanadi
+2. peer key haqiqatan o'zgarsa `key changed` chiqadi
+3. ayni device ostida storage buzilib key qayta yaralgan holat esa endi imkon qadar yangi installationga aylantiriladi
+
+## 5.2 Hozirgi Stability Qoidalari
+
+Kelajakdagi o'zgarishlar shu qoidalarga bo'ysunishi kerak:
+
+1. private payload formatini o'zgartirish production oqimida bir fazada qilinmaydi
+2. avvalgi write formatni almashtirishdan oldin live mixed-device sinov bo'lishi kerak
+3. `OutboxStore.clear()` hech qachon chat history'ni o'chirmasligi kerak
+4. `fetchConversations` va `fetchMessages` bo'sh local state uchun full-fetch fallback'ga ega bo'lishi kerak
+5. device key lifecycle markaziy service orqali boshqarilishi kerak, tarqoq joylarda emas
+6. trust state va chat persistence bir-biridan tasodifan tozalanmasligi kerak
 
 ## 6. Production Readiness Bahosi
 
@@ -158,6 +223,13 @@ Eng to'g'ri gap:
 2. `PQC private va group foundation ishlaydi`
 3. `MVP/B2B pilot uchun asos tayyor`
 4. `final production secure messenger holatiga hali chiqmagan`
+
+Yana ham aniqroq gap:
+
+1. private va group chat yadro oqimi ishlayapti
+2. persistence va key lifecycle oldingidan ancha barqaror
+3. eng ko'p regressiya bergan joylar endi markazlashtirildi
+4. lekin private multi-device transportni yana alohida ehtiyotkor fazada qilish kerak
 
 ## 8. Keyingi Texnik Bosqichlar
 
