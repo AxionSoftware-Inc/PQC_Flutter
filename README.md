@@ -174,6 +174,7 @@ Secret storage:
 
 - [ARCHITECTURE.md](/Users/macbookpro/Documents/PQC%20Chat%20app/ARCHITECTURE.md)
 - [TECHNICAL_STATUS.md](/Users/macbookpro/Documents/PQC%20Chat%20app/TECHNICAL_STATUS.md)
+- [CRYPTO_DURABILITY_CORE.md](/Users/macbookpro/Documents/PQC%20Chat%20app/CRYPTO_DURABILITY_CORE.md)
 - [IMPLEMENTATION_NOTES.md](/Users/macbookpro/Documents/PQC%20Chat%20app/IMPLEMENTATION_NOTES.md)
 - [E2EE_FOUNDATION_STATUS.md](/Users/macbookpro/Documents/PQC%20Chat%20app/E2EE_FOUNDATION_STATUS.md)
 - [ENCRYPTION_STORAGE_MODES.md](/Users/macbookpro/Documents/PQC%20Chat%20app/ENCRYPTION_STORAGE_MODES.md)

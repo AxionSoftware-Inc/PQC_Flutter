@@ -7,6 +7,8 @@ import '../../../core/network/api_client.dart';
 import '../../crypto/chat_cipher_service.dart';
 import '../../crypto/chat_crypto_context.dart';
 import '../../crypto/chat_crypto_exceptions.dart';
+import '../../crypto/durability/crypto_core_facade.dart';
+import '../../crypto/durability/crypto_durability_models.dart';
 import '../../security/key_verification_service.dart';
 import '../data/chat_remote_data_source.dart';
 import '../data/chat_realtime_service.dart';
@@ -30,10 +32,18 @@ class ChatCryptoRequest {
 class ChatCryptoService {
   static const peerPqcKeyNotReadyMessage =
       'Peer PQC device key is not ready yet. Ask them to reopen the app.';
+  static const decryptErrorMarker = '[decrypt-error]';
+  static const decryptNeedsBackupRestoreMarker =
+      '[decrypt-needs-backup-restore]';
+  static const decryptKeyMissingMarker = '[decrypt-key-missing]';
 
-  const ChatCryptoService({required this.cipherService});
+  const ChatCryptoService({
+    required this.cipherService,
+    this.cryptoCoreFacade,
+  });
 
   final ChatCipherService cipherService;
+  final CryptoCoreFacade? cryptoCoreFacade;
 
   Future<String> encrypt({
     required ChatCryptoRequest request,
@@ -52,8 +62,29 @@ class ChatCryptoService {
   Future<String> decrypt({
     required ChatCryptoRequest request,
     required String payload,
-  }) {
-    return cipherService.decrypt(
+  }) async {
+    final outcome = await decryptDetailed(request: request, payload: payload);
+    return switch (outcome) {
+      DecryptSuccess(:final plaintext) => plaintext,
+      DecryptNeedsBackupRestore() => decryptNeedsBackupRestoreMarker,
+      DecryptKeyMissing() => decryptKeyMissingMarker,
+      DecryptFormatUnsupported() => decryptErrorMarker,
+      DecryptCorruptedPayload() => decryptErrorMarker,
+      _ => decryptErrorMarker,
+    };
+  }
+
+  bool isDecryptFailureMarker(String value) {
+    return value == decryptErrorMarker ||
+        value == decryptNeedsBackupRestoreMarker ||
+        value == decryptKeyMissingMarker;
+  }
+
+  Future<DecryptionOutcome> decryptDetailed({
+    required ChatCryptoRequest request,
+    required String payload,
+  }) async {
+    final plaintext = await cipherService.decrypt(
       context: ChatCryptoContext(
         currentUserId: request.currentUserId,
         conversation: request.conversation,
@@ -61,6 +92,46 @@ class ChatCryptoService {
       ),
       payload: payload,
     );
+    final cryptoCoreFacade = this.cryptoCoreFacade;
+    if (cryptoCoreFacade == null) {
+      if (!isDecryptFailureMarker(plaintext)) {
+        return DecryptSuccess(
+          plaintext: plaintext,
+          format: const PayloadFormatDescriptor(
+            formatId: 'legacy-pass-through',
+            payloadKind: PayloadKind.privateMessage,
+            prefix: '',
+            introducedAtVersion: '0.0.0',
+            decryptSupported: true,
+          ),
+        );
+      }
+      return DecryptCorruptedPayload(
+        format: const PayloadFormatDescriptor(
+          formatId: 'legacy-unknown',
+          payloadKind: PayloadKind.privateMessage,
+          prefix: '',
+          introducedAtVersion: '0.0.0',
+          decryptSupported: true,
+        ),
+      );
+    }
+    final format = cryptoCoreFacade.describePayload(payload);
+    if (!isDecryptFailureMarker(plaintext)) {
+      return DecryptSuccess(
+        plaintext: plaintext,
+        format:
+            format ??
+            const PayloadFormatDescriptor(
+              formatId: 'plaintext-pass-through',
+              payloadKind: PayloadKind.privateMessage,
+              prefix: '',
+              introducedAtVersion: '0.0.0',
+              decryptSupported: true,
+            ),
+      );
+    }
+    return cryptoCoreFacade.classifyFailedDecrypt(payload);
   }
 }
 
@@ -197,7 +268,7 @@ class ConversationSyncService {
       ),
       payload: payload,
     );
-    if (conversation.isGroup || plaintext != '[decrypt-error]') {
+    if (conversation.isGroup || !cryptoService.isDecryptFailureMarker(plaintext)) {
       return plaintext;
     }
     await refreshUsers();
@@ -314,7 +385,7 @@ class MessageSyncService {
       ),
       payload: payload,
     );
-    if (conversation.isGroup || plaintext != '[decrypt-error]') {
+    if (conversation.isGroup || !cryptoService.isDecryptFailureMarker(plaintext)) {
       return plaintext;
     }
     await refreshUsers();
@@ -344,7 +415,7 @@ class MessageSyncService {
       payload: message.body,
       refreshUsers: refreshUsers,
     );
-    if (plaintext != '[decrypt-error]') {
+    if (!cryptoService.isDecryptFailureMarker(plaintext)) {
       return plaintext;
     }
     if (message.senderId != currentUserId) {
@@ -353,7 +424,7 @@ class MessageSyncService {
     final existingByMessageId = existingById[message.id];
     if (existingByMessageId != null &&
         existingByMessageId.plaintextBody.isNotEmpty &&
-        existingByMessageId.plaintextBody != '[decrypt-error]') {
+        !cryptoService.isDecryptFailureMarker(existingByMessageId.plaintextBody)) {
       return existingByMessageId.plaintextBody;
     }
     final clientMessageId = message.clientMessageId;
@@ -361,7 +432,9 @@ class MessageSyncService {
       final existingByQueuedClientId = existingByClientId[clientMessageId];
       if (existingByQueuedClientId != null &&
           existingByQueuedClientId.plaintextBody.isNotEmpty &&
-          existingByQueuedClientId.plaintextBody != '[decrypt-error]') {
+          !cryptoService.isDecryptFailureMarker(
+            existingByQueuedClientId.plaintextBody,
+          )) {
         return existingByQueuedClientId.plaintextBody;
       }
     }
@@ -377,7 +450,7 @@ class MessageSyncService {
     final rows = await localStore.readMessageRows(conversation.id);
     for (final row in rows) {
       final unprotectedRow = await localStore.unprotectMessageRow(row);
-      if (unprotectedRow.plaintextBody != '[decrypt-error]' ||
+      if (!cryptoService.isDecryptFailureMarker(unprotectedRow.plaintextBody) ||
           unprotectedRow.encryptedBody.isEmpty) {
         continue;
       }
@@ -388,7 +461,7 @@ class MessageSyncService {
         payload: unprotectedRow.encryptedBody,
         refreshUsers: refreshUsers,
       );
-      if (plaintext == '[decrypt-error]') {
+      if (cryptoService.isDecryptFailureMarker(plaintext)) {
         continue;
       }
       await localStore.repairPlaintext(row: unprotectedRow, plaintext: plaintext);
@@ -671,7 +744,7 @@ class OutgoingMessageService {
       ),
       payload: payload,
     );
-    if (conversation.isGroup || plaintext != '[decrypt-error]') {
+    if (conversation.isGroup || !cryptoService.isDecryptFailureMarker(plaintext)) {
       return plaintext;
     }
     await refreshUsers();
@@ -761,7 +834,7 @@ class ChatRealtimeCoordinator {
       ),
       payload: payload,
     );
-    if (conversation.isGroup || plaintext != '[decrypt-error]') {
+    if (conversation.isGroup || !cryptoService.isDecryptFailureMarker(plaintext)) {
       return plaintext;
     }
     await refreshUsers();
