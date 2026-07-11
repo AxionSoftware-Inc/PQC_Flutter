@@ -189,6 +189,10 @@ class AppDatabase extends _$AppDatabase {
     )..where((tbl) => tbl.clientMessageId.equals(clientMessageId))).go();
   }
 
+  Future<void> clearQueuedMessages() async {
+    await delete(queuedOutgoingMessagesTable).go();
+  }
+
   Future<void> upsertSyncState(
     ConversationSyncStateTableCompanion entry,
   ) async {

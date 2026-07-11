@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' as drift;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pqc_chat_app/core/database/app_database.dart';
 import 'package:pqc_chat_app/core/models/chat_message.dart';
@@ -36,6 +37,62 @@ void main() {
     expect(cleared, isEmpty);
     await database.close();
   });
+
+  test(
+    'outbox clear does not wipe stored conversations and messages',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final database = AppDatabase.inMemory();
+      final protector = LocalDataProtector(secretStore: _MemorySecretStore());
+      final store = OutboxStore(
+        database: database,
+        localDataProtector: protector,
+      );
+
+      await database.upsertConversation(
+        ConversationsTableCompanion(
+          id: const drift.Value(1),
+          type: const drift.Value('private'),
+          title: const drift.Value('Alice'),
+          lastMessagePreview: const drift.Value('preview'),
+          updatedAt: drift.Value(DateTime.parse('2026-07-11T00:00:00Z')),
+          createdAt: drift.Value(DateTime.parse('2026-07-11T00:00:00Z')),
+        ),
+      );
+      await database.upsertMessage(
+        MessagesTableCompanion(
+          id: const drift.Value(1),
+          conversationId: const drift.Value(1),
+          senderId: const drift.Value(1),
+          senderName: const drift.Value('Alice'),
+          plaintextBody: const drift.Value('hello'),
+          createdAt: drift.Value(DateTime.parse('2026-07-11T00:00:00Z')),
+        ),
+      );
+      await store.upsert(
+        QueuedOutgoingMessage(
+          clientMessageId: 'msg-1',
+          conversationId: 1,
+          senderId: 1,
+          senderName: 'Alice',
+          plaintext: 'queued',
+          createdAt: DateTime.parse('2026-07-11T00:00:01Z'),
+          deliveryState: MessageDeliveryState.pending,
+        ),
+      );
+
+      await store.clear();
+
+      final conversations = await database.readConversations();
+      final messages = await database.readMessagesForConversation(1);
+      final queued = await database.readAllQueuedMessages();
+
+      expect(conversations, isNotEmpty);
+      expect(messages, isNotEmpty);
+      expect(queued, isEmpty);
+      await database.close();
+    },
+  );
 }
 
 class _MemorySecretStore extends LocalSecretStore {

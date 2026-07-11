@@ -129,7 +129,9 @@ void main() {
       expect(cipherService.lastEncryptedPlaintext, 'hello');
       expect(cipherService.lastDecryptPayload, isNull);
       expect(sent.body, 'hello');
-      final rows = await database.readMessagesForConversation(_privateConversation.id);
+      final rows = await database.readMessagesForConversation(
+        _privateConversation.id,
+      );
       expect(rows.single.plaintextBody, isNot('hello'));
       await database.close();
     },
@@ -188,6 +190,64 @@ void main() {
       expect(remote.fetchUsersCallCount, 2);
       expect(cipherService.encryptAttempts, 1);
       expect(sent.body, 'hello pqc');
+      await database.close();
+    },
+  );
+
+  test(
+    'private send auto-verifies first trusted enterprise-ready peer',
+    () async {
+      final database = AppDatabase.inMemory();
+      final remote = _FakeChatRemoteDataSource();
+      final localDataProtector = LocalDataProtector(
+        secretStore: _MemorySecretStore(),
+      );
+      final keyVerificationService = _FakeKeyVerificationService(
+        const ConversationKeyTrust(
+          isAvailable: true,
+          isEnterpriseReady: true,
+          isVerified: false,
+          isEnterpriseVerified: false,
+          hasKeyChanged: false,
+          hasEnterpriseKeyChanged: false,
+          fingerprint: 'dead beef',
+          pqcFingerprint: 'bead feed',
+          signingFingerprint: 'cafe babe',
+          peerUser: AppUser(
+            id: 2,
+            username: 'bob',
+            displayName: 'Bob',
+            devices: [],
+          ),
+        ),
+        database: database,
+      );
+      final repository = ChatRepository(
+        remoteDataSource: remote,
+        cipherService: _FakeChatCipherService(),
+        keyVerificationService: keyVerificationService,
+        privateConversationSecurityCoordinator:
+            PrivateConversationSecurityCoordinator(
+              keyVerificationService: keyVerificationService,
+            ),
+        database: database,
+        localDataProtector: localDataProtector,
+        outboxStore: OutboxStore(
+          database: database,
+          localDataProtector: localDataProtector,
+        ),
+      );
+
+      await repository.fetchUsers();
+
+      final sent = await repository.sendMessage(
+        _privateConversation,
+        currentUserId: 1,
+        text: 'hello tofu',
+      );
+
+      expect(sent.body, 'hello tofu');
+      expect(keyVerificationService.verifyUserCallCount, 1);
       await database.close();
     },
   );
@@ -310,6 +370,7 @@ class _FakeKeyVerificationService extends KeyVerificationService {
   _FakeKeyVerificationService(this.trust, {required super.database});
 
   final ConversationKeyTrust trust;
+  int verifyUserCallCount = 0;
 
   @override
   Future<ConversationKeyTrust> getConversationTrust({
@@ -318,6 +379,11 @@ class _FakeKeyVerificationService extends KeyVerificationService {
     required Map<int, AppUser> usersById,
   }) async {
     return trust;
+  }
+
+  @override
+  Future<void> verifyUser(AppUser user) async {
+    verifyUserCallCount += 1;
   }
 }
 

@@ -34,6 +34,18 @@ class DeviceIdentityService {
     );
   }
 
+  Future<DeviceIdentity> rotateIdentity() async {
+    final preferences = await SharedPreferences.getInstance();
+    final deviceId = _uuid.v4();
+    await preferences.setString(_deviceIdKey, deviceId);
+    final platform = _platformName();
+    return DeviceIdentity(
+      id: deviceId,
+      deviceName: 'flutter-$platform',
+      platform: platform,
+    );
+  }
+
   String _platformName() {
     if (kIsWeb) {
       return 'web';

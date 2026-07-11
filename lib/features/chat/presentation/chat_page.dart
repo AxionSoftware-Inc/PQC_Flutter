@@ -480,7 +480,7 @@ class _SecurityBanner extends StatelessWidget {
         : trust.isEnterpriseVerified
         ? 'Enterprise trust verified. X25519: ${trust.fingerprint ?? '-'} PQC-KEM: ${trust.pqcFingerprint ?? '-'} ML-DSA: ${trust.signingFingerprint ?? '-'}'
         : trust.isEnterpriseReady
-        ? 'Hybrid PQC ready, but not fully verified yet. X25519: ${trust.fingerprint ?? '-'} PQC-KEM: ${trust.pqcFingerprint ?? '-'} ML-DSA: ${trust.signingFingerprint ?? '-'}'
+        ? 'PQC ready. Current device material will be trusted on first send. X25519: ${trust.fingerprint ?? '-'} PQC-KEM: ${trust.pqcFingerprint ?? '-'} ML-DSA: ${trust.signingFingerprint ?? '-'}'
         : trust.isVerified
         ? 'Classical trust verified. X25519: ${trust.fingerprint ?? '-'}'
         : 'Key not verified yet. X25519: ${trust.fingerprint ?? '-'}';
