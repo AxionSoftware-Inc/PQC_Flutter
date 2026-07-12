@@ -13,6 +13,18 @@ class RememberedIdentity {
   final String username;
 }
 
+class LocalHistoryOwner {
+  const LocalHistoryOwner({
+    required this.accountId,
+    required this.username,
+    required this.displayName,
+  });
+
+  final int accountId;
+  final String username;
+  final String displayName;
+}
+
 class SessionStorage {
   SessionStorage({LocalSecretStore? secretStore})
     : _secretStore = secretStore ?? LocalSecretStore();
@@ -29,6 +41,10 @@ class SessionStorage {
   static const _organizationsKey = 'session_organizations';
   static const _apiBaseUrlKey = 'session_api_base_url';
   static const _rememberedDisplayNameKey = 'remembered_display_name';
+  static const _rememberedUsernameKey = 'remembered_username';
+  static const _historyOwnerAccountIdKey = 'history_owner_account_id';
+  static const _historyOwnerUsernameKey = 'history_owner_username';
+  static const _historyOwnerDisplayNameKey = 'history_owner_display_name';
   final LocalSecretStore _secretStore;
 
   Future<SessionUser?> read() async {
@@ -127,6 +143,7 @@ class SessionStorage {
           .toList(),
     );
     await preferences.setString(_rememberedDisplayNameKey, user.displayName);
+    await preferences.setString(_rememberedUsernameKey, user.username);
   }
 
   Future<String?> readApiBaseUrl() async {
@@ -145,7 +162,43 @@ class SessionStorage {
       return null;
     }
 
-    return RememberedIdentity(displayName: displayName, username: displayName);
+    return RememberedIdentity(
+      displayName: displayName,
+      username: preferences.getString(_rememberedUsernameKey) ?? displayName,
+    );
+  }
+
+  Future<LocalHistoryOwner?> readLocalHistoryOwner() async {
+    final preferences = await SharedPreferences.getInstance();
+    final accountIdValue = preferences.getString(_historyOwnerAccountIdKey);
+    final username = preferences.getString(_historyOwnerUsernameKey);
+    final displayName = preferences.getString(_historyOwnerDisplayNameKey);
+    final accountId = accountIdValue == null ? null : int.tryParse(accountIdValue);
+    if (accountId == null || username == null || displayName == null) {
+      return null;
+    }
+    return LocalHistoryOwner(
+      accountId: accountId,
+      username: username,
+      displayName: displayName,
+    );
+  }
+
+  Future<void> writeLocalHistoryOwner(SessionUser user) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      _historyOwnerAccountIdKey,
+      user.accountId.toString(),
+    );
+    await preferences.setString(_historyOwnerUsernameKey, user.username);
+    await preferences.setString(_historyOwnerDisplayNameKey, user.displayName);
+  }
+
+  Future<void> clearLocalHistoryOwner() async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove(_historyOwnerAccountIdKey);
+    await preferences.remove(_historyOwnerUsernameKey);
+    await preferences.remove(_historyOwnerDisplayNameKey);
   }
 
   Future<void> clear({bool clearRememberedIdentity = true}) async {
@@ -163,6 +216,7 @@ class SessionStorage {
     await preferences.remove(_organizationsKey);
     if (clearRememberedIdentity) {
       await preferences.remove(_rememberedDisplayNameKey);
+      await preferences.remove(_rememberedUsernameKey);
     }
   }
 }

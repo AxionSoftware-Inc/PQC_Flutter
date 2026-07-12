@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import 'app/app.dart';
+import 'app/design_system/app_design_system.dart';
 import 'core/database/app_database.dart';
 import 'core/device/device_identity_service.dart';
 import 'core/device/device_key_service.dart';
@@ -33,6 +34,10 @@ import 'features/security/key_verification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  const skinId = String.fromEnvironment(
+    'APP_SKIN',
+    defaultValue: AppSkinRegistry.defaultSkinId,
+  );
 
   final sessionStorage = SessionStorage();
   final appDatabase = AppDatabase();
@@ -147,6 +152,7 @@ Future<void> main() async {
     PqcChatApp(
       sessionController: sessionController,
       chatFacade: chatFacade,
+      skin: AppSkinRegistry.resolve(skinId),
     ),
   );
 

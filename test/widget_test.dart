@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pqc_chat_app/app/design_system/app_design_system.dart';
 import 'package:pqc_chat_app/core/device/device_identity_service.dart';
 import 'package:pqc_chat_app/core/device/device_key_service.dart';
 import 'package:pqc_chat_app/core/device/device_pqc_key_service.dart';
@@ -54,8 +55,16 @@ void main() {
         ),
       ),
     );
+    final skin = AppSkinRegistry.resolve(AppSkinRegistry.defaultSkinId);
     await tester.pumpWidget(
-      MaterialApp(home: LoginPage(sessionController: sessionController)),
+      MaterialApp(
+        theme: AppThemeFactory.build(skin: skin),
+        home: AppBrandScope(
+          skin: skin,
+          brand: null,
+          child: LoginPage(sessionController: sessionController),
+        ),
+      ),
     );
     await tester.pump(const Duration(milliseconds: 200));
 

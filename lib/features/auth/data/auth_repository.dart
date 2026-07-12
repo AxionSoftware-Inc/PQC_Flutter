@@ -98,7 +98,11 @@ class AuthRepository {
     }
 
     try {
-      return await login(rememberedIdentity.displayName);
+      return await login(
+        rememberedIdentity.username.isEmpty
+            ? rememberedIdentity.displayName
+            : rememberedIdentity.username,
+      );
     } catch (_) {
       return null;
     }
@@ -156,6 +160,7 @@ class AuthRepository {
     apiClient.setWorkspaceId(
       session.activeWorkspaceId <= 0 ? null : '${session.activeWorkspaceId}',
     );
+    await _reconcileLocalHistoryOwner(session);
     await sessionStorage.write(session);
     await sessionStorage.writeApiBaseUrl(ApiConfig.baseUrl);
     await deviceStateManager.markDeviceProfileSynced(
@@ -225,15 +230,22 @@ class AuthRepository {
     );
   }
 
-  Future<void> logout({bool clearRememberedIdentity = true}) async {
+  Future<void> logout({
+    bool clearRememberedIdentity = false,
+    bool preserveLocalHistory = true,
+  }) async {
     apiClient.setToken(null);
     apiClient.setDeviceId(null);
     apiClient.setWorkspaceId(null);
     await sessionStorage.clear(
       clearRememberedIdentity: clearRememberedIdentity,
     );
-    await _outboundMessageCache?.clearAll();
-    await _outboxStore?.clear();
+    if (!preserveLocalHistory) {
+      await appDatabase?.clearAllChatData();
+      await _outboundMessageCache?.clearAll();
+      await _outboxStore?.clear();
+      await sessionStorage.clearLocalHistoryOwner();
+    }
   }
 
   Future<void> _resetLocalStateIfServerChanged() async {
@@ -241,12 +253,31 @@ class AuthRepository {
     if (storedApiBaseUrl == ApiConfig.baseUrl) {
       return;
     }
+    await appDatabase?.clearAllChatData();
     await _outboundMessageCache?.clearAll();
     await _outboxStore?.clear();
     if (storedApiBaseUrl != null && storedApiBaseUrl.isNotEmpty) {
       await sessionStorage.clear(clearRememberedIdentity: false);
+      await sessionStorage.clearLocalHistoryOwner();
     }
     await sessionStorage.writeApiBaseUrl(ApiConfig.baseUrl);
+  }
+
+  Future<void> _reconcileLocalHistoryOwner(SessionUser session) async {
+    final currentOwner = await sessionStorage.readLocalHistoryOwner();
+    if (currentOwner == null) {
+      await sessionStorage.writeLocalHistoryOwner(session);
+      return;
+    }
+    final matchesCurrentIdentity =
+        currentOwner.accountId == session.accountId &&
+        currentOwner.username == session.username;
+    if (!matchesCurrentIdentity) {
+      await appDatabase?.clearAllChatData();
+      await _outboundMessageCache?.clearAll();
+      await _outboxStore?.clear();
+    }
+    await sessionStorage.writeLocalHistoryOwner(session);
   }
 
   _PqcRegistrationPayload _buildPqcRegistrationPayloadFromState(

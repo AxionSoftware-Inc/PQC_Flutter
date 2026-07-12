@@ -1,8 +1,1 @@
-class ChatEncryptionException implements Exception {
-  ChatEncryptionException(this.message);
-
-  final String message;
-
-  @override
-  String toString() => message;
-}
+export 'package:crypto_core/src/crypto/chat_crypto_exceptions.dart';
