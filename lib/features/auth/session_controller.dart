@@ -79,6 +79,18 @@ class SessionController extends ChangeNotifier {
     _setLoading(false);
   }
 
+  Future<void> logoutAndForgetDevice() async {
+    _setLoading(true);
+    await authRepository.logout(
+      clearRememberedIdentity: true,
+      preserveLocalHistory: false,
+    );
+    _sessionUser = null;
+    _error = null;
+    await _notifySessionChanged(null);
+    _setLoading(false);
+  }
+
   Future<void> invalidateSession() async {
     await authRepository.logout(clearRememberedIdentity: false);
     _sessionUser = null;

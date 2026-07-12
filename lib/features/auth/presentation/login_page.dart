@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/design_system/app_design_system.dart';
 import '../session_controller.dart';
 
 class LoginPage extends StatefulWidget {
@@ -53,128 +54,85 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final colors = context.appColors;
+    final spacing = context.appSpacing;
     final suggestedName = _suggestedName ?? 'Loading...';
 
-    return Scaffold(
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              colorScheme.surface,
-              colorScheme.surfaceContainerHighest,
-              colorScheme.primary.withValues(alpha: 0.12),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Card(
-                elevation: 0,
-                color: colorScheme.surface.withValues(alpha: 0.94),
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: colorScheme.primaryContainer,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Icon(
-                          Icons.shield_outlined,
-                          color: colorScheme.onPrimaryContainer,
-                          size: 30,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Text(
-                        'PQC Messenger Workspace',
-                        style: theme.textTheme.headlineSmall,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Manual authni yengillashtirdim: shu qurilma uchun tayyor test profili bilan tez kirishingiz mumkin. Xohlasangiz nomni o\'zgartirasiz, qolgan kalitlar avtomatik biriktiriladi.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: colorScheme.secondaryContainer.withValues(
-                            alpha: 0.5,
-                          ),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.memory_rounded,
-                              color: colorScheme.secondary,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'Recommended test profile: $suggestedName',
-                                style: theme.textTheme.titleMedium,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: _usernameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Display name',
-                          border: OutlineInputBorder(),
-                        ),
-                        onSubmitted: _submit,
-                      ),
-                      const SizedBox(height: 12),
-                      FilledButton.icon(
-                        onPressed: widget.sessionController.isLoading
-                            ? null
-                            : widget.sessionController.bootstrapLogin,
-                        icon: const Icon(Icons.rocket_launch_outlined),
-                        label: widget.sessionController.isLoading
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Text('Continue with this device'),
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton(
-                        onPressed: widget.sessionController.isLoading
-                            ? null
-                            : () => _submit(),
-                        child: const Text('Use custom name'),
-                      ),
-                      if (widget.sessionController.error != null) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          widget.sessionController.error!,
-                          style: TextStyle(color: colorScheme.error),
-                        ),
-                      ],
-                    ],
+    return AppScaffold(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Padding(
+            padding: EdgeInsets.all(spacing.xl),
+            child: AppSurfaceCard(
+              padding: EdgeInsets.all(spacing.xl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const AppBrandMark(),
+                  SizedBox(height: spacing.xl),
+                  Text(
+                    'PQC Messenger Workspace',
+                    style: theme.textTheme.headlineSmall,
                   ),
-                ),
+                  SizedBox(height: spacing.sm),
+                  Text(
+                    'Manual authni yengillashtirdim: shu qurilma uchun tayyor test profili bilan tez kirishingiz mumkin. Xohlasangiz nomni o\'zgartirasiz, qolgan kalitlar avtomatik biriktiriladi.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colors.textMuted,
+                    ),
+                  ),
+                  SizedBox(height: spacing.xl),
+                  AppStatusBanner(
+                    message: 'Recommended test profile: $suggestedName',
+                    leading: Icon(
+                      Icons.memory_rounded,
+                      color: colors.info,
+                    ),
+                  ),
+                  SizedBox(height: spacing.lg),
+                  AppTextField(
+                    controller: _usernameController,
+                    labelText: 'Display name',
+                    onSubmitted: _submit,
+                  ),
+                  SizedBox(height: spacing.md),
+                  AppPrimaryButton(
+                    onPressed: widget.sessionController.isLoading
+                        ? null
+                        : widget.sessionController.bootstrapLogin,
+                    icon: widget.sessionController.isLoading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.rocket_launch_outlined),
+                    label: Text(
+                      widget.sessionController.isLoading
+                          ? 'Preparing...'
+                          : 'Continue with this device',
+                    ),
+                  ),
+                  SizedBox(height: spacing.sm),
+                  AppSecondaryButton(
+                    onPressed: widget.sessionController.isLoading
+                        ? null
+                        : () => _submit(),
+                    label: const Text('Use custom name'),
+                  ),
+                  if (widget.sessionController.error != null) ...[
+                    SizedBox(height: spacing.md),
+                    AppStatusBanner(
+                      message: widget.sessionController.error!,
+                      tone: AppStatusTone.danger,
+                    ),
+                  ],
+                ],
               ),
             ),
           ),

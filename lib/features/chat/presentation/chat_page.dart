@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../../app/design_system/app_design_system.dart';
 import '../../../core/models/attachment.dart';
 import '../../../core/models/chat_message.dart';
 import '../../../core/models/conversation.dart';
@@ -196,9 +197,28 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     final conversationTrust = _controller.trust?.trust;
-    return Scaffold(
+    final spacing = context.appSpacing;
+    final colors = context.appColors;
+    return AppScaffold(
       appBar: AppBar(
-        title: Text(widget.title),
+        toolbarHeight: 64,
+        titleSpacing: 8,
+        title: Row(
+          children: [
+            AppAvatar(
+              label: widget.title,
+              icon: widget.conversation.isGroup ? Icons.forum_outlined : null,
+              radius: 18,
+            ),
+            SizedBox(width: spacing.sm),
+            Expanded(
+              child: Text(
+                widget.title,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
         actions: [
           if (!widget.conversation.isGroup &&
               conversationTrust?.isAvailable == true)
@@ -217,8 +237,11 @@ class _ChatPageState extends State<ChatPage> {
           if (_controller.isLoading) const LinearProgressIndicator(),
           if (_controller.error != null)
             Padding(
-              padding: const EdgeInsets.all(8),
-              child: Text(_controller.error!),
+              padding: EdgeInsets.all(spacing.sm),
+              child: AppStatusBanner(
+                message: _controller.error!,
+                tone: AppStatusTone.danger,
+              ),
             ),
           if (!widget.conversation.isGroup && conversationTrust != null)
             _SecurityBanner(
@@ -237,48 +260,75 @@ class _ChatPageState extends State<ChatPage> {
                       ? Alignment.centerRight
                       : Alignment.centerLeft,
                   child: Container(
-                    margin: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    margin: EdgeInsets.symmetric(
+                      horizontal: spacing.md,
+                      vertical: spacing.xs,
                     ),
-                    padding: const EdgeInsets.all(10),
-                    color: isMine
-                        ? Colors.blueGrey.shade100
-                        : Colors.grey.shade200,
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: isMine
+                          ? CrossAxisAlignment.end
+                          : CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          message.senderName,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        Container(
+                          padding: EdgeInsets.all(spacing.md),
+                          decoration: BoxDecoration(
+                            color: isMine ? colors.chatMine : colors.chatPeer,
+                            borderRadius: BorderRadius.circular(
+                              context.appRadii.md,
+                            ),
+                            border: Border.all(
+                              color: isMine
+                                  ? colors.primary.withValues(alpha: 0.16)
+                                  : colors.border,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                message.senderName,
+                                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: isMine
+                                      ? Colors.white.withValues(alpha: 0.78)
+                                      : colors.textMuted,
+                                ),
+                              ),
+                              SizedBox(height: spacing.xs),
+                              Text(
+                                message.body,
+                                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                  color: isMine ? Colors.white : null,
+                                ),
+                              ),
+                              if (message.attachments.isNotEmpty) ...[
+                                SizedBox(height: spacing.sm),
+                                Wrap(
+                                  spacing: spacing.sm,
+                                  runSpacing: spacing.sm,
+                                  children: message.attachments
+                                      .map(_buildAttachmentChip)
+                                      .toList(),
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(message.body),
-                        if (message.attachments.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: message.attachments
-                                .map(_buildAttachmentChip)
-                                .toList(),
+                        if (message.deliveryState != MessageDeliveryState.sent)
+                          Padding(
+                            padding: EdgeInsets.only(top: spacing.xs),
+                            child: Text(
+                              _statusLabel(message),
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: colors.textMuted,
+                              ),
+                            ),
                           ),
-                        ],
-                        if (message.deliveryState !=
-                            MessageDeliveryState.sent) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            _statusLabel(message),
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                        if (message.canRetry) ...[
-                          const SizedBox(height: 4),
+                        if (message.canRetry)
                           TextButton(
                             onPressed: () => _retryMessage(message),
                             child: const Text('Retry'),
                           ),
-                        ],
                       ],
                     ),
                   ),
@@ -289,15 +339,15 @@ class _ChatPageState extends State<ChatPage> {
           SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: EdgeInsets.all(spacing.md),
               child: Column(
                 children: [
                   if (_selectedAttachments.isNotEmpty)
                     Align(
                       alignment: Alignment.centerLeft,
                       child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
+                        spacing: spacing.sm,
+                        runSpacing: spacing.sm,
                         children: _selectedAttachments
                             .map(
                               (item) => InputChip(
@@ -318,32 +368,56 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                     ),
                   if (_selectedAttachments.isNotEmpty)
-                    const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed:
-                            _controller.isSending ? null : _pickAttachments,
-                        icon: const Icon(Icons.attach_file),
-                      ),
-                      Expanded(
-                        child: TextField(
-                          controller: _messageController,
-                          decoration: const InputDecoration(
-                            hintText: 'Message',
-                            border: OutlineInputBorder(),
+                    SizedBox(height: spacing.sm),
+                  AppSurfaceCard(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: spacing.sm,
+                      vertical: spacing.sm,
+                    ),
+                    backgroundColor: colors.surface.withValues(alpha: 0.96),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          onPressed:
+                              _controller.isSending ? null : _pickAttachments,
+                          icon: const Icon(Icons.attach_file),
+                        ),
+                        Expanded(
+                          child: Theme(
+                            data: Theme.of(context).copyWith(
+                              inputDecorationTheme:
+                                  Theme.of(context).inputDecorationTheme.copyWith(
+                                    filled: false,
+                                    fillColor: Colors.transparent,
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: spacing.md,
+                                      vertical: spacing.sm,
+                                    ),
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    border: InputBorder.none,
+                                  ),
+                            ),
+                            child: AppTextField(
+                              controller: _messageController,
+                              hintText: 'iMessage',
+                              onSubmitted: (_) => _sendMessage(),
+                            ),
                           ),
-                          onSubmitted: (_) => _sendMessage(),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: _controller.isSending ? null : _sendMessage,
-                        child: Text(
-                          _controller.isSending ? 'Sending...' : 'Send',
+                        SizedBox(width: spacing.sm),
+                        SizedBox(
+                          height: 40,
+                          child: AppPrimaryButton(
+                          onPressed:
+                              _controller.isSending ? null : _sendMessage,
+                          label: Text(
+                            _controller.isSending ? 'Sending...' : 'Send',
+                          ),
                         ),
-                      ),
-                    ],
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -437,35 +511,38 @@ class _SecurityBanner extends StatelessWidget {
         ? 'Classical trust verified. X25519: ${trust.fingerprint ?? '-'}'
         : 'Key not verified yet. X25519: ${trust.fingerprint ?? '-'}';
 
-    final backgroundColor = !trust.isAvailable
-        ? Colors.grey.shade200
+    final tone = !trust.isAvailable
+        ? AppStatusTone.warning
         : trust.hasEnterpriseKeyChanged
-        ? Colors.orange.shade100
+        ? AppStatusTone.warning
         : trust.isEnterpriseVerified
-        ? Colors.teal.shade100
+        ? AppStatusTone.success
         : trust.isEnterpriseReady
-        ? Colors.cyan.shade100
+        ? AppStatusTone.info
         : trust.isVerified
-        ? Colors.green.shade100
-        : Colors.blueGrey.shade100;
+        ? AppStatusTone.success
+        : AppStatusTone.info;
 
-    return Container(
-      width: double.infinity,
-      color: backgroundColor,
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          Expanded(child: Text(text)),
-          if (trust.isAvailable)
-            TextButton(
-              onPressed: onVerify,
-              child: Text(
-                trust.isEnterpriseVerified || trust.isVerified
-                    ? 'Re-verify'
-                    : 'Verify',
-              ),
-            ),
-        ],
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        context.appSpacing.sm,
+        context.appSpacing.sm,
+        context.appSpacing.sm,
+        0,
+      ),
+      child: AppStatusBanner(
+        message: text,
+        tone: tone,
+        action: trust.isAvailable
+            ? TextButton(
+                onPressed: onVerify,
+                child: Text(
+                  trust.isEnterpriseVerified || trust.isVerified
+                      ? 'Re-verify'
+                      : 'Verify',
+                ),
+              )
+            : null,
       ),
     );
   }
