@@ -48,6 +48,7 @@ class ChatLocalStore {
         workspaceId: drift.Value(effectiveWorkspaceId),
         type: drift.Value(conversation.type),
         title: drift.Value(conversation.title),
+        unreadCount: drift.Value(conversation.unreadCount),
         lastMessagePreview: drift.Value(
           await _localDataProtector.protect(conversation.lastMessagePreview),
         ),
@@ -70,6 +71,7 @@ class ChatLocalStore {
       lastMessagePreview: await _localDataProtector.unprotect(
         row.lastMessagePreview,
       ),
+      unreadCount: row.unreadCount,
       updatedAt: row.updatedAt,
       createdAt: row.createdAt,
     );
