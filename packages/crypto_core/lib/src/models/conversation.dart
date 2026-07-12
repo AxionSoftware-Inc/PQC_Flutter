@@ -6,6 +6,7 @@ class Conversation {
     required this.title,
     required this.participantIds,
     required this.lastMessagePreview,
+    this.unreadCount = 0,
     required this.updatedAt,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? updatedAt;
@@ -16,6 +17,7 @@ class Conversation {
   final String title;
   final List<int> participantIds;
   final String lastMessagePreview;
+  final int unreadCount;
   final DateTime updatedAt;
   final DateTime createdAt;
 
@@ -33,6 +35,7 @@ class Conversation {
     String? title,
     List<int>? participantIds,
     String? lastMessagePreview,
+    int? unreadCount,
     DateTime? updatedAt,
     DateTime? createdAt,
   }) {
@@ -43,6 +46,7 @@ class Conversation {
       title: title ?? this.title,
       participantIds: participantIds ?? this.participantIds,
       lastMessagePreview: lastMessagePreview ?? this.lastMessagePreview,
+      unreadCount: unreadCount ?? this.unreadCount,
       updatedAt: updatedAt ?? this.updatedAt,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -56,6 +60,7 @@ class Conversation {
       title: json['title'] as String? ?? '',
       participantIds: (json['participant_ids'] as List<dynamic>).cast<int>(),
       lastMessagePreview: json['last_message_preview'] as String? ?? '',
+      unreadCount: json['unread_count'] as int? ?? 0,
       updatedAt: DateTime.parse(json['updated_at'] as String),
       createdAt: DateTime.parse(
         (json['created_at'] as String?) ?? json['updated_at'] as String,

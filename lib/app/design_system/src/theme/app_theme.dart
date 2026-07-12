@@ -292,38 +292,63 @@ class AppThemeFactory {
   static ThemeData build({
     required AppSkin skin,
     ResolvedWorkspaceBrand? brand,
+    Brightness brightness = Brightness.light,
   }) {
     final accent = brand?.policy == BrandAccentPolicy.workspaceOverride
         ? brand!.accentColor
         : skin.primaryColor;
     final scheme = ColorScheme.fromSeed(
       seedColor: accent,
-      brightness: Brightness.light,
+      brightness: brightness,
     ).copyWith(
       primary: accent,
       secondary: skin.secondaryColor,
-      surface: skin.surfaceColor,
+      surface: brightness == Brightness.dark
+          ? _mix(skin.surfaceColor, Colors.black, 0.82)
+          : skin.surfaceColor,
     );
+    final isDark = brightness == Brightness.dark;
+    final background = isDark
+        ? _mix(skin.backgroundColor, Colors.black, 0.88)
+        : skin.backgroundColor;
+    final surface = isDark
+        ? _mix(skin.surfaceColor, Colors.black, 0.78)
+        : skin.surfaceColor;
+    final surfaceMuted = isDark
+        ? _mix(skin.surfaceMutedColor, Colors.black, 0.72)
+        : skin.surfaceMutedColor;
+    final border = isDark ? const Color(0xFF303440) : const Color(0xFFE3E6EC);
+    final foreground = isDark ? const Color(0xFFF3F4F6) : const Color(0xFF111827);
     final colors = AppColors(
-      background: skin.backgroundColor,
-      surface: skin.surfaceColor,
-      surfaceMuted: skin.surfaceMutedColor,
-      surfaceStrong: _mix(skin.surfaceMutedColor, Colors.white, 0.35),
-      border: const Color(0xFFE3E6EC),
-      textMuted: const Color(0xFF6E7381),
+      background: background,
+      surface: surface,
+      surfaceMuted: surfaceMuted,
+      surfaceStrong: isDark
+          ? _mix(surfaceMuted, Colors.white, 0.08)
+          : _mix(skin.surfaceMutedColor, Colors.white, 0.35),
+      border: border,
+      textMuted: isDark ? const Color(0xFF9CA3AF) : const Color(0xFF6E7381),
       primary: accent,
-      primarySoft: _softTone(accent),
+      primarySoft: isDark
+          ? _mix(accent, Colors.black, 0.72)
+          : _softTone(accent),
       secondary: skin.secondaryColor,
       success: skin.successColor,
-      successSoft: _softTone(skin.successColor),
+      successSoft: isDark
+          ? _mix(skin.successColor, Colors.black, 0.7)
+          : _softTone(skin.successColor),
       warning: skin.warningColor,
-      warningSoft: _softTone(skin.warningColor),
+      warningSoft: isDark
+          ? _mix(skin.warningColor, Colors.black, 0.7)
+          : _softTone(skin.warningColor),
       danger: skin.dangerColor,
-      dangerSoft: _softTone(skin.dangerColor),
+      dangerSoft: isDark
+          ? _mix(skin.dangerColor, Colors.black, 0.7)
+          : _softTone(skin.dangerColor),
       info: accent,
-      infoSoft: _softTone(accent),
+      infoSoft: isDark ? _mix(accent, Colors.black, 0.7) : _softTone(accent),
       chatMine: accent,
-      chatPeer: const Color(0xFFE9EAEE),
+      chatPeer: isDark ? const Color(0xFF232834) : const Color(0xFFE9EAEE),
     );
     const spacing = AppSpacing(
       xs: 4,
@@ -360,7 +385,9 @@ class AppThemeFactory {
       fast: Duration(milliseconds: 160),
       normal: Duration(milliseconds: 240),
     );
-    final baseTextTheme = Typography.material2021().black;
+    final baseTextTheme = isDark
+        ? Typography.material2021().white
+        : Typography.material2021().black;
     final textTheme = baseTextTheme.copyWith(
       headlineSmall: baseTextTheme.headlineSmall?.copyWith(
         fontWeight: FontWeight.w700,
@@ -381,8 +408,8 @@ class AppThemeFactory {
         fontWeight: FontWeight.w500,
       ),
     ).apply(
-      bodyColor: const Color(0xFF111827),
-      displayColor: const Color(0xFF111827),
+      bodyColor: foreground,
+      displayColor: foreground,
       fontFamily: skin.fontFamily,
     );
 
@@ -395,7 +422,7 @@ class AppThemeFactory {
       appBarTheme: AppBarTheme(
         backgroundColor: colors.background,
         surfaceTintColor: Colors.transparent,
-        foregroundColor: const Color(0xFF111827),
+        foregroundColor: foreground,
         elevation: 0,
         titleTextStyle: textTheme.titleLarge,
         centerTitle: false,
@@ -446,7 +473,7 @@ class AppThemeFactory {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFF111827),
+          foregroundColor: foreground,
           side: BorderSide(color: colors.border),
           padding: EdgeInsets.symmetric(
             horizontal: spacing.xl,
