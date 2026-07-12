@@ -45,6 +45,23 @@ def create_account_for_display_name(display_name):
     )
 
 
+def _find_user_by_device_signature(*, device_name, platform):
+    if not device_name:
+        return None
+    candidates = list(
+        UserDevice.objects.select_related('user')
+        .filter(
+            device_name=device_name,
+            platform=platform,
+            status=UserDevice.Status.ACTIVE,
+        )
+        .order_by('id')[:2]
+    )
+    if len(candidates) != 1:
+        return None
+    return candidates[0].user
+
+
 def _workspace_memberships_for_user(user):
     return WorkspaceMember.objects.select_related(
         'workspace',
@@ -305,12 +322,14 @@ class LoginView(APIView):
         pqc_algorithm = serializer.validated_data['pqc_algorithm'].strip()
         pqc_signing_public_key = serializer.validated_data['pqc_signing_public_key'].strip()
         pqc_signing_algorithm = serializer.validated_data['pqc_signing_algorithm'].strip()
+        remember_device_only = serializer.validated_data.get('remember_device_only', False)
 
         if not display_name or not device_id:
-            return Response(
-                {'detail': 'display_name and device_id are required.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            if not remember_device_only:
+                return Response(
+                    {'detail': 'display_name and device_id are required.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         existing_device = UserDevice.objects.select_related('user').filter(
             device_id=device_id,
@@ -318,7 +337,20 @@ class LoginView(APIView):
         if existing_device is not None:
             user = existing_device.user
         else:
-            user = create_account_for_display_name(display_name)
+            user = _find_user_by_device_signature(
+                device_name=device_name,
+                platform=platform,
+            )
+            if user is None and remember_device_only:
+                return Response(
+                    {
+                        'detail': 'No remembered device account was found.',
+                        'code': 'remembered_device_not_found',
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if user is None:
+                user = create_account_for_display_name(display_name)
 
         if display_name and user.first_name != display_name:
             user.first_name = display_name

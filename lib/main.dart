@@ -32,6 +32,7 @@ import 'features/crypto/durability/key_material_registry.dart';
 import 'features/crypto/group_key_store.dart';
 import 'features/crypto/outbound_message_cache.dart';
 import 'features/security/key_verification_service.dart';
+import 'features/transfers/application/attachment_transfer.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -114,6 +115,14 @@ Future<void> main() async {
       PrivateConversationSecurityCoordinator(
         keyVerificationService: keyVerificationService,
       );
+  final chatCryptoService = ChatCryptoService(
+    cipherService: chatCipherService,
+    cryptoCoreFacade: cryptoCoreFacade,
+  );
+  final attachmentTransferFacade = AttachmentTransferFacade(
+    remoteDataSource: remoteDataSource,
+    localDataProtector: localDataProtector,
+  );
   final chatFacade = ChatFacade(
     remoteDataSource: remoteDataSource,
     realtimeService: chatRealtimeService,
@@ -127,10 +136,8 @@ Future<void> main() async {
       privateConversationSecurityCoordinator:
           privateConversationSecurityCoordinator,
     ),
-    cryptoService: ChatCryptoService(
-      cipherService: chatCipherService,
-      cryptoCoreFacade: cryptoCoreFacade,
-    ),
+    cryptoService: chatCryptoService,
+    attachmentTransferFacade: attachmentTransferFacade,
   );
   final sessionController = SessionController(
     authRepository: authRepository,
@@ -147,6 +154,7 @@ Future<void> main() async {
         workspaceId: '${sessionUser.activeWorkspaceId}',
         deviceId: sessionUser.deviceId,
       );
+      unawaited(chatFacade.resumePendingWork(currentUserId: sessionUser.id));
     },
   );
 

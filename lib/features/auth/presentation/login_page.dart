@@ -73,19 +73,19 @@ class _LoginPageState extends State<LoginPage> {
                   const AppBrandMark(),
                   SizedBox(height: spacing.xl),
                   Text(
-                    'PQC Messenger Workspace',
+                    'Set up this device',
                     style: theme.textTheme.headlineSmall,
                   ),
                   SizedBox(height: spacing.sm),
                   Text(
-                    'Manual authni yengillashtirdim: shu qurilma uchun tayyor test profili bilan tez kirishingiz mumkin. Xohlasangiz nomni o\'zgartirasiz, qolgan kalitlar avtomatik biriktiriladi.',
+                    'Test build uchun kirish soddalashtirilgan. Bir marta ismingizni kiriting, keyin shu qurilma uchun eslab qolinadi.',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: colors.textMuted,
                     ),
                   ),
                   SizedBox(height: spacing.xl),
                   AppStatusBanner(
-                    message: 'Recommended test profile: $suggestedName',
+                    message: 'Device: $suggestedName',
                     leading: Icon(
                       Icons.memory_rounded,
                       color: colors.info,
@@ -94,14 +94,12 @@ class _LoginPageState extends State<LoginPage> {
                   SizedBox(height: spacing.lg),
                   AppTextField(
                     controller: _usernameController,
-                    labelText: 'Display name',
+                    labelText: 'Your name',
                     onSubmitted: _submit,
                   ),
                   SizedBox(height: spacing.md),
                   AppPrimaryButton(
-                    onPressed: widget.sessionController.isLoading
-                        ? null
-                        : widget.sessionController.bootstrapLogin,
+                    onPressed: widget.sessionController.isLoading ? null : () => _submit(),
                     icon: widget.sessionController.isLoading
                         ? const SizedBox(
                             width: 16,
@@ -114,16 +112,9 @@ class _LoginPageState extends State<LoginPage> {
                         : const Icon(Icons.rocket_launch_outlined),
                     label: Text(
                       widget.sessionController.isLoading
-                          ? 'Preparing...'
-                          : 'Continue with this device',
+                          ? 'Opening...'
+                          : 'Continue',
                     ),
-                  ),
-                  SizedBox(height: spacing.sm),
-                  AppSecondaryButton(
-                    onPressed: widget.sessionController.isLoading
-                        ? null
-                        : () => _submit(),
-                    label: const Text('Use custom name'),
                   ),
                   if (widget.sessionController.error != null) ...[
                     SizedBox(height: spacing.md),

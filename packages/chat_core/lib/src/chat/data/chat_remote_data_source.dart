@@ -6,8 +6,11 @@ import 'package:crypto_core/src/models/attachment.dart';
 import 'package:crypto_core/src/models/chat_message.dart';
 import 'package:crypto_core/src/models/conversation.dart';
 import 'package:crypto_core/src/models/conversation_key_envelope.dart';
-import '../../core/network/api_client.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+
+import '../../core/network/api_client.dart';
+import '../application/chat_models.dart';
 
 class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
   ChatRemoteDataSource({required this.apiClient});
@@ -84,18 +87,138 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
   Future<ChatAttachment> uploadAttachment(
     int conversationId, {
     required String filename,
-    required List<int> bytes,
+    List<int>? bytes,
+    String? filePath,
     String mimeType = 'application/octet-stream',
   }) async {
+    final file = filePath != null && filePath.trim().isNotEmpty
+        ? await http.MultipartFile.fromPath(
+            'file',
+            filePath,
+            filename: filename,
+            contentType: _parseMediaType(mimeType),
+          )
+        : http.MultipartFile.fromBytes(
+            'file',
+            bytes ?? const [],
+            filename: filename,
+            contentType: _parseMediaType(mimeType),
+          );
+    final decoded = await apiClient.multipartPost(
+      '/conversations/$conversationId/attachments',
+      files: [file],
+    );
+    return ChatAttachment.fromJson(_extractAttachmentPayload(decoded));
+  }
+
+  MediaType? _parseMediaType(String mimeType) {
+    try {
+      return MediaType.parse(mimeType);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Map<String, dynamic> _extractAttachmentPayload(dynamic decoded) {
+    if (decoded is Map<String, dynamic>) {
+      if (decoded['id'] is int) {
+        return decoded;
+      }
+      for (final key in const ['attachment', 'data', 'result']) {
+        final nested = decoded[key];
+        if (nested is Map<String, dynamic> && nested['id'] is int) {
+          return nested;
+        }
+      }
+    }
+    throw ApiException(
+      'Attachment upload succeeded but response format was not recognized.',
+      code: 'attachment_response_invalid',
+    );
+  }
+
+  Future<AttachmentTransferRemoteSession> createAttachmentSession(
+    int conversationId, {
+    required String filename,
+    required String mimeType,
+    required String cipherVersion,
+    required int plaintextSize,
+    required int ciphertextSize,
+    required int chunkSize,
+    required int totalChunks,
+    required String plaintextSha256,
+    required String manifestSha256,
+    required String fileKeyWrap,
+  }) async {
     final decoded =
-        await apiClient.multipartPost(
-              '/conversations/$conversationId/attachments',
-              files: [
-                http.MultipartFile.fromBytes('file', bytes, filename: filename),
-              ],
-            )
+        await apiClient.post('/conversations/$conversationId/attachment-sessions', {
+              'filename': filename,
+              'mime_type': mimeType,
+              'cipher_version': cipherVersion,
+              'plaintext_size': plaintextSize,
+              'ciphertext_size': ciphertextSize,
+              'chunk_size': chunkSize,
+              'total_chunks': totalChunks,
+              'plaintext_sha256': plaintextSha256,
+              'manifest_sha256': manifestSha256,
+              'file_key_wrap': fileKeyWrap,
+            })
+            as Map<String, dynamic>;
+    return AttachmentTransferRemoteSession.fromJson(decoded);
+  }
+
+  Future<AttachmentTransferRemoteSession> getAttachmentSession(
+    String sessionId,
+  ) async {
+    final decoded =
+        await apiClient.get('/attachment-sessions/$sessionId')
+            as Map<String, dynamic>;
+    return AttachmentTransferRemoteSession.fromJson(decoded);
+  }
+
+  Future<void> uploadAttachmentChunk(
+    String sessionId, {
+    required int chunkIndex,
+    required List<int> bytes,
+    required String ciphertextSha256,
+  }) async {
+    await apiClient.putBytes(
+      '/attachment-sessions/$sessionId/chunks/$chunkIndex',
+      bytes: bytes,
+      headers: {
+        'X-Chunk-Sha256': ciphertextSha256,
+        'X-Chunk-Size': '${bytes.length}',
+      },
+    );
+  }
+
+  Future<ChatAttachment> completeAttachmentSession(
+    String sessionId, {
+    required String manifestSha256,
+  }) async {
+    final decoded =
+        await apiClient.post('/attachment-sessions/$sessionId/complete', {
+              'manifest_sha256': manifestSha256,
+            })
             as Map<String, dynamic>;
     return ChatAttachment.fromJson(decoded);
+  }
+
+  Future<ChatAttachment> fetchAttachmentDownloadDescriptor(int attachmentId) async {
+    final decoded =
+        await apiClient.get('/attachments/$attachmentId/download')
+            as Map<String, dynamic>;
+    return ChatAttachment.fromJson(decoded);
+  }
+
+  Future<List<int>> downloadAttachmentChunk(
+    int attachmentId, {
+    required int chunkIndex,
+  }) async {
+    final response = await apiClient.getBytes(
+      '/attachments/$attachmentId/chunks/$chunkIndex',
+    );
+    return response.bytes;
   }
 
   @override

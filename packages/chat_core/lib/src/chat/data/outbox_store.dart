@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart' as drift;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../application/chat_models.dart';
 import '../../core/database/app_database.dart';
 import 'package:crypto_core/src/models/chat_message.dart';
 import 'package:crypto_core/src/core/storage/local_data_protector.dart';
@@ -16,6 +17,8 @@ class QueuedOutgoingMessage {
     required this.senderId,
     required this.senderName,
     required this.plaintext,
+    this.messageType = 'text',
+    this.attachments = const [],
     this.encryptedPayload = '',
     required this.createdAt,
     this.retryCount = 0,
@@ -29,6 +32,8 @@ class QueuedOutgoingMessage {
   final int senderId;
   final String senderName;
   final String plaintext;
+  final String messageType;
+  final List<PendingAttachmentUpload> attachments;
   final String encryptedPayload;
   final DateTime createdAt;
   final int retryCount;
@@ -43,6 +48,8 @@ class QueuedOutgoingMessage {
       'sender_id': senderId,
       'sender_name': senderName,
       'plaintext': plaintext,
+      'message_type': messageType,
+      'attachments': attachments.map((item) => item.toJson()).toList(),
       'encrypted_payload': encryptedPayload,
       'created_at': createdAt.toIso8601String(),
       'retry_count': retryCount,
@@ -64,6 +71,14 @@ class QueuedOutgoingMessage {
       senderId: json['sender_id'] as int,
       senderName: json['sender_name'] as String,
       plaintext: json['plaintext'] as String,
+      messageType: json['message_type'] as String? ?? 'text',
+      attachments: (json['attachments'] as List<dynamic>? ?? const [])
+          .map(
+            (item) => PendingAttachmentUpload.fromJson(
+              item as Map<String, dynamic>,
+            ),
+          )
+          .toList(),
       encryptedPayload: json['encrypted_payload'] as String? ?? '',
       createdAt: DateTime.parse(json['created_at'] as String),
       retryCount: json['retry_count'] as int? ?? 0,
@@ -82,6 +97,8 @@ class QueuedOutgoingMessage {
 
   QueuedOutgoingMessage copyWith({
     String? encryptedPayload,
+    String? messageType,
+    List<PendingAttachmentUpload>? attachments,
     int? retryCount,
     DateTime? nextRetryAt,
     MessageDeliveryState? deliveryState,
@@ -93,6 +110,8 @@ class QueuedOutgoingMessage {
       senderId: senderId,
       senderName: senderName,
       plaintext: plaintext,
+      messageType: messageType ?? this.messageType,
+      attachments: attachments ?? this.attachments,
       encryptedPayload: encryptedPayload ?? this.encryptedPayload,
       createdAt: createdAt,
       retryCount: retryCount ?? this.retryCount,
@@ -109,6 +128,8 @@ class QueuedOutgoingMessage {
       senderId: senderId,
       senderName: senderName,
       body: plaintext,
+      messageType: messageType,
+      attachmentCount: attachments.length,
       createdAt: createdAt,
       clientMessageId: clientMessageId,
       deliveryState: deliveryState,
@@ -140,6 +161,8 @@ class OutboxStore {
           senderId: row.senderId,
           senderName: row.senderName,
           plaintext: await _localDataProtector.unprotect(row.plaintext),
+          messageType: row.messageType,
+          attachments: _decodeAttachments(row.attachmentsJson),
           encryptedPayload: row.encryptedPayload,
           createdAt: row.createdAt,
           retryCount: row.retryCount,
@@ -171,6 +194,8 @@ class OutboxStore {
         plaintext: drift.Value(
           await _localDataProtector.protect(message.plaintext),
         ),
+        messageType: drift.Value(message.messageType),
+        attachmentsJson: drift.Value(_encodeAttachments(message.attachments)),
         encryptedPayload: drift.Value(message.encryptedPayload),
         createdAt: drift.Value(message.createdAt),
         retryCount: drift.Value(message.retryCount),
@@ -217,6 +242,8 @@ class OutboxStore {
           plaintext: drift.Value(
             await _localDataProtector.protect(message.plaintext),
           ),
+          messageType: drift.Value(message.messageType),
+          attachmentsJson: drift.Value(_encodeAttachments(message.attachments)),
           encryptedPayload: drift.Value(message.encryptedPayload),
           createdAt: drift.Value(message.createdAt),
           retryCount: drift.Value(message.retryCount),
@@ -251,5 +278,23 @@ class OutboxStore {
       default:
         return MessageDeliveryState.pending;
     }
+  }
+
+  String _encodeAttachments(List<PendingAttachmentUpload> attachments) {
+    return jsonEncode(attachments.map((item) => item.toJson()).toList());
+  }
+
+  List<PendingAttachmentUpload> _decodeAttachments(String raw) {
+    if (raw.trim().isEmpty) {
+      return const [];
+    }
+    final decoded = jsonDecode(raw) as List<dynamic>;
+    return decoded
+        .map(
+          (item) => PendingAttachmentUpload.fromJson(
+            item as Map<String, dynamic>,
+          ),
+        )
+        .toList();
   }
 }

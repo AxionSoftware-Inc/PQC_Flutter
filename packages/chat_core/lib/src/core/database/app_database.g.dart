@@ -1410,6 +1410,30 @@ class $QueuedOutgoingMessagesTableTable extends QueuedOutgoingMessagesTable
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _messageTypeMeta = const VerificationMeta(
+    'messageType',
+  );
+  @override
+  late final GeneratedColumn<String> messageType = GeneratedColumn<String>(
+    'message_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('text'),
+  );
+  static const VerificationMeta _attachmentsJsonMeta = const VerificationMeta(
+    'attachmentsJson',
+  );
+  @override
+  late final GeneratedColumn<String> attachmentsJson = GeneratedColumn<String>(
+    'attachments_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -1475,6 +1499,8 @@ class $QueuedOutgoingMessagesTableTable extends QueuedOutgoingMessagesTable
     senderName,
     plaintext,
     encryptedPayload,
+    messageType,
+    attachmentsJson,
     createdAt,
     retryCount,
     nextRetryAt,
@@ -1545,6 +1571,24 @@ class $QueuedOutgoingMessagesTableTable extends QueuedOutgoingMessagesTable
         encryptedPayload.isAcceptableOrUnknown(
           data['encrypted_payload']!,
           _encryptedPayloadMeta,
+        ),
+      );
+    }
+    if (data.containsKey('message_type')) {
+      context.handle(
+        _messageTypeMeta,
+        messageType.isAcceptableOrUnknown(
+          data['message_type']!,
+          _messageTypeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('attachments_json')) {
+      context.handle(
+        _attachmentsJsonMeta,
+        attachmentsJson.isAcceptableOrUnknown(
+          data['attachments_json']!,
+          _attachmentsJsonMeta,
         ),
       );
     }
@@ -1625,6 +1669,14 @@ class $QueuedOutgoingMessagesTableTable extends QueuedOutgoingMessagesTable
         DriftSqlType.string,
         data['${effectivePrefix}encrypted_payload'],
       )!,
+      messageType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}message_type'],
+      )!,
+      attachmentsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}attachments_json'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -1662,6 +1714,8 @@ class QueuedOutgoingMessagesTableData extends DataClass
   final String senderName;
   final String plaintext;
   final String encryptedPayload;
+  final String messageType;
+  final String attachmentsJson;
   final DateTime createdAt;
   final int retryCount;
   final DateTime? nextRetryAt;
@@ -1674,6 +1728,8 @@ class QueuedOutgoingMessagesTableData extends DataClass
     required this.senderName,
     required this.plaintext,
     required this.encryptedPayload,
+    required this.messageType,
+    required this.attachmentsJson,
     required this.createdAt,
     required this.retryCount,
     this.nextRetryAt,
@@ -1689,6 +1745,8 @@ class QueuedOutgoingMessagesTableData extends DataClass
     map['sender_name'] = Variable<String>(senderName);
     map['plaintext'] = Variable<String>(plaintext);
     map['encrypted_payload'] = Variable<String>(encryptedPayload);
+    map['message_type'] = Variable<String>(messageType);
+    map['attachments_json'] = Variable<String>(attachmentsJson);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['retry_count'] = Variable<int>(retryCount);
     if (!nullToAbsent || nextRetryAt != null) {
@@ -1709,6 +1767,8 @@ class QueuedOutgoingMessagesTableData extends DataClass
       senderName: Value(senderName),
       plaintext: Value(plaintext),
       encryptedPayload: Value(encryptedPayload),
+      messageType: Value(messageType),
+      attachmentsJson: Value(attachmentsJson),
       createdAt: Value(createdAt),
       retryCount: Value(retryCount),
       nextRetryAt: nextRetryAt == null && nullToAbsent
@@ -1733,6 +1793,8 @@ class QueuedOutgoingMessagesTableData extends DataClass
       senderName: serializer.fromJson<String>(json['senderName']),
       plaintext: serializer.fromJson<String>(json['plaintext']),
       encryptedPayload: serializer.fromJson<String>(json['encryptedPayload']),
+      messageType: serializer.fromJson<String>(json['messageType']),
+      attachmentsJson: serializer.fromJson<String>(json['attachmentsJson']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       retryCount: serializer.fromJson<int>(json['retryCount']),
       nextRetryAt: serializer.fromJson<DateTime?>(json['nextRetryAt']),
@@ -1750,6 +1812,8 @@ class QueuedOutgoingMessagesTableData extends DataClass
       'senderName': serializer.toJson<String>(senderName),
       'plaintext': serializer.toJson<String>(plaintext),
       'encryptedPayload': serializer.toJson<String>(encryptedPayload),
+      'messageType': serializer.toJson<String>(messageType),
+      'attachmentsJson': serializer.toJson<String>(attachmentsJson),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'retryCount': serializer.toJson<int>(retryCount),
       'nextRetryAt': serializer.toJson<DateTime?>(nextRetryAt),
@@ -1765,6 +1829,8 @@ class QueuedOutgoingMessagesTableData extends DataClass
     String? senderName,
     String? plaintext,
     String? encryptedPayload,
+    String? messageType,
+    String? attachmentsJson,
     DateTime? createdAt,
     int? retryCount,
     Value<DateTime?> nextRetryAt = const Value.absent(),
@@ -1777,6 +1843,8 @@ class QueuedOutgoingMessagesTableData extends DataClass
     senderName: senderName ?? this.senderName,
     plaintext: plaintext ?? this.plaintext,
     encryptedPayload: encryptedPayload ?? this.encryptedPayload,
+    messageType: messageType ?? this.messageType,
+    attachmentsJson: attachmentsJson ?? this.attachmentsJson,
     createdAt: createdAt ?? this.createdAt,
     retryCount: retryCount ?? this.retryCount,
     nextRetryAt: nextRetryAt.present ? nextRetryAt.value : this.nextRetryAt,
@@ -1803,6 +1871,12 @@ class QueuedOutgoingMessagesTableData extends DataClass
       encryptedPayload: data.encryptedPayload.present
           ? data.encryptedPayload.value
           : this.encryptedPayload,
+      messageType: data.messageType.present
+          ? data.messageType.value
+          : this.messageType,
+      attachmentsJson: data.attachmentsJson.present
+          ? data.attachmentsJson.value
+          : this.attachmentsJson,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       retryCount: data.retryCount.present
           ? data.retryCount.value
@@ -1828,6 +1902,8 @@ class QueuedOutgoingMessagesTableData extends DataClass
           ..write('senderName: $senderName, ')
           ..write('plaintext: $plaintext, ')
           ..write('encryptedPayload: $encryptedPayload, ')
+          ..write('messageType: $messageType, ')
+          ..write('attachmentsJson: $attachmentsJson, ')
           ..write('createdAt: $createdAt, ')
           ..write('retryCount: $retryCount, ')
           ..write('nextRetryAt: $nextRetryAt, ')
@@ -1845,6 +1921,8 @@ class QueuedOutgoingMessagesTableData extends DataClass
     senderName,
     plaintext,
     encryptedPayload,
+    messageType,
+    attachmentsJson,
     createdAt,
     retryCount,
     nextRetryAt,
@@ -1861,6 +1939,8 @@ class QueuedOutgoingMessagesTableData extends DataClass
           other.senderName == this.senderName &&
           other.plaintext == this.plaintext &&
           other.encryptedPayload == this.encryptedPayload &&
+          other.messageType == this.messageType &&
+          other.attachmentsJson == this.attachmentsJson &&
           other.createdAt == this.createdAt &&
           other.retryCount == this.retryCount &&
           other.nextRetryAt == this.nextRetryAt &&
@@ -1876,6 +1956,8 @@ class QueuedOutgoingMessagesTableCompanion
   final Value<String> senderName;
   final Value<String> plaintext;
   final Value<String> encryptedPayload;
+  final Value<String> messageType;
+  final Value<String> attachmentsJson;
   final Value<DateTime> createdAt;
   final Value<int> retryCount;
   final Value<DateTime?> nextRetryAt;
@@ -1889,6 +1971,8 @@ class QueuedOutgoingMessagesTableCompanion
     this.senderName = const Value.absent(),
     this.plaintext = const Value.absent(),
     this.encryptedPayload = const Value.absent(),
+    this.messageType = const Value.absent(),
+    this.attachmentsJson = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.retryCount = const Value.absent(),
     this.nextRetryAt = const Value.absent(),
@@ -1903,6 +1987,8 @@ class QueuedOutgoingMessagesTableCompanion
     required String senderName,
     required String plaintext,
     this.encryptedPayload = const Value.absent(),
+    this.messageType = const Value.absent(),
+    this.attachmentsJson = const Value.absent(),
     required DateTime createdAt,
     this.retryCount = const Value.absent(),
     this.nextRetryAt = const Value.absent(),
@@ -1922,6 +2008,8 @@ class QueuedOutgoingMessagesTableCompanion
     Expression<String>? senderName,
     Expression<String>? plaintext,
     Expression<String>? encryptedPayload,
+    Expression<String>? messageType,
+    Expression<String>? attachmentsJson,
     Expression<DateTime>? createdAt,
     Expression<int>? retryCount,
     Expression<DateTime>? nextRetryAt,
@@ -1936,6 +2024,8 @@ class QueuedOutgoingMessagesTableCompanion
       if (senderName != null) 'sender_name': senderName,
       if (plaintext != null) 'plaintext': plaintext,
       if (encryptedPayload != null) 'encrypted_payload': encryptedPayload,
+      if (messageType != null) 'message_type': messageType,
+      if (attachmentsJson != null) 'attachments_json': attachmentsJson,
       if (createdAt != null) 'created_at': createdAt,
       if (retryCount != null) 'retry_count': retryCount,
       if (nextRetryAt != null) 'next_retry_at': nextRetryAt,
@@ -1952,6 +2042,8 @@ class QueuedOutgoingMessagesTableCompanion
     Value<String>? senderName,
     Value<String>? plaintext,
     Value<String>? encryptedPayload,
+    Value<String>? messageType,
+    Value<String>? attachmentsJson,
     Value<DateTime>? createdAt,
     Value<int>? retryCount,
     Value<DateTime?>? nextRetryAt,
@@ -1966,6 +2058,8 @@ class QueuedOutgoingMessagesTableCompanion
       senderName: senderName ?? this.senderName,
       plaintext: plaintext ?? this.plaintext,
       encryptedPayload: encryptedPayload ?? this.encryptedPayload,
+      messageType: messageType ?? this.messageType,
+      attachmentsJson: attachmentsJson ?? this.attachmentsJson,
       createdAt: createdAt ?? this.createdAt,
       retryCount: retryCount ?? this.retryCount,
       nextRetryAt: nextRetryAt ?? this.nextRetryAt,
@@ -1995,6 +2089,12 @@ class QueuedOutgoingMessagesTableCompanion
     }
     if (encryptedPayload.present) {
       map['encrypted_payload'] = Variable<String>(encryptedPayload.value);
+    }
+    if (messageType.present) {
+      map['message_type'] = Variable<String>(messageType.value);
+    }
+    if (attachmentsJson.present) {
+      map['attachments_json'] = Variable<String>(attachmentsJson.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
@@ -2026,6 +2126,8 @@ class QueuedOutgoingMessagesTableCompanion
           ..write('senderName: $senderName, ')
           ..write('plaintext: $plaintext, ')
           ..write('encryptedPayload: $encryptedPayload, ')
+          ..write('messageType: $messageType, ')
+          ..write('attachmentsJson: $attachmentsJson, ')
           ..write('createdAt: $createdAt, ')
           ..write('retryCount: $retryCount, ')
           ..write('nextRetryAt: $nextRetryAt, ')
@@ -3764,6 +3866,8 @@ typedef $$QueuedOutgoingMessagesTableTableCreateCompanionBuilder =
       required String senderName,
       required String plaintext,
       Value<String> encryptedPayload,
+      Value<String> messageType,
+      Value<String> attachmentsJson,
       required DateTime createdAt,
       Value<int> retryCount,
       Value<DateTime?> nextRetryAt,
@@ -3779,6 +3883,8 @@ typedef $$QueuedOutgoingMessagesTableTableUpdateCompanionBuilder =
       Value<String> senderName,
       Value<String> plaintext,
       Value<String> encryptedPayload,
+      Value<String> messageType,
+      Value<String> attachmentsJson,
       Value<DateTime> createdAt,
       Value<int> retryCount,
       Value<DateTime?> nextRetryAt,
@@ -3823,6 +3929,16 @@ class $$QueuedOutgoingMessagesTableTableFilterComposer
 
   ColumnFilters<String> get encryptedPayload => $composableBuilder(
     column: $table.encryptedPayload,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get messageType => $composableBuilder(
+    column: $table.messageType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get attachmentsJson => $composableBuilder(
+    column: $table.attachmentsJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3891,6 +4007,16 @@ class $$QueuedOutgoingMessagesTableTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get messageType => $composableBuilder(
+    column: $table.messageType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get attachmentsJson => $composableBuilder(
+    column: $table.attachmentsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -3949,6 +4075,16 @@ class $$QueuedOutgoingMessagesTableTableAnnotationComposer
 
   GeneratedColumn<String> get encryptedPayload => $composableBuilder(
     column: $table.encryptedPayload,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get messageType => $composableBuilder(
+    column: $table.messageType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get attachmentsJson => $composableBuilder(
+    column: $table.attachmentsJson,
     builder: (column) => column,
   );
 
@@ -4028,6 +4164,8 @@ class $$QueuedOutgoingMessagesTableTableTableManager
                 Value<String> senderName = const Value.absent(),
                 Value<String> plaintext = const Value.absent(),
                 Value<String> encryptedPayload = const Value.absent(),
+                Value<String> messageType = const Value.absent(),
+                Value<String> attachmentsJson = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int> retryCount = const Value.absent(),
                 Value<DateTime?> nextRetryAt = const Value.absent(),
@@ -4041,6 +4179,8 @@ class $$QueuedOutgoingMessagesTableTableTableManager
                 senderName: senderName,
                 plaintext: plaintext,
                 encryptedPayload: encryptedPayload,
+                messageType: messageType,
+                attachmentsJson: attachmentsJson,
                 createdAt: createdAt,
                 retryCount: retryCount,
                 nextRetryAt: nextRetryAt,
@@ -4056,6 +4196,8 @@ class $$QueuedOutgoingMessagesTableTableTableManager
                 required String senderName,
                 required String plaintext,
                 Value<String> encryptedPayload = const Value.absent(),
+                Value<String> messageType = const Value.absent(),
+                Value<String> attachmentsJson = const Value.absent(),
                 required DateTime createdAt,
                 Value<int> retryCount = const Value.absent(),
                 Value<DateTime?> nextRetryAt = const Value.absent(),
@@ -4069,6 +4211,8 @@ class $$QueuedOutgoingMessagesTableTableTableManager
                 senderName: senderName,
                 plaintext: plaintext,
                 encryptedPayload: encryptedPayload,
+                messageType: messageType,
+                attachmentsJson: attachmentsJson,
                 createdAt: createdAt,
                 retryCount: retryCount,
                 nextRetryAt: nextRetryAt,

@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from users.models import UserDevice, Workspace
 
@@ -106,6 +107,13 @@ class MessageAttachment(models.Model):
     size_bytes = models.BigIntegerField(default=0)
     storage_key = models.CharField(max_length=512)
     thumbnail_key = models.CharField(max_length=512, blank=True)
+    cipher_version = models.CharField(max_length=64, default='attachment:v1')
+    plaintext_size = models.BigIntegerField(default=0)
+    ciphertext_size = models.BigIntegerField(default=0)
+    chunk_size = models.PositiveIntegerField(default=0)
+    plaintext_sha256 = models.CharField(max_length=128, blank=True)
+    manifest_sha256 = models.CharField(max_length=128, blank=True)
+    file_key_wrap = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -114,6 +122,89 @@ class MessageAttachment(models.Model):
 
     def __str__(self) -> str:
         return f'{self.conversation_id}:{self.filename}'
+
+
+class AttachmentUploadSession(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        UPLOADING = 'uploading', 'Uploading'
+        COMPLETED = 'completed', 'Completed'
+        ABORTED = 'aborted', 'Aborted'
+        EXPIRED = 'expired', 'Expired'
+
+    session_id = models.CharField(max_length=64, unique=True)
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name='attachment_upload_sessions',
+    )
+    workspace = models.ForeignKey(
+        Workspace,
+        on_delete=models.CASCADE,
+        related_name='attachment_upload_sessions',
+    )
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='attachment_upload_sessions',
+    )
+    completed_attachment = models.OneToOneField(
+        MessageAttachment,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='upload_session',
+    )
+    filename = models.CharField(max_length=255)
+    mime_type = models.CharField(max_length=255)
+    cipher_version = models.CharField(max_length=64, default='attachment:v1')
+    plaintext_size = models.BigIntegerField(default=0)
+    ciphertext_size = models.BigIntegerField(default=0)
+    chunk_size = models.PositiveIntegerField(default=0)
+    total_chunks = models.PositiveIntegerField(default=0)
+    plaintext_sha256 = models.CharField(max_length=128)
+    manifest_sha256 = models.CharField(max_length=128)
+    file_key_wrap = models.TextField()
+    blob_storage_key = models.CharField(max_length=512, blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at', '-id']
+
+    def __str__(self) -> str:
+        return f'{self.session_id}:{self.filename}'
+
+    @property
+    def is_expired(self) -> bool:
+        return self.expires_at <= timezone.now()
+
+
+class AttachmentChunkReceipt(models.Model):
+    session = models.ForeignKey(
+        AttachmentUploadSession,
+        on_delete=models.CASCADE,
+        related_name='chunk_receipts',
+    )
+    chunk_index = models.PositiveIntegerField()
+    chunk_size = models.PositiveIntegerField(default=0)
+    ciphertext_sha256 = models.CharField(max_length=128)
+    storage_key = models.CharField(max_length=512)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['chunk_index']
+        unique_together = ('session', 'chunk_index')
+
+    def __str__(self) -> str:
+        return f'{self.session.session_id}:{self.chunk_index}'
 
 
 class ConversationKeyEnvelope(models.Model):

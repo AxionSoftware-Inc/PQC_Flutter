@@ -28,6 +28,18 @@ class UnauthorizedApiException extends ApiException {
   ]) : super(statusCode: 401, code: 'not_authenticated');
 }
 
+class ApiBinaryResponse {
+  const ApiBinaryResponse({
+    required this.bytes,
+    required this.headers,
+    required this.statusCode,
+  });
+
+  final List<int> bytes;
+  final Map<String, String> headers;
+  final int statusCode;
+}
+
 class ApiClient {
   final http.Client _client = http.Client();
   String? _token;
@@ -93,6 +105,47 @@ class ApiClient {
     return _decode(response);
   }
 
+  Future<dynamic> putBytes(
+    String path, {
+    required List<int> bytes,
+    Map<String, String>? headers,
+  }) async {
+    final mergedHeaders = <String, String>{
+      ..._headers(),
+      'Content-Type': 'application/octet-stream',
+      ...?headers,
+    };
+    final response = await _send(
+      () => _client.put(
+        _buildUri(path),
+        headers: mergedHeaders,
+        body: bytes,
+      ),
+    );
+    return _decode(response);
+  }
+
+  Future<ApiBinaryResponse> getBytes(
+    String path, {
+    Map<String, String>? queryParameters,
+  }) async {
+    final response = await _send(
+      () => _client.get(
+        _buildUri(path, queryParameters: queryParameters),
+        headers: _headers(),
+      ),
+    );
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return ApiBinaryResponse(
+        bytes: response.bodyBytes,
+        headers: response.headers,
+        statusCode: response.statusCode,
+      );
+    }
+    _decode(response);
+    throw ApiException('Binary request failed unexpectedly.');
+  }
+
   Uri _buildUri(String path, {Map<String, String>? queryParameters}) {
     final normalizedBase = ApiConfig.baseUrl.endsWith('/')
         ? ApiConfig.baseUrl.substring(0, ApiConfig.baseUrl.length - 1)
@@ -109,6 +162,7 @@ class ApiClient {
 
   Map<String, String> _headers() {
     return {
+      'Accept': 'application/json',
       'Content-Type': 'application/json',
       if (_token != null) 'Authorization': 'Token $_token',
       if (_deviceId != null && _deviceId!.isNotEmpty) 'X-Device-Id': _deviceId!,
@@ -166,6 +220,13 @@ class ApiClient {
 
     if (response.statusCode == 401) {
       throw UnauthorizedApiException();
+    }
+    if (response.statusCode == 413) {
+      throw ApiException(
+        'File is too large for the server upload limit.',
+        statusCode: response.statusCode,
+        code: 'payload_too_large',
+      );
     }
 
     final message = decoded is Map<String, dynamic>

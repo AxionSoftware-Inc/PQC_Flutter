@@ -142,8 +142,13 @@ class SessionStorage {
           )
           .toList(),
     );
-    await preferences.setString(_rememberedDisplayNameKey, user.displayName);
-    await preferences.setString(_rememberedUsernameKey, user.username);
+    await _secretStore.write(
+      key: _rememberedDisplayNameKey,
+      value: user.displayName,
+    );
+    await _secretStore.write(key: _rememberedUsernameKey, value: user.username);
+    await preferences.remove(_rememberedDisplayNameKey);
+    await preferences.remove(_rememberedUsernameKey);
   }
 
   Future<String?> readApiBaseUrl() async {
@@ -156,15 +161,34 @@ class SessionStorage {
 
   Future<RememberedIdentity?> readRememberedIdentity() async {
     final preferences = await SharedPreferences.getInstance();
-    final displayName = preferences.getString(_rememberedDisplayNameKey);
+    final displayName =
+        await _secretStore.read(_rememberedDisplayNameKey) ??
+        preferences.getString(_rememberedDisplayNameKey);
 
     if (displayName == null) {
       return null;
     }
 
+    final username =
+        await _secretStore.read(_rememberedUsernameKey) ??
+        preferences.getString(_rememberedUsernameKey) ??
+        displayName;
+
+    if (preferences.getString(_rememberedDisplayNameKey) != null) {
+      await _secretStore.write(
+        key: _rememberedDisplayNameKey,
+        value: displayName,
+      );
+      await preferences.remove(_rememberedDisplayNameKey);
+    }
+    if (preferences.getString(_rememberedUsernameKey) != null) {
+      await _secretStore.write(key: _rememberedUsernameKey, value: username);
+      await preferences.remove(_rememberedUsernameKey);
+    }
+
     return RememberedIdentity(
       displayName: displayName,
-      username: preferences.getString(_rememberedUsernameKey) ?? displayName,
+      username: username,
     );
   }
 
@@ -215,6 +239,8 @@ class SessionStorage {
     await _secretStore.delete(_apiBaseUrlKey);
     await preferences.remove(_organizationsKey);
     if (clearRememberedIdentity) {
+      await _secretStore.delete(_rememberedDisplayNameKey);
+      await _secretStore.delete(_rememberedUsernameKey);
       await preferences.remove(_rememberedDisplayNameKey);
       await preferences.remove(_rememberedUsernameKey);
     }

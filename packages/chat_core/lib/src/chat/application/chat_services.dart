@@ -12,6 +12,7 @@ import 'package:crypto_core/src/crypto/chat_crypto_exceptions.dart';
 import 'package:crypto_core/src/crypto/durability/crypto_core_facade.dart';
 import 'package:crypto_core/src/crypto/durability/crypto_durability_models.dart';
 import '../../security/key_verification_service.dart';
+import '../../transfer/attachment_transfer.dart';
 import '../data/chat_remote_data_source.dart';
 import '../data/chat_realtime_service.dart';
 import '../data/outbox_store.dart';
@@ -477,12 +478,14 @@ class OutgoingMessageService {
     required this.cryptoService,
     required this.localStore,
     required this.outboxStore,
+    this.attachmentTransferFacade,
   });
 
   final ChatRemoteDataSource remoteDataSource;
   final ChatCryptoService cryptoService;
   final ChatLocalStore localStore;
   final OutboxStore outboxStore;
+  final AttachmentTransferFacade? attachmentTransferFacade;
 
   Future<ChatMessage> sendMessage({
     required SendMessageCommand command,
@@ -491,17 +494,6 @@ class OutgoingMessageService {
     required Future<void> Function(Conversation conversation) persistConversation,
   }) async {
     final now = DateTime.now().toUtc();
-    final uploadedAttachments = <ChatAttachment>[];
-    for (final attachment in command.attachments) {
-      uploadedAttachments.add(
-        await remoteDataSource.uploadAttachment(
-          command.conversation.id,
-          filename: attachment.filename,
-          bytes: attachment.bytes,
-          mimeType: attachment.mimeType,
-        ),
-      );
-    }
     final clientMessageId =
         '${command.conversation.id}_${command.currentUserId}_${now.microsecondsSinceEpoch}';
     final currentUser = usersById[command.currentUserId];
@@ -511,6 +503,8 @@ class OutgoingMessageService {
       senderId: command.currentUserId,
       senderName: currentUser?.displayName ?? 'You',
       plaintext: command.text,
+      messageType: command.messageType,
+      attachments: command.attachments,
       createdAt: now,
       deliveryState: MessageDeliveryState.pending,
     );
@@ -524,21 +518,10 @@ class OutgoingMessageService {
         usersById: usersById,
         refreshUsers: refreshUsers,
         persistConversation: persistConversation,
-        messageType: uploadedAttachments.isEmpty ? 'text' : command.messageType,
-        attachmentIds: uploadedAttachments.map((item) => item.id).toList(),
       );
       await outboxStore.remove(clientMessageId);
       return sent;
     } on ApiException catch (error) {
-      if (uploadedAttachments.isNotEmpty) {
-        await outboxStore.remove(clientMessageId);
-        throw ApiException(
-          'Attachment send failed. Please attach files again and retry.',
-          statusCode: error.statusCode,
-          code: error.code,
-          isRetryable: false,
-        );
-      }
       final state = error.isRetryable
           ? MessageDeliveryState.failedRetryable
           : MessageDeliveryState.failedPermanent;
@@ -642,9 +625,44 @@ class OutgoingMessageService {
     required Map<int, AppUser> usersById,
     required Future<void> Function() refreshUsers,
     required Future<void> Function(Conversation conversation) persistConversation,
-    String messageType = 'text',
-    List<int> attachmentIds = const [],
   }) async {
+    final attachmentIds = <int>[];
+    for (final attachment in queued.attachments) {
+      if (!attachment.hasUploadSource) {
+        throw ApiException(
+          'Attachment source is missing. Please pick the file again.',
+          code: 'attachment_source_missing',
+          isRetryable: false,
+        );
+      }
+      final transferFacade = attachmentTransferFacade;
+      if (transferFacade != null) {
+        final uploaded = await transferFacade.uploadAttachment(
+          conversation: conversation,
+          attachment: attachment,
+          encryptKeyEnvelope: (plaintext) {
+            return cryptoService.encrypt(
+              request: ChatCryptoRequest(
+                currentUserId: currentUserId,
+                conversation: conversation,
+                usersById: usersById,
+              ),
+              plaintext: plaintext,
+            );
+          },
+        );
+        attachmentIds.add(uploaded.id);
+      } else {
+        final uploaded = await remoteDataSource.uploadAttachment(
+          conversation.id,
+          filename: attachment.filename,
+          bytes: attachment.bytes,
+          filePath: attachment.filePath,
+          mimeType: attachment.mimeType,
+        );
+        attachmentIds.add(uploaded.id);
+      }
+    }
     final payload = queued.encryptedPayload.isNotEmpty
         ? queued.encryptedPayload
         : await _encryptPayloadWithUserRefresh(
@@ -661,7 +679,7 @@ class OutgoingMessageService {
       conversation.id,
       payload,
       clientMessageId: queued.clientMessageId,
-      messageType: messageType,
+      messageType: attachmentIds.isEmpty ? 'text' : queued.messageType,
       attachmentIds: attachmentIds,
     );
     final decoded = ChatMessage(

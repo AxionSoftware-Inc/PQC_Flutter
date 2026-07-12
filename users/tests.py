@@ -172,6 +172,52 @@ class AuthApiTests(APITestCase):
         self.assertEqual(second.status_code, 200)
         self.assertNotEqual(first.data['account_id'], second.data['account_id'])
 
+    def test_remember_device_only_reuses_account_for_same_device_name(self):
+        first = self.client.post(
+            '/api/auth/login',
+            {
+                'username': 'Ali',
+                'device_id': 'device-1',
+                'device_name': 'Samsung SM-S918B',
+                'platform': 'android',
+                'identity_public_key': VALID_PUBLIC_KEY_1,
+                'key_algorithm': 'x25519',
+                'pqc_public_key': VALID_PQC_PUBLIC_KEY,
+                'pqc_algorithm': 'ml-kem-768',
+                'pqc_signing_public_key': VALID_PQC_SIGNING_PUBLIC_KEY,
+                'pqc_signing_algorithm': 'ml-dsa-65',
+            },
+            format='json',
+        )
+
+        second = self.client.post(
+            '/api/auth/login',
+            {
+                'display_name': 'Samsung SM-S918B',
+                'remember_device_only': True,
+                'device_id': 'device-2',
+                'device_name': 'Samsung SM-S918B',
+                'platform': 'android',
+                'identity_public_key': VALID_PUBLIC_KEY_2,
+                'key_algorithm': 'x25519',
+                'pqc_public_key': VALID_PQC_PUBLIC_KEY,
+                'pqc_algorithm': 'ml-kem-768',
+                'pqc_signing_public_key': VALID_PQC_SIGNING_PUBLIC_KEY,
+                'pqc_signing_algorithm': 'ml-dsa-65',
+            },
+            format='json',
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.data['account_id'], first.data['account_id'])
+        self.assertTrue(
+            UserDevice.objects.filter(
+                user_id=first.data['account_id'],
+                device_id='device-2',
+            ).exists()
+        )
+
     def test_authenticated_device_sync_updates_presence_only(self):
         login = self.client.post(
             '/api/auth/login',

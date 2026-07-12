@@ -1,9 +1,12 @@
 // ignore_for_file: implementation_imports
 
+import 'package:flutter/foundation.dart';
 import 'package:crypto_core/src/models/app_user.dart';
+import 'package:crypto_core/src/models/attachment.dart';
 import 'package:crypto_core/src/models/chat_message.dart';
 import 'package:crypto_core/src/models/conversation.dart';
 import '../../core/network/api_client.dart';
+import '../../transfer/attachment_transfer.dart';
 import '../../security/key_verification_service.dart';
 import '../data/chat_remote_data_source.dart';
 import '../data/chat_realtime_service.dart';
@@ -25,6 +28,7 @@ class ChatFacade {
     ConversationSyncService? conversationSyncService,
     MessageSyncService? messageSyncService,
     OutgoingMessageService? outgoingMessageService,
+    AttachmentTransferFacade? attachmentTransferFacade,
     ChatRealtimeCoordinator? realtimeCoordinator,
   }) : _remoteDataSource = remoteDataSource,
        _outboxStore = outboxStore,
@@ -50,7 +54,9 @@ class ChatFacade {
              cryptoService: cryptoService,
              localStore: localStore,
              outboxStore: outboxStore,
+             attachmentTransferFacade: attachmentTransferFacade,
            ),
+       _attachmentTransferFacade = attachmentTransferFacade,
        _realtimeCoordinator =
            realtimeCoordinator ??
            ChatRealtimeCoordinator(
@@ -68,6 +74,7 @@ class ChatFacade {
   final ConversationSyncService _conversationSyncService;
   final MessageSyncService _messageSyncService;
   final OutgoingMessageService _outgoingMessageService;
+  final AttachmentTransferFacade? _attachmentTransferFacade;
   final ChatRealtimeCoordinator _realtimeCoordinator;
 
   final Map<int, AppUser> _usersById = {};
@@ -76,6 +83,9 @@ class ChatFacade {
   DateTime? _lastConversationSyncAt;
   int? _activeCurrentUserId;
   int _activeWorkspaceId = 0;
+
+  ValueListenable<List<AttachmentTransferState>>? get attachmentTransfers =>
+      _attachmentTransferFacade?.transfers;
 
   void switchWorkspaceContext(int workspaceId) {
     if (_activeWorkspaceId == workspaceId) {
@@ -236,6 +246,88 @@ class ChatFacade {
       currentUserId: currentUserId,
       conversation: conversation,
       usersById: _usersById,
+    );
+  }
+
+  Future<void> resumePendingWork({required int currentUserId}) async {
+    _activeCurrentUserId = currentUserId;
+    await _ensureUsersLoaded();
+    if (_attachmentTransferFacade != null) {
+      await _attachmentTransferFacade.resumePendingDownloads();
+    }
+    final rows = await _localStore.readVisibleConversationRows(_activeWorkspaceId);
+    for (final row in rows) {
+      final conversation = await _localStore.mapConversationRow(
+        row: row,
+        knownConversation: _conversationsById[row.id],
+      );
+      _conversationsById[conversation.id] = conversation;
+      try {
+        await _outgoingMessageService.flushPendingMessages(
+          conversation: conversation,
+          currentUserId: currentUserId,
+          usersById: _usersById,
+          refreshUsers: _refreshUsersForSecureSend,
+          persistConversation: _persistConversation,
+        );
+      } on ApiException {
+        // Keep the queue persisted; flush will retry later.
+      }
+    }
+  }
+
+  Future<List<AttachmentTransferState>> loadAttachmentTransfers() async {
+    final transferFacade = _attachmentTransferFacade;
+    if (transferFacade == null) {
+      return const [];
+    }
+    return transferFacade.loadTransfers();
+  }
+
+  Future<void> pauseAttachmentTransfer(String localId) async {
+    await _attachmentTransferFacade?.pauseTransfer(localId);
+  }
+
+  Future<AttachmentTransferState?> resumeAttachmentTransfer(String localId) {
+    final transferFacade = _attachmentTransferFacade;
+    if (transferFacade == null) {
+      return Future.value(null);
+    }
+    return transferFacade.resumeTransfer(localId);
+  }
+
+  Future<void> cancelAttachmentTransfer(String localId) async {
+    await _attachmentTransferFacade?.cancelTransfer(localId);
+  }
+
+  Future<void> clearCompletedAttachmentTransfer(String localId) async {
+    await _attachmentTransferFacade?.clearCompletedTransfer(localId);
+  }
+
+  Future<String> downloadAttachment({
+    required int currentUserId,
+    required Conversation conversation,
+    required ChatAttachment attachment,
+  }) async {
+    _activeCurrentUserId = currentUserId;
+    await _ensureUsersLoaded();
+    final transferFacade = _attachmentTransferFacade;
+    if (transferFacade == null) {
+      throw StateError('Attachment transfer is not configured.');
+    }
+    return transferFacade.downloadAttachment(
+      conversation: conversation,
+      attachment: attachment,
+      decryptKeyEnvelope: (payload) {
+        return _outgoingMessageService.cryptoService.decrypt(
+          request: ChatCryptoRequest(
+            currentUserId: currentUserId,
+            conversation: conversation,
+            usersById: _usersById,
+          ),
+          payload: payload,
+        );
+      },
     );
   }
 

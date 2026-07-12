@@ -13,3 +13,5 @@ export 'src/core/database/app_database.dart';
 export 'src/core/network/api_client.dart';
 export 'src/models/organization_context.dart';
 export 'src/security/key_verification_service.dart';
+export 'src/transfer/attachment_transfer.dart';
+export 'src/transfer/transfer_policy.dart';
