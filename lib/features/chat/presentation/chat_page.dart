@@ -571,12 +571,16 @@ class _ChatPageState extends State<ChatPage> {
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 520),
         margin: EdgeInsets.symmetric(horizontal: spacing.xs, vertical: spacing.xs),
-        child: Column(
-          crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            Container(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              Container(
               padding: EdgeInsets.symmetric(
                 horizontal: spacing.md,
                 vertical: spacing.sm,
@@ -591,33 +595,19 @@ class _ChatPageState extends State<ChatPage> {
                 ),
               ),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      if (!isMine)
-                        Expanded(
-                          child: Text(
-                            message.senderName,
-                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              color: colors.textMuted,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        )
-                      else
-                        const Spacer(),
-                      Text(
-                        _formatMessageTime(message.createdAt),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: isMine
-                              ? Colors.white.withValues(alpha: 0.68)
-                              : colors.textMuted,
-                        ),
+                  if (!isMine) ...[
+                    Text(
+                      message.senderName,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: colors.textMuted,
+                        fontWeight: FontWeight.w700,
                       ),
-                    ],
-                  ),
-                  SizedBox(height: spacing.xs),
+                    ),
+                    SizedBox(height: spacing.xs),
+                  ],
                   if (message.attachments.isNotEmpty) ...[
                     Wrap(
                       spacing: spacing.xs,
@@ -653,32 +643,31 @@ class _ChatPageState extends State<ChatPage> {
                   if (!widget.conversation.isGroup ||
                       message.deliveryState != MessageDeliveryState.sent) ...[
                     SizedBox(height: spacing.sm),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.lock_outline_rounded,
-                          size: 14,
-                          color: isMine
-                              ? Colors.white.withValues(alpha: 0.72)
-                              : colors.textMuted,
-                        ),
-                        if (!widget.conversation.isGroup) ...[
-                          SizedBox(width: spacing.xs),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Wrap(
+                        spacing: spacing.xs,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
                           Icon(
-                            _controller.trust?.trust.isEnterpriseVerified == true
-                                ? Icons.verified_user_rounded
-                                : Icons.shield_outlined,
+                            Icons.lock_outline_rounded,
                             size: 14,
                             color: isMine
                                 ? Colors.white.withValues(alpha: 0.72)
                                 : colors.textMuted,
                           ),
-                        ],
-                        if (message.deliveryState != MessageDeliveryState.sent) ...[
-                          SizedBox(width: spacing.xs),
-                          Flexible(
-                            child: Text(
+                          if (!widget.conversation.isGroup)
+                            Icon(
+                              _controller.trust?.trust.isEnterpriseVerified == true
+                                  ? Icons.verified_user_rounded
+                                  : Icons.shield_outlined,
+                              size: 14,
+                              color: isMine
+                                  ? Colors.white.withValues(alpha: 0.72)
+                                  : colors.textMuted,
+                            ),
+                          if (message.deliveryState != MessageDeliveryState.sent)
+                            Text(
                               _statusLabel(message),
                               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                 color: isMine
@@ -686,20 +675,42 @@ class _ChatPageState extends State<ChatPage> {
                                     : colors.textMuted,
                               ),
                             ),
+                          Text(
+                            _formatMessageTime(message.createdAt),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: isMine
+                                  ? Colors.white.withValues(alpha: 0.68)
+                                  : colors.textMuted,
+                            ),
                           ),
                         ],
-                      ],
+                      ),
                     ),
-                  ],
+                  ] else
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Padding(
+                        padding: EdgeInsets.only(top: spacing.sm / 2),
+                        child: Text(
+                          _formatMessageTime(message.createdAt),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: isMine
+                                ? Colors.white.withValues(alpha: 0.68)
+                                : colors.textMuted,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
-            if (message.canRetry)
-              TextButton(
-                onPressed: () => _retryMessage(message),
-                child: const Text('Retry'),
-              ),
-          ],
+              if (message.canRetry)
+                TextButton(
+                  onPressed: () => _retryMessage(message),
+                  child: const Text('Retry'),
+                ),
+            ],
+          ),
         ),
       ),
     );
