@@ -5,9 +5,11 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'package:crypto_core/src/models/app_user.dart';
+import 'package:crypto_core/src/models/attachment.dart';
 import 'package:crypto_core/src/models/chat_message.dart';
 import 'package:crypto_core/src/models/conversation.dart';
 import '../../security/key_verification_service.dart';
+import '../../transfer/attachment_transfer.dart';
 import 'chat_facade.dart';
 import 'chat_models.dart';
 
@@ -76,14 +78,20 @@ class ChatConversationController extends ChangeNotifier {
   String? _error;
   ConversationTrustState? _trust;
   Timer? _pollingTimer;
+  List<AttachmentTransferState> _attachmentTransfers = const [];
 
   List<ChatMessage> get messages => _messages;
   bool get isLoading => _isLoading;
   bool get isSending => _isSending;
   String? get error => _error;
   ConversationTrustState? get trust => _trust;
+  List<AttachmentTransferState> get attachmentTransfers => _attachmentTransfers
+      .where((item) => item.conversationId == conversation.id)
+      .toList();
 
   Future<void> initialize() async {
+    chatFacade.attachmentTransfers?.addListener(_handleTransferUpdates);
+    _attachmentTransfers = await chatFacade.loadAttachmentTransfers();
     await refresh();
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       unawaited(refresh(showLoader: false));
@@ -147,8 +155,51 @@ class ChatConversationController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<String> downloadAttachment(ChatAttachment attachment) {
+    return chatFacade.downloadAttachment(
+      currentUserId: currentUserId,
+      conversation: conversation,
+      attachment: attachment,
+    );
+  }
+
+  Future<void> pauseTransfer(String localId) async {
+    await chatFacade.pauseAttachmentTransfer(localId);
+  }
+
+  Future<void> resumeTransfer(String localId) async {
+    final transfer = await chatFacade.resumeAttachmentTransfer(localId);
+    if (transfer?.direction == AttachmentTransferDirection.upload) {
+      await refresh(showLoader: false);
+    }
+  }
+
+  Future<void> cancelTransfer(String localId) async {
+    await chatFacade.cancelAttachmentTransfer(localId);
+  }
+
+  Future<void> clearCompletedTransfer(String localId) async {
+    await chatFacade.clearCompletedAttachmentTransfer(localId);
+  }
+
+  AttachmentTransferState? findDownloadTransfer(int attachmentId) {
+    for (final transfer in _attachmentTransfers) {
+      if (transfer.direction == AttachmentTransferDirection.download &&
+          transfer.attachmentId == attachmentId) {
+        return transfer;
+      }
+    }
+    return null;
+  }
+
+  void _handleTransferUpdates() {
+    _attachmentTransfers = chatFacade.attachmentTransfers?.value ?? const [];
+    notifyListeners();
+  }
+
   @override
   void dispose() {
+    chatFacade.attachmentTransfers?.removeListener(_handleTransferUpdates);
     _pollingTimer?.cancel();
     super.dispose();
   }

@@ -53,9 +53,7 @@ class AuthRepository {
 
     final deviceIdentity =
         (await deviceStateManager.resolveCurrentDeviceProfile()).deviceIdentity;
-    final suffix = deviceIdentity.id.replaceAll('-', '').substring(0, 6);
-    final platform = deviceIdentity.platform.toUpperCase();
-    return '$platform-$suffix';
+    return deviceIdentity.deviceName.trim();
   }
 
   Future<SessionUser> bootstrapLogin() async {
@@ -94,7 +92,7 @@ class AuthRepository {
 
     final rememberedIdentity = await sessionStorage.readRememberedIdentity();
     if (rememberedIdentity == null) {
-      return null;
+      return _tryLoginWithRememberedDevice();
     }
 
     try {
@@ -104,7 +102,7 @@ class AuthRepository {
             : rememberedIdentity.username,
       );
     } catch (_) {
-      return null;
+      return _tryLoginWithRememberedDevice();
     }
   }
 
@@ -171,6 +169,73 @@ class AuthRepository {
       ),
     );
     return session;
+  }
+
+  Future<SessionUser?> _tryLoginWithRememberedDevice() async {
+    try {
+      final deviceState = await _prepareDeviceState();
+      final deviceIdentity = deviceState.deviceIdentity;
+      final deviceKeyMaterial = deviceState.identityKeyMaterial;
+      final pqcSigningKeyMaterial = deviceState.pqcSigningKeyMaterial;
+      final pqcPayload = _buildPqcRegistrationPayloadFromState(deviceState);
+      apiClient.setDeviceId(deviceIdentity.id);
+      final response =
+          await apiClient.post('/auth/login', {
+                'display_name': deviceIdentity.deviceName,
+                'username': '',
+                'remember_device_only': true,
+                'device_id': deviceIdentity.id,
+                'device_name': deviceIdentity.deviceName,
+                'platform': deviceIdentity.platform,
+                'identity_public_key': deviceKeyMaterial.publicKey,
+                'key_algorithm': deviceKeyMaterial.algorithm,
+                'pqc_public_key': pqcPayload.publicKey,
+                'pqc_algorithm': pqcPayload.algorithm,
+                'pqc_signing_public_key': pqcSigningKeyMaterial.publicKey,
+                'pqc_signing_algorithm': pqcSigningKeyMaterial.algorithm,
+              })
+              as Map<String, dynamic>;
+      _assertServerAcceptedPqcKeys(
+        response: response,
+        expectedDeviceId: deviceIdentity.id,
+        expectedPqcPublicKey: pqcPayload.publicKey,
+        expectedSigningPublicKey: pqcSigningKeyMaterial.publicKey,
+      );
+      final user = response['user'] as Map<String, dynamic>;
+      final session = SessionUser(
+        id: user['id'] as int,
+        accountId:
+            response['account_id'] as int? ??
+            user['account_id'] as int? ??
+            user['id'] as int,
+        username: user['username'] as String,
+        displayName:
+            (user['display_name'] as String?) ?? user['username'] as String,
+        deviceId: response['device_id'] as String? ?? deviceIdentity.id,
+        deviceStatus: response['device_status'] as String? ?? 'active',
+        profileFingerprint: response['profile_fingerprint'] as String? ?? '',
+        activeWorkspaceId: response['active_workspace_id'] as int? ?? 0,
+        organizations: _parseOrganizations(response),
+        token: response['token'] as String,
+      );
+      apiClient.setToken(session.token);
+      apiClient.setWorkspaceId(
+        session.activeWorkspaceId <= 0 ? null : '${session.activeWorkspaceId}',
+      );
+      await _reconcileLocalHistoryOwner(session);
+      await sessionStorage.write(session);
+      await sessionStorage.writeApiBaseUrl(ApiConfig.baseUrl);
+      await deviceStateManager.markDeviceProfileSynced(
+        serverProfileFingerprint: session.profileFingerprint,
+        installationStatus: DeviceInstallationStatus.values.firstWhere(
+          (item) => item.name == session.deviceStatus,
+          orElse: () => DeviceInstallationStatus.active,
+        ),
+      );
+      return session;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<SessionUser> switchWorkspace(

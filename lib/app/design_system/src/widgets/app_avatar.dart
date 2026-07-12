@@ -18,10 +18,13 @@ class AppAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final accent = AppBrandScope.of(context).brand?.accentColor ?? colors.primary;
+    final accent =
+        _avatarAccent(label) ??
+        AppBrandScope.of(context).brand?.accentColor ??
+        colors.primary;
     return CircleAvatar(
       radius: radius,
-      backgroundColor: Color.lerp(accent, Colors.white, 0.82),
+      backgroundColor: Color.lerp(accent, colors.surface, 0.76),
       foregroundColor: accent,
       child: icon != null
           ? Icon(icon, size: radius)
@@ -33,5 +36,26 @@ class AppAvatar extends StatelessWidget {
               ),
             ),
     );
+  }
+
+  Color? _avatarAccent(String value) {
+    if (value.trim().isEmpty) {
+      return null;
+    }
+    const palette = <Color>[
+      Color(0xFF2563EB),
+      Color(0xFF0F766E),
+      Color(0xFFB45309),
+      Color(0xFFBE185D),
+      Color(0xFF7C3AED),
+      Color(0xFF047857),
+      Color(0xFFB91C1C),
+      Color(0xFF4338CA),
+    ];
+    final hash = value.trim().toLowerCase().codeUnits.fold<int>(
+      0,
+      (acc, item) => (acc * 31 + item) & 0x7fffffff,
+    );
+    return palette[hash % palette.length];
   }
 }

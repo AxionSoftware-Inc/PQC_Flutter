@@ -1,10 +1,18 @@
 import base64
+import hashlib
 
+from django.test import override_settings
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework.test import APITestCase
 
-from chat.models import Conversation, ConversationKeyEnvelope, ConversationParticipant
+from chat.models import (
+    AttachmentUploadSession,
+    Conversation,
+    ConversationKeyEnvelope,
+    ConversationParticipant,
+    MessageAttachment,
+)
 from users.models import UserDevice
 
 
@@ -546,6 +554,254 @@ class ChatApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('group-ml-kem-768-aesgcm-v1', str(response.data))
+
+    def test_attachment_session_upload_complete_and_chunk_download(self):
+        create = self.client.post(
+            f'/api/conversations/{self.group.id}/attachment-sessions',
+            {
+                'filename': 'report.bin',
+                'mime_type': 'application/octet-stream',
+                'cipher_version': 'attachment:v1',
+                'plaintext_size': 17,
+                'ciphertext_size': 65,
+                'chunk_size': 8,
+                'total_chunks': 3,
+                'plaintext_sha256': 'plain-sha',
+                'manifest_sha256': 'manifest-sha',
+                'file_key_wrap': _private_payload('file-wrap'),
+            },
+            format='json',
+        )
+
+        self.assertEqual(create.status_code, 201)
+        session_id = create.data['session_id']
+
+        chunks = [b'A' * 24, b'B' * 24, b'C' * 17]
+        for index, chunk in enumerate(chunks):
+            response = self.client.generic(
+                'PUT',
+                f'/api/attachment-sessions/{session_id}/chunks/{index}',
+                chunk,
+                content_type='application/octet-stream',
+                HTTP_X_CHUNK_SHA256=hashlib.sha256(chunk).hexdigest(),
+                HTTP_X_CHUNK_SIZE=str(len(chunk)),
+            )
+            self.assertEqual(response.status_code, 201)
+
+        detail = self.client.get(f'/api/attachment-sessions/{session_id}')
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.data['completed_chunks'], 3)
+        self.assertEqual(detail.data['received_chunks'], [0, 1, 2])
+
+        complete = self.client.post(
+            f'/api/attachment-sessions/{session_id}/complete',
+            {'manifest_sha256': 'manifest-sha'},
+            format='json',
+        )
+        self.assertEqual(complete.status_code, 201)
+        attachment_id = complete.data['id']
+
+        attachment = MessageAttachment.objects.get(id=attachment_id)
+        self.assertEqual(attachment.cipher_version, 'attachment:v1')
+        self.assertEqual(attachment.file_key_wrap, _private_payload('file-wrap'))
+
+        descriptor = self.client.get(f'/api/attachments/{attachment_id}/download')
+        self.assertEqual(descriptor.status_code, 200)
+        self.assertEqual(descriptor.data['download']['total_chunks'], 3)
+
+        chunk = self.client.get(f'/api/attachments/{attachment_id}/chunks/1')
+        self.assertEqual(chunk.status_code, 200)
+        self.assertEqual(chunk.content, chunks[1])
+
+    def test_attachment_session_chunk_upload_is_idempotent(self):
+        create = self.client.post(
+            f'/api/conversations/{self.group.id}/attachment-sessions',
+            {
+                'filename': 'dup.bin',
+                'mime_type': 'application/octet-stream',
+                'cipher_version': 'attachment:v1',
+                'plaintext_size': 8,
+                'ciphertext_size': 8,
+                'chunk_size': 8,
+                'total_chunks': 1,
+                'plaintext_sha256': 'plain-sha',
+                'manifest_sha256': 'manifest-sha',
+                'file_key_wrap': _private_payload('dup-wrap'),
+            },
+            format='json',
+        )
+        session_id = create.data['session_id']
+        chunk_bytes = b'abcdefgh'
+        checksum = hashlib.sha256(chunk_bytes).hexdigest()
+
+        first = self.client.generic(
+            'PUT',
+            f'/api/attachment-sessions/{session_id}/chunks/0',
+            chunk_bytes,
+            content_type='application/octet-stream',
+            HTTP_X_CHUNK_SHA256=checksum,
+            HTTP_X_CHUNK_SIZE=str(len(chunk_bytes)),
+        )
+        second = self.client.generic(
+            'PUT',
+            f'/api/attachment-sessions/{session_id}/chunks/0',
+            chunk_bytes,
+            content_type='application/octet-stream',
+            HTTP_X_CHUNK_SHA256=checksum,
+            HTTP_X_CHUNK_SIZE=str(len(chunk_bytes)),
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertTrue(second.data['duplicate'])
+        self.assertEqual(
+            AttachmentUploadSession.objects.get(session_id=session_id).chunk_receipts.count(),
+            1,
+        )
+
+    @override_settings(ATTACHMENTS_MAX_FILE_BYTES=16)
+    def test_attachment_session_create_rejects_when_file_exceeds_limit(self):
+        response = self.client.post(
+            f'/api/conversations/{self.group.id}/attachment-sessions',
+            {
+                'filename': 'too-large.bin',
+                'mime_type': 'application/octet-stream',
+                'cipher_version': 'attachment:v1',
+                'plaintext_size': 17,
+                'ciphertext_size': 33,
+                'chunk_size': 8,
+                'total_chunks': 3,
+                'plaintext_sha256': 'plain-sha',
+                'manifest_sha256': 'manifest-sha',
+                'file_key_wrap': _private_payload('too-large-wrap'),
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('configured file limit', str(response.data))
+
+    def test_attachment_session_complete_rejects_missing_chunks(self):
+        create = self.client.post(
+            f'/api/conversations/{self.group.id}/attachment-sessions',
+            {
+                'filename': 'incomplete.bin',
+                'mime_type': 'application/octet-stream',
+                'cipher_version': 'attachment:v1',
+                'plaintext_size': 20,
+                'ciphertext_size': 20,
+                'chunk_size': 10,
+                'total_chunks': 2,
+                'plaintext_sha256': 'plain-sha',
+                'manifest_sha256': 'manifest-sha',
+                'file_key_wrap': _private_payload('incomplete-wrap'),
+            },
+            format='json',
+        )
+        session_id = create.data['session_id']
+        chunk_bytes = b'0123456789'
+        response = self.client.generic(
+            'PUT',
+            f'/api/attachment-sessions/{session_id}/chunks/0',
+            chunk_bytes,
+            content_type='application/octet-stream',
+            HTTP_X_CHUNK_SHA256=hashlib.sha256(chunk_bytes).hexdigest(),
+            HTTP_X_CHUNK_SIZE=str(len(chunk_bytes)),
+        )
+        self.assertEqual(response.status_code, 201)
+
+        complete = self.client.post(
+            f'/api/attachment-sessions/{session_id}/complete',
+            {'manifest_sha256': 'manifest-sha'},
+            format='json',
+        )
+        self.assertEqual(complete.status_code, 400)
+        self.assertIn('Missing chunks', complete.data['detail'])
+
+    def test_attachment_chunk_upload_rejects_wrong_checksum(self):
+        create = self.client.post(
+            f'/api/conversations/{self.group.id}/attachment-sessions',
+            {
+                'filename': 'checksum.bin',
+                'mime_type': 'application/octet-stream',
+                'cipher_version': 'attachment:v1',
+                'plaintext_size': 4,
+                'ciphertext_size': 4,
+                'chunk_size': 4,
+                'total_chunks': 1,
+                'plaintext_sha256': 'plain-sha',
+                'manifest_sha256': 'manifest-sha',
+                'file_key_wrap': _private_payload('checksum-wrap'),
+            },
+            format='json',
+        )
+        session_id = create.data['session_id']
+
+        response = self.client.generic(
+            'PUT',
+            f'/api/attachment-sessions/{session_id}/chunks/0',
+            b'data',
+            content_type='application/octet-stream',
+            HTTP_X_CHUNK_SHA256='deadbeef',
+            HTTP_X_CHUNK_SIZE='4',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('checksum mismatch', response.data['detail'])
+
+    def test_attachment_download_requires_membership(self):
+        hidden = Conversation.objects.create(
+            type=Conversation.ConversationType.PRIVATE,
+            title='private-attachment-room',
+            workspace=self.group.workspace,
+        )
+        ConversationParticipant.objects.create(conversation=hidden, user=self.user)
+        create = self.client.post(
+            f'/api/conversations/{hidden.id}/attachment-sessions',
+            {
+                'filename': 'private.bin',
+                'mime_type': 'application/octet-stream',
+                'cipher_version': 'attachment:v1',
+                'plaintext_size': 9,
+                'ciphertext_size': 25,
+                'chunk_size': 9,
+                'total_chunks': 1,
+                'plaintext_sha256': 'plain-sha',
+                'manifest_sha256': 'manifest-sha',
+                'file_key_wrap': _private_payload('private-wrap'),
+            },
+            format='json',
+        )
+        session_id = create.data['session_id']
+        chunk_bytes = b'locked123' + (b'!' * 16)
+        self.client.generic(
+            'PUT',
+            f'/api/attachment-sessions/{session_id}/chunks/0',
+            chunk_bytes,
+            content_type='application/octet-stream',
+            HTTP_X_CHUNK_SHA256=hashlib.sha256(chunk_bytes).hexdigest(),
+            HTTP_X_CHUNK_SIZE=str(len(chunk_bytes)),
+        )
+        complete = self.client.post(
+            f'/api/attachment-sessions/{session_id}/complete',
+            {'manifest_sha256': 'manifest-sha'},
+            format='json',
+        )
+        attachment_id = complete.data['id']
+
+        outsider_client = APIClient()
+        outsider_login = outsider_client.post(
+            '/api/auth/login',
+            {'username': 'outsider', 'device_id': 'device-9'},
+            format='json',
+        )
+        self.assertEqual(outsider_login.status_code, 200)
+        outsider_client.credentials(
+            HTTP_AUTHORIZATION=f"Token {outsider_login.data['token']}",
+        )
+
+        response = outsider_client.get(f'/api/attachments/{attachment_id}/download')
+        self.assertEqual(response.status_code, 404)
 
 
 def _group_payload(label):

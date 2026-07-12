@@ -193,6 +193,27 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR.parent / 'shared' / 'media'
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 
+# Resumable attachments are uploaded chunk-by-chunk, so the product-level file
+# limit can be large while each HTTP request stays small and predictable.
+ATTACHMENTS_MAX_FILE_BYTES = int(
+    os.environ.get('ATTACHMENTS_MAX_FILE_BYTES', str(2 * 1024 * 1024 * 1024))
+)
+ATTACHMENTS_DEFAULT_CHUNK_BYTES = int(
+    os.environ.get('ATTACHMENTS_DEFAULT_CHUNK_BYTES', str(1024 * 1024))
+)
+ATTACHMENTS_MAX_CHUNK_BYTES = int(
+    os.environ.get('ATTACHMENTS_MAX_CHUNK_BYTES', str(4 * 1024 * 1024))
+)
+
+# Keep per-request buffering bounded. Large files are expected to arrive via
+# small chunk requests rather than one giant multipart body.
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(
+    os.environ.get('DATA_UPLOAD_MAX_MEMORY_SIZE', str(8 * 1024 * 1024))
+)
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(
+    os.environ.get('FILE_UPLOAD_MAX_MEMORY_SIZE', str(8 * 1024 * 1024))
+)
+
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels.layers.InMemoryChannelLayer',

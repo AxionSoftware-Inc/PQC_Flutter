@@ -1,6 +1,12 @@
 from django.urls import path
 
 from chat.views import (
+    AttachmentDownloadChunkView,
+    AttachmentDownloadDescriptorView,
+    AttachmentSessionChunkView,
+    AttachmentSessionCompleteView,
+    AttachmentSessionCreateView,
+    AttachmentSessionDetailView,
     AttachmentUploadView,
     ConversationListView,
     ConversationKeyEnvelopeView,
@@ -20,6 +26,36 @@ urlpatterns = [
         'conversations/<int:conversation_id>/attachments',
         AttachmentUploadView.as_view(),
         name='conversation-attachments',
+    ),
+    path(
+        'conversations/<int:conversation_id>/attachment-sessions',
+        AttachmentSessionCreateView.as_view(),
+        name='conversation-attachment-sessions',
+    ),
+    path(
+        'attachment-sessions/<str:session_id>',
+        AttachmentSessionDetailView.as_view(),
+        name='attachment-session-detail',
+    ),
+    path(
+        'attachment-sessions/<str:session_id>/chunks/<int:chunk_index>',
+        AttachmentSessionChunkView.as_view(),
+        name='attachment-session-chunk',
+    ),
+    path(
+        'attachment-sessions/<str:session_id>/complete',
+        AttachmentSessionCompleteView.as_view(),
+        name='attachment-session-complete',
+    ),
+    path(
+        'attachments/<int:attachment_id>/download',
+        AttachmentDownloadDescriptorView.as_view(),
+        name='attachment-download',
+    ),
+    path(
+        'attachments/<int:attachment_id>/chunks/<int:chunk_index>',
+        AttachmentDownloadChunkView.as_view(),
+        name='attachment-download-chunk',
     ),
     path(
         'conversations/<int:conversation_id>/keys',

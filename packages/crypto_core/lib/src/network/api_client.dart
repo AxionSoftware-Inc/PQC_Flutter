@@ -109,6 +109,7 @@ class ApiClient {
 
   Map<String, String> _headers() {
     return {
+      'Accept': 'application/json',
       'Content-Type': 'application/json',
       if (_token != null) 'Authorization': 'Token $_token',
       if (_deviceId != null && _deviceId!.isNotEmpty) 'X-Device-Id': _deviceId!,
@@ -166,6 +167,13 @@ class ApiClient {
 
     if (response.statusCode == 401) {
       throw UnauthorizedApiException();
+    }
+    if (response.statusCode == 413) {
+      throw ApiException(
+        'File is too large for the server upload limit.',
+        statusCode: response.statusCode,
+        code: 'payload_too_large',
+      );
     }
 
     final message = decoded is Map<String, dynamic>

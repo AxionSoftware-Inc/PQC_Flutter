@@ -222,6 +222,13 @@ class ChatLocalStore {
               'size_bytes': item.sizeBytes,
               'storage_key': item.storageKey,
               'thumbnail_key': item.thumbnailKey,
+              'cipher_version': item.cipherVersion,
+              'plaintext_size': item.plaintextSize,
+              'ciphertext_size': item.ciphertextSize,
+              'chunk_size': item.chunkSize,
+              'plaintext_sha256': item.plaintextSha256,
+              'manifest_sha256': item.manifestSha256,
+              'file_key_wrap': item.fileKeyWrap,
               'created_at': item.createdAt?.toIso8601String(),
             },
           )

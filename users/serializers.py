@@ -92,6 +92,7 @@ def validate_pqc_signing_public_key_fields(
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField(required=False, allow_blank=True, default='')
     display_name = serializers.CharField(required=False, allow_blank=True, default='')
+    remember_device_only = serializers.BooleanField(required=False, default=False)
     device_id = serializers.CharField()
     device_name = serializers.CharField(required=False, allow_blank=True, default='')
     platform = serializers.CharField(required=False, allow_blank=True, default='')
@@ -106,7 +107,7 @@ class LoginSerializer(serializers.Serializer):
         attrs['display_name'] = (
             attrs.get('display_name', '').strip() or attrs.get('username', '').strip()
         )
-        if not attrs['display_name']:
+        if not attrs['display_name'] and not attrs.get('remember_device_only', False):
             raise serializers.ValidationError(
                 {'display_name': 'display_name is required.'}
             )

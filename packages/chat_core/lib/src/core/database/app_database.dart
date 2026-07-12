@@ -48,6 +48,8 @@ class QueuedOutgoingMessagesTable extends Table {
   TextColumn get senderName => text()();
   TextColumn get plaintext => text()();
   TextColumn get encryptedPayload => text().withDefault(const Constant(''))();
+  TextColumn get messageType => text().withDefault(const Constant('text'))();
+  TextColumn get attachmentsJson => text().withDefault(const Constant('[]'))();
   DateTimeColumn get createdAt => dateTime()();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
   DateTimeColumn get nextRetryAt => dateTime().nullable()();
@@ -116,7 +118,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -130,6 +132,21 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 3) {
         await _rebuildVerifiedKeysTableV3();
+      }
+      if (from < 4) {
+        final queuedColumns = await _readColumnNames('queued_outgoing_messages_table');
+        if (!queuedColumns.contains('message_type')) {
+          await migrator.addColumn(
+            queuedOutgoingMessagesTable,
+            queuedOutgoingMessagesTable.messageType,
+          );
+        }
+        if (!queuedColumns.contains('attachments_json')) {
+          await migrator.addColumn(
+            queuedOutgoingMessagesTable,
+            queuedOutgoingMessagesTable.attachmentsJson,
+          );
+        }
       }
     },
     beforeOpen: (details) async {
