@@ -808,6 +808,36 @@ void main() {
     },
   );
 
+  test('same-account relogin preserves the current private keyset', () async {
+    final store = _MemorySecretStore();
+    final registry = KeyMaterialRegistry(
+      deviceIdentityService: _FakeDeviceIdentityService('same-device'),
+      deviceKeyService: DeviceKeyService(secretStore: store),
+      devicePqcKeyService: DevicePqcKeyService(secretStore: store),
+      devicePqcSigningKeyService: DevicePqcSigningKeyService(
+        secretStore: store,
+      ),
+      secretStore: store,
+    );
+    final core = _buildCryptoCore(
+      deviceId: 'same-device',
+      secretStore: store,
+      registry: registry,
+      remoteDataSource: _FakeChatRemoteDataSource(),
+    );
+
+    await core.activateAccount('account-a');
+    await core.initialize();
+    final first = (await registry.readAllKeysets()).single;
+    await core.activateAccount('account-a');
+    await core.initialize();
+    final second = (await registry.readAllKeysets()).single;
+
+    expect(second.keysetId, first.keysetId);
+    expect(second.pqcSecretKey, first.pqcSecretKey);
+    expect(second.pqcSigningSecretKey, first.pqcSigningSecretKey);
+  });
+
   test(
     'switching accounts fails closed and cannot retain old recovery keys',
     () async {
