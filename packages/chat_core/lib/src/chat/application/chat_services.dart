@@ -610,9 +610,15 @@ class OutgoingMessageService {
     required Future<void> Function() refreshUsers,
     required Future<void> Function(Conversation conversation)
     persistConversation,
+    bool includeAttachments = false,
   }) async {
     final pending = await outboxStore.readForConversation(conversation.id);
     for (final item in pending) {
+      // File sends are explicit user actions. Retrying them automatically on
+      // every login/chat refresh can replay large uploads and block history.
+      if (!includeAttachments && item.attachments.isNotEmpty) {
+        continue;
+      }
       if (item.deliveryState == MessageDeliveryState.failedPermanent) {
         continue;
       }
@@ -679,6 +685,7 @@ class OutgoingMessageService {
       usersById: usersById,
       refreshUsers: refreshUsers,
       persistConversation: persistConversation,
+      includeAttachments: true,
     );
   }
 
@@ -712,13 +719,6 @@ class OutgoingMessageService {
     }
     final attachmentIds = <int>[];
     for (final attachment in queued.attachments) {
-      if (!capabilities.attachmentCipherVersions.contains('attachment:v2')) {
-        throw ApiException(
-          'Server does not support the v2 attachment protocol.',
-          code: 'attachment_protocol_mismatch',
-          isRetryable: false,
-        );
-      }
       if (!attachment.hasUploadSource) {
         throw ApiException(
           'Attachment source is missing. Please pick the file again.',
@@ -726,43 +726,17 @@ class OutgoingMessageService {
           isRetryable: false,
         );
       }
-      final transferFacade = attachmentTransferFacade;
-      if (transferFacade != null) {
-        final uploaded = await transferFacade.uploadAttachment(
-          conversation: conversation,
-          attachment: attachment,
-          encryptKeyEnvelope: (plaintext) {
-            return cryptoService.encrypt(
-              request: ChatCryptoRequest(
-                currentUserId: currentUserId,
-                conversation: conversation,
-                usersById: usersById,
-              ),
-              plaintext: plaintext,
-            );
-          },
-          deriveDescriptor: (attachmentId) {
-            return cryptoService.deriveAttachmentDescriptor(
-              request: ChatCryptoRequest(
-                currentUserId: currentUserId,
-                conversation: conversation,
-                usersById: usersById,
-              ),
-              attachmentId: attachmentId,
-            );
-          },
-        );
-        attachmentIds.add(uploaded.id);
-      } else {
-        final uploaded = await remoteDataSource.uploadAttachment(
-          conversation.id,
-          filename: attachment.filename,
-          bytes: attachment.bytes,
-          filePath: attachment.filePath,
-          mimeType: attachment.mimeType,
-        );
-        attachmentIds.add(uploaded.id);
-      }
+      // Keep attachments deliberately simple for v2: one multipart request
+      // per file. Message encryption remains unchanged; the resumable chunk
+      // engine is not involved in normal chat sends.
+      final uploaded = await remoteDataSource.uploadAttachment(
+        conversation.id,
+        filename: attachment.filename,
+        bytes: attachment.bytes,
+        filePath: attachment.filePath,
+        mimeType: attachment.mimeType,
+      );
+      attachmentIds.add(uploaded.id);
     }
     final payload = queued.encryptedPayload.isNotEmpty
         ? queued.encryptedPayload

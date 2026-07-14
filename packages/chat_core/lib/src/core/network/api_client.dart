@@ -213,7 +213,7 @@ class ApiClient {
 
         throw ApiException(
           'Server returned an unexpected non-JSON error '
-          '(${response.statusCode}).',
+          '(${response.statusCode}): ${_responseSnippet(responseText)}',
           statusCode: response.statusCode,
           code: 'non_json_error',
           isRetryable: response.statusCode >= 500,
@@ -248,5 +248,11 @@ class ApiClient {
       code: code,
       isRetryable: response.statusCode >= 500 || response.statusCode == 429,
     );
+  }
+
+  String _responseSnippet(String value) {
+    final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.length <= 240) return normalized;
+    return '${normalized.substring(0, 240)}…';
   }
 }

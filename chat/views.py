@@ -677,6 +677,28 @@ class AttachmentDownloadDescriptorView(APIView):
         return Response(payload)
 
 
+class AttachmentDownloadFileView(APIView):
+    """Simple whole-file download for normal chat attachments.
+
+    Resumable chunk endpoints remain for legacy sessions, but regular chat
+    attachments use one binary response so history polling is never coupled
+    to a transfer state machine.
+    """
+
+    def get(self, request, attachment_id):
+        attachment = get_user_attachment_or_404(request, attachment_id)
+        with default_storage.open(attachment.storage_key, 'rb') as handle:
+            data = handle.read()
+        response = HttpResponse(
+            data,
+            content_type=attachment.mime_type or 'application/octet-stream',
+        )
+        response['Content-Length'] = str(len(data))
+        safe_filename = attachment.filename.replace('"', '_')
+        response['Content-Disposition'] = f'attachment; filename="{safe_filename}"'
+        return response
+
+
 class AttachmentDownloadChunkView(APIView):
     def get(self, request, attachment_id, chunk_index):
         attachment = get_user_attachment_or_404(request, attachment_id)

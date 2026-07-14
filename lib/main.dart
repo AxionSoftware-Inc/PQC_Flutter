@@ -138,7 +138,6 @@ Future<void> main() async {
   );
   final attachmentTransferFacade = AttachmentTransferFacade(
     remoteDataSource: remoteDataSource,
-    localDataProtector: localDataProtector,
   );
   final chatFacade = ChatFacade(
     remoteDataSource: remoteDataSource,
