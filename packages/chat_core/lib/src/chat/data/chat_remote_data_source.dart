@@ -106,6 +106,13 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
     await apiClient.delete('/messages/$messageId');
   }
 
+  Future<ChatMessage> forwardMessage(int messageId, int conversationId) async {
+    final response = await apiClient.post('/messages/$messageId', {
+      'conversation_id': conversationId,
+    });
+    return ChatMessage.fromJson(response as Map<String, dynamic>);
+  }
+
   Future<Map<String, dynamic>> setReaction(int messageId, String emoji) async {
     final response = await apiClient.post('/messages/$messageId/reaction', {
       'emoji': emoji,

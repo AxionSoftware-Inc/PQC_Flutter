@@ -182,6 +182,10 @@ class ChatConversationController extends ChangeNotifier {
     await refresh(showLoader: false);
   }
 
+  Future<void> forwardMessage(int messageId, int conversationId) {
+    return chatFacade.forwardMessage(messageId, conversationId);
+  }
+
   Future<void> setReaction(int messageId, String emoji) async {
     await chatFacade.setReaction(messageId, emoji);
     await refresh(showLoader: false);

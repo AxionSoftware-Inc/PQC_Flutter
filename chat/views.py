@@ -313,6 +313,25 @@ class MessageActionView(APIView):
         publish_workspace_event(message.conversation.workspace_id, 'message.updated', serialized)
         return Response(serialized)
 
+    @transaction.atomic
+    def post(self, request, message_id):
+        source = self._message(request, message_id)
+        target_id = request.data.get('conversation_id')
+        if not isinstance(target_id, int):
+            return Response({'detail': 'conversation_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        target = get_user_conversation_or_404(request, target_id)
+        forwarded = Message.objects.create(
+            conversation=target,
+            sender=request.user,
+            body=source.body,
+            message_type=source.message_type,
+            forwarded_from=source,
+        )
+        target.save(update_fields=['updated_at'])
+        serialized = MessageSerializer(forwarded).data
+        publish_workspace_event(target.workspace_id, 'message.created', serialized)
+        return Response(serialized, status=status.HTTP_201_CREATED)
+
     def delete(self, request, message_id):
         message = self._message(request, message_id)
         if message.sender_id != request.user.id:
