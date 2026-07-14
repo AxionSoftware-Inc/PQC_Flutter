@@ -12,6 +12,7 @@ import '../../security/key_verification_service.dart';
 import '../../transfer/attachment_transfer.dart';
 import 'chat_facade.dart';
 import 'chat_models.dart';
+import '../data/chat_realtime_service.dart';
 
 class ChatListController extends ChangeNotifier {
   ChatListController({required this.chatFacade, required this.currentUserId});
@@ -76,6 +77,10 @@ class ChatConversationController extends ChangeNotifier {
   ConversationTrustState? _trust;
   Timer? _pollingTimer;
   List<AttachmentTransferState> _attachmentTransfers = const [];
+  StreamSubscription<ChatRealtimeEvent>? _realtimeSubscription;
+  bool _peerOnline = false;
+  DateTime? _peerLastSeenAt;
+  final Set<int> _typingUserIds = <int>{};
 
   List<ChatMessage> get messages => _messages;
   bool get isLoading => _isLoading;
@@ -85,8 +90,14 @@ class ChatConversationController extends ChangeNotifier {
   List<AttachmentTransferState> get attachmentTransfers => _attachmentTransfers
       .where((item) => item.conversationId == conversation.id)
       .toList();
+  bool get peerOnline => _peerOnline;
+  DateTime? get peerLastSeenAt => _peerLastSeenAt;
+  bool get isPeerTyping => _typingUserIds.isNotEmpty;
 
   Future<void> initialize() async {
+    _realtimeSubscription = chatFacade.realtimeEvents.listen(
+      _handleRealtimeEvent,
+    );
     chatFacade.attachmentTransfers?.addListener(_handleTransferUpdates);
     try {
       _attachmentTransfers = await chatFacade.loadAttachmentTransfers();
@@ -208,9 +219,40 @@ class ChatConversationController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _handleRealtimeEvent(ChatRealtimeEvent event) {
+    final payload = event.payload;
+    if (event.event == 'presence.changed') {
+      final userId = payload['user_id'] as int?;
+      if (userId == null ||
+          conversation.participantIds.contains(userId) == false) {
+        return;
+      }
+      _peerOnline = payload['state'] == 'online';
+      final rawLastSeen = payload['last_seen_at'] as String?;
+      _peerLastSeenAt = rawLastSeen == null
+          ? _peerLastSeenAt
+          : DateTime.tryParse(rawLastSeen);
+      notifyListeners();
+      return;
+    }
+    final conversationId = payload['conversation_id'] as int?;
+    if (conversationId != conversation.id) return;
+    final userId = payload['user_id'] as int?;
+    if (userId == null || userId == currentUserId) return;
+    if (event.event == 'typing.started') {
+      _typingUserIds.add(userId);
+    } else if (event.event == 'typing.stopped') {
+      _typingUserIds.remove(userId);
+    } else {
+      return;
+    }
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     chatFacade.attachmentTransfers?.removeListener(_handleTransferUpdates);
+    _realtimeSubscription?.cancel();
     _pollingTimer?.cancel();
     super.dispose();
   }

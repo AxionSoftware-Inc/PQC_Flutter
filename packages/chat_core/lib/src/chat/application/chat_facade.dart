@@ -1,5 +1,7 @@
 // ignore_for_file: implementation_imports
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:crypto_core/src/models/app_user.dart';
 import 'package:crypto_core/src/models/attachment.dart';
@@ -65,8 +67,16 @@ class ChatFacade {
              localStore: localStore,
              cryptoService: cryptoService,
            ) {
-    realtimeService?.events.listen(_handleRealtimeEvent);
+    realtimeService?.events.listen((event) {
+      _realtimeEvents.add(event);
+      unawaited(_handleRealtimeEvent(event));
+    });
   }
+
+  final StreamController<ChatRealtimeEvent> _realtimeEvents =
+      StreamController<ChatRealtimeEvent>.broadcast();
+
+  Stream<ChatRealtimeEvent> get realtimeEvents => _realtimeEvents.stream;
 
   final ChatRemoteDataSource _remoteDataSource;
   final OutboxStore _outboxStore;

@@ -334,6 +334,9 @@ class _ChatPageState extends State<ChatPage> {
                 ? _verifyCurrentKey
                 : null,
             transferCount: _controller.attachmentTransfers.length,
+            isPeerOnline: _controller.peerOnline,
+            isPeerTyping: _controller.isPeerTyping,
+            peerLastSeenAt: _controller.peerLastSeenAt,
           ),
           if (_controller.isLoading) const LinearProgressIndicator(),
           if (_controller.error != null)
