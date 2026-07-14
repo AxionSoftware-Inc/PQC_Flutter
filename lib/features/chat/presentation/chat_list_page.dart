@@ -237,6 +237,14 @@ class _ChatListPageState extends State<ChatListPage> {
           chatFacade: widget.chatFacade,
           cryptoCoreFacade: widget.cryptoCoreFacade,
           onUnauthorized: widget.sessionController.invalidateSession,
+          onOpenContactDetails: () async {
+            final contact = _controller.contactItemForConversation(
+              conversation,
+            );
+            if (contact != null && mounted) {
+              await _showContactDetails(contact);
+            }
+          },
         ),
       ),
     );
