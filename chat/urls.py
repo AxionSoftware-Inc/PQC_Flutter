@@ -13,6 +13,8 @@ from chat.views import (
     CryptoProtocolCapabilitiesView,
     ConversationKeyEnvelopeView,
     MessageListCreateView,
+    MessageActionView,
+    MessageReactionView,
     PrivateConversationView,
 )
 
@@ -25,6 +27,8 @@ urlpatterns = [
         MessageListCreateView.as_view(),
         name='conversation-messages',
     ),
+    path('messages/<int:message_id>', MessageActionView.as_view(), name='message-action'),
+    path('messages/<int:message_id>/reaction', MessageReactionView.as_view(), name='message-reaction'),
     path(
         'conversations/<int:conversation_id>/attachments',
         AttachmentUploadView.as_view(),
