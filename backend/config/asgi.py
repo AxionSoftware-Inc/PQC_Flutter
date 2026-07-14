@@ -30,6 +30,9 @@ application = ProtocolTypeRouter(
             URLRouter(
                 [
                     path('ws/chat', ChatEventsConsumer.as_asgi()),
+                    # Public API routes are mounted under /api/ by nginx. Keep
+                    # the websocket route aligned with that prefix as well.
+                    path('api/ws/chat', ChatEventsConsumer.as_asgi()),
                 ]
             )
         ),

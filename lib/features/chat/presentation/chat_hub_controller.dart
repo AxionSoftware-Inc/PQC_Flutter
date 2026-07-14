@@ -242,6 +242,7 @@ class ChatHubController extends ChangeNotifier {
   List<AppUser> _users = const [];
   List<Conversation> _conversations = const [];
   Map<int, UserKeyTrust> _trustByUserId = const {};
+  Map<String, dynamic> _accountSettings = const {};
   List<ConversationListItemState> _conversationItems = const [];
   List<ContactsSectionState> _contactSections = const [];
   String? _recoveryApprovalChallenge;
@@ -257,6 +258,9 @@ class ChatHubController extends ChangeNotifier {
     selectedFilter: _contactsFilter,
     sections: _contactSections,
   );
+
+  Map<String, dynamic> get accountSettings =>
+      Map.unmodifiable(Map<String, dynamic>.of(_accountSettings));
 
   ContactListItemState? contactItemForConversation(Conversation conversation) {
     if (conversation.isGroup) return null;
@@ -346,6 +350,14 @@ class ChatHubController extends ChangeNotifier {
       accountId: sessionUser.accountId,
       workspaceId: sessionUser.activeWorkspaceId,
     );
+    try {
+      final response = await apiClient.get('/users/me/settings');
+      if (response is Map) {
+        _accountSettings = Map<String, dynamic>.from(response);
+      }
+    } catch (_) {
+      // Settings are auxiliary; keep the last known values during outages.
+    }
     final state = await chatFacade.loadChatList(
       currentUserId: currentUserId,
       searchQuery: _chatPreferences.searchQuery,
@@ -470,7 +482,11 @@ class ChatHubController extends ChangeNotifier {
   }
 
   Future<void> updateAccountSettings(Map<String, dynamic> values) async {
-    await apiClient.patch('/users/me/settings', values);
+    final response = await apiClient.patch('/users/me/settings', values);
+    if (response is Map) {
+      _accountSettings = Map<String, dynamic>.from(response);
+      notifyListeners();
+    }
   }
 
   Future<void> blockUser(int userId) async {
