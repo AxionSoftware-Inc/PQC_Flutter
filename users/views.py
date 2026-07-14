@@ -581,9 +581,13 @@ class AccountRecoveryManifestView(APIView):
     MAX_PAYLOAD_LENGTH = 10 * 1024 * 1024
 
     def get(self, request):
-        if settings.CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL:
-            challenge = str(request.query_params.get('approval', '')).strip()
-            requester_device_id = str(request.headers.get('X-Device-Id', '')).strip()
+        challenge = str(request.query_params.get('approval', '')).strip()
+        requester_device_id = str(request.headers.get('X-Device-Id', '')).strip()
+        active_other_devices = UserDevice.objects.filter(
+            user=request.user,
+            status=UserDevice.Status.ACTIVE,
+        ).exclude(device_id=requester_device_id).exists()
+        if settings.CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL and active_other_devices:
             approval = RecoveryDeviceApproval.objects.filter(
                 user=request.user,
                 challenge=challenge,
