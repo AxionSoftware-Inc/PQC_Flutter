@@ -27,6 +27,7 @@ class V3CodecContext {
     required this.signingPublicKey,
     required this.localDeviceId,
     required this.localKeysetId,
+    this.localSecretKey,
     this.recipients = const [],
     this.groupEpochKey,
   });
@@ -39,6 +40,7 @@ class V3CodecContext {
   final String signingPublicKey;
   final String localDeviceId;
   final String localKeysetId;
+  final String? localSecretKey;
   final List<V3DeviceRecipient> recipients;
   final List<int>? groupEpochKey;
 }
@@ -144,6 +146,7 @@ class V3MessageCodec {
       signingPublicKey: context.signingPublicKey,
       localDeviceId: context.localDeviceId,
       localKeysetId: context.localKeysetId,
+      localSecretKey: context.localSecretKey,
       recipients: context.recipients,
       groupEpochKey: context.groupEpochKey,
     );
@@ -172,7 +175,13 @@ class V3MessageCodec {
     if (wrap == null) {
       throw StateError('V3 recipient key wrap is missing.');
     }
-    final shared = await crypto.decapsulate(wrap.kemCiphertext);
+    final historicalSecretKey = context.localSecretKey;
+    final shared = historicalSecretKey == null
+        ? await crypto.decapsulate(wrap.kemCiphertext)
+        : await crypto.decapsulateWithSecretKey(
+            ciphertext: wrap.kemCiphertext,
+            secretKey: historicalSecretKey,
+          );
     final contentKey = await crypto.decrypt(
       ciphertext: base64Decode(wrap.wrappedKey),
       associatedData: utf8.encode(
