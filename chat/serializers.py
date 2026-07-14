@@ -9,6 +9,7 @@ from chat.models import (
     ConversationKeyEnvelope,
     ConversationParticipant,
     Message,
+    MessageReaction,
     MessageAttachment,
     ConversationCryptoEpoch,
 )
@@ -52,6 +53,7 @@ class MessageCreateSerializer(serializers.Serializer):
         required=False,
         default=list,
     )
+    reply_to_id = serializers.IntegerField(required=False, allow_null=True)
 
     def validate(self, attrs):
         body = attrs.get('body', '').strip()
@@ -231,6 +233,8 @@ class MessageSerializer(serializers.ModelSerializer):
     message_type = serializers.CharField()
     attachment_count = serializers.IntegerField()
     attachments = MessageAttachmentSerializer(many=True, read_only=True)
+    reactions = serializers.SerializerMethodField()
+    reply_to_id = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Message
@@ -246,6 +250,11 @@ class MessageSerializer(serializers.ModelSerializer):
             'attachments',
             'body',
             'created_at',
+            'edited_at',
+            'deleted_at',
+            'reply_to_id',
+            'forwarded_from_id',
+            'reactions',
         ]
 
     def get_sender_name(self, obj):
@@ -253,6 +262,19 @@ class MessageSerializer(serializers.ModelSerializer):
 
     def get_delivery_state(self, _obj):
         return 'sent'
+
+    def get_reactions(self, obj):
+        return [
+            {'user_id': reaction.user_id, 'emoji': reaction.emoji}
+            for reaction in obj.reactions.all()
+        ]
+
+
+class MessageReactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MessageReaction
+        fields = ['user_id', 'emoji', 'created_at']
+        read_only_fields = ['user_id', 'created_at']
 
 
 class ConversationKeyEnvelopeSerializer(serializers.ModelSerializer):

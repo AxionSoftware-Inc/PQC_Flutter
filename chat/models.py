@@ -57,6 +57,16 @@ class Message(models.Model):
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     body = models.TextField()
     client_message_id = models.CharField(max_length=64, blank=True)
+    reply_to = models.ForeignKey(
+        'self', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='replies',
+    )
+    forwarded_from = models.ForeignKey(
+        'self', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='forwards',
+    )
+    edited_at = models.DateTimeField(null=True, blank=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
     message_type = models.CharField(
         max_length=16,
         choices=MessageType.choices,
@@ -101,6 +111,27 @@ class MessageReceipt(models.Model):
             models.UniqueConstraint(
                 fields=['message', 'user'],
                 name='chat_message_receipt_unique_recipient',
+            ),
+        ]
+
+
+class MessageReaction(models.Model):
+    message = models.ForeignKey(
+        Message, on_delete=models.CASCADE, related_name='reactions',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='message_reactions',
+    )
+    emoji = models.CharField(max_length=16)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['message', 'user'],
+                name='chat_message_reaction_unique_user',
             ),
         ]
 

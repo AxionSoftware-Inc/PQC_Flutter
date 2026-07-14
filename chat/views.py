@@ -23,6 +23,7 @@ from chat.models import (
     Conversation,
     ConversationCryptoEpoch,
     Message,
+    MessageReaction,
     MessageAttachment,
 )
 from chat.serializers import (
@@ -38,6 +39,7 @@ from chat.serializers import (
     MessageCreateSerializer,
     MessageAttachmentSerializer,
     MessageSerializer,
+    MessageReactionSerializer,
     PrivateConversationSerializer,
     get_or_create_private_conversation,
 )
@@ -248,6 +250,7 @@ class MessageListCreateView(APIView):
             body=serializer.validated_data['body'].strip(),
             client_message_id=client_message_id,
             message_type=serializer.validated_data['message_type'],
+            reply_to_id=serializer.validated_data.get('reply_to_id'),
         )
         attachments = MessageAttachment.objects.filter(
             id__in=serializer.validated_data['attachment_ids'],
@@ -281,6 +284,73 @@ class MessageListCreateView(APIView):
             serialized,
             status=status.HTTP_201_CREATED,
         )
+
+
+class MessageActionView(APIView):
+    def _message(self, request, message_id):
+        conversation = get_user_conversation_or_404(
+            request,
+            Message.objects.values_list('conversation_id', flat=True)
+            .filter(id=message_id).first(),
+        )
+        return generics.get_object_or_404(
+            Message.objects.select_related('conversation', 'sender'),
+            id=message_id,
+            conversation=conversation,
+        )
+
+    def patch(self, request, message_id):
+        message = self._message(request, message_id)
+        if message.sender_id != request.user.id:
+            raise PermissionDenied('Only the sender can edit a message.')
+        body = request.data.get('body')
+        if not isinstance(body, str) or not body.strip():
+            return Response({'detail': 'body is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        message.body = body.strip()
+        message.edited_at = timezone.now()
+        message.save(update_fields=['body', 'edited_at'])
+        serialized = MessageSerializer(message).data
+        publish_workspace_event(message.conversation.workspace_id, 'message.updated', serialized)
+        return Response(serialized)
+
+    def delete(self, request, message_id):
+        message = self._message(request, message_id)
+        if message.sender_id != request.user.id:
+            raise PermissionDenied('Only the sender can delete a message.')
+        message.body = ''
+        message.deleted_at = timezone.now()
+        message.save(update_fields=['body', 'deleted_at'])
+        serialized = MessageSerializer(message).data
+        publish_workspace_event(message.conversation.workspace_id, 'message.deleted', serialized)
+        return Response(serialized)
+
+
+class MessageReactionView(APIView):
+    def post(self, request, message_id):
+        message = generics.get_object_or_404(Message, id=message_id)
+        get_user_conversation_or_404(request, message.conversation_id)
+        emoji = request.data.get('emoji', '')
+        if not isinstance(emoji, str) or len(emoji.strip()) > 16 or not emoji.strip():
+            return Response({'detail': 'A valid emoji is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        reaction, _ = MessageReaction.objects.update_or_create(
+            message=message,
+            user=request.user,
+            defaults={'emoji': emoji.strip()},
+        )
+        payload = MessageReactionSerializer(reaction).data | {'message_id': message.id}
+        publish_workspace_event(message.conversation.workspace_id, 'reaction.updated', payload)
+        return Response(payload)
+
+    def delete(self, request, message_id):
+        message = generics.get_object_or_404(Message, id=message_id)
+        get_user_conversation_or_404(request, message.conversation_id)
+        MessageReaction.objects.filter(message=message, user=request.user).delete()
+        publish_workspace_event(
+            message.conversation.workspace_id,
+            'reaction.deleted',
+            {'message_id': message.id, 'user_id': request.user.id},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ConversationKeyEnvelopeView(APIView):
