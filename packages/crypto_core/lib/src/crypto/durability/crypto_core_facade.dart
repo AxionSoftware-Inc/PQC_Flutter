@@ -9,6 +9,7 @@ import 'conversation_epoch_key_store.dart';
 import 'crypto_durability_models.dart';
 import 'key_material_registry.dart';
 import 'payload_format_registry.dart';
+import '../../engine_version_manager.dart';
 
 class CryptoCoreFacade {
   CryptoCoreFacade({
@@ -19,11 +20,13 @@ class CryptoCoreFacade {
     ConversationEpochKeyStore? conversationEpochKeyStore,
     LocalSecretStore? secretStore,
     PayloadFormatRegistry? payloadFormatRegistry,
+    EngineVersionManager? versionManager,
   }) : conversationEpochKeyStore =
            conversationEpochKeyStore ?? ConversationEpochKeyStore(),
        _secretStore = secretStore ?? LocalSecretStore(),
-       _payloadFormatRegistry =
-           payloadFormatRegistry ?? PayloadFormatRegistry();
+       _versionManager =
+           versionManager ??
+           EngineVersionManager(payloadRegistry: payloadFormatRegistry);
 
   final ChatCipherService cipherService;
   final GroupKeyStore groupKeyStore;
@@ -31,22 +34,18 @@ class CryptoCoreFacade {
   final CryptoBackupService backupService;
   final ConversationEpochKeyStore conversationEpochKeyStore;
   final LocalSecretStore _secretStore;
-  final PayloadFormatRegistry _payloadFormatRegistry;
+  final EngineVersionManager _versionManager;
+
+  String get engineVersion => _versionManager.activeEngineVersion;
 
   List<PayloadFormatDescriptor> get supportedFormats =>
-      _payloadFormatRegistry.descriptors;
+      _versionManager.readableFormats;
 
   /// The active writer is selected from the registry, never inferred from a
   /// decoder class. This is the client side of the client/server protocol
   /// handshake.
   String activeMessageWriterPrefix({required bool isGroup}) {
-    final writers = _payloadFormatRegistry.writersFor(
-      isGroup ? PayloadKind.groupMessage : PayloadKind.privateMessage,
-    );
-    if (writers.length != 1) {
-      throw StateError('Exactly one active message writer must be registered.');
-    }
-    return writers.single.prefix;
+    return _versionManager.activeWriterPrefix(isGroup: isGroup);
   }
 
   void assertRemoteSupportsActiveMessageWriter({
@@ -63,6 +62,7 @@ class CryptoCoreFacade {
   }
 
   Future<void> initialize() {
+    _versionManager.validate();
     return keyMaterialRegistry.ensureCurrentKeysetRegistered();
   }
 
@@ -112,7 +112,7 @@ class CryptoCoreFacade {
   }
 
   PayloadFormatDescriptor? describePayload(String payload) {
-    return _payloadFormatRegistry.describe(payload);
+    return _versionManager.describe(payload);
   }
 
   bool privatePayloadMayNeedHistoricalKey(String payload) {
