@@ -33,6 +33,7 @@ class ChatRealtimeService {
   String _deviceId = '';
   bool _manualDisconnect = false;
   int _reconnectAttempt = 0;
+  final Set<String> _seenEventKeys = <String>{};
 
   Stream<ChatRealtimeEvent> get events => _events.stream;
   bool get isConnected => _channel != null;
@@ -57,10 +58,16 @@ class ChatRealtimeService {
       },
     );
     _channel = channel;
-    _reconnectAttempt = 0;
     channel.stream.listen(
       (event) {
         final decoded = jsonDecode(event as String) as Map<String, dynamic>;
+        final eventKey = _eventKey(decoded);
+        if (eventKey != null && !_seenEventKeys.add(eventKey)) {
+          return;
+        }
+        if (_seenEventKeys.length > 2048) {
+          _seenEventKeys.remove(_seenEventKeys.first);
+        }
         _events.add(ChatRealtimeEvent.fromJson(decoded));
       },
       onDone: _scheduleReconnect,
@@ -105,5 +112,17 @@ class ChatRealtimeService {
     _reconnectTimer = Timer(Duration(seconds: seconds), () {
       connect(token: _token, workspaceId: _workspaceId, deviceId: _deviceId);
     });
+  }
+
+  String? _eventKey(Map<String, dynamic> decoded) {
+    final event = decoded['event'] as String?;
+    final payload = decoded['payload'];
+    if (event == null || payload is! Map) return null;
+    final id =
+        payload['event_id'] ??
+        payload['message_id'] ??
+        payload['client_message_id'] ??
+        payload['receipt_id'];
+    return id == null ? null : '$event:$id';
   }
 }

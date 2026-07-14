@@ -33,6 +33,8 @@ class ChatEventsConsumer(AsyncWebsocketConsumer):
         await self._broadcast_presence('online')
 
     async def _broadcast_presence(self, state):
+        if not await self._presence_is_visible():
+            return
         await self.channel_layer.group_send(
             self.workspace_group,
             {
@@ -78,6 +80,8 @@ class ChatEventsConsumer(AsyncWebsocketConsumer):
         event = decoded.get('event', '')
         payload = decoded.get('payload', {})
         if event in {'typing.started', 'typing.stopped', 'receipt.delivered', 'receipt.read'}:
+            if not await self._event_is_allowed(event):
+                return
             if event.startswith('receipt.'):
                 await self._save_receipt(event, payload)
             await self.channel_layer.group_send(
@@ -93,6 +97,26 @@ class ChatEventsConsumer(AsyncWebsocketConsumer):
                     },
                 },
             )
+
+    @database_sync_to_async
+    def _presence_is_visible(self):
+        from users.models import AccountSettings
+
+        settings = AccountSettings.objects.filter(user=self.user).first()
+        return settings is None or settings.online_visibility != 'nobody'
+
+    @database_sync_to_async
+    def _event_is_allowed(self, event):
+        from users.models import AccountSettings
+
+        settings = AccountSettings.objects.filter(user=self.user).first()
+        if settings is None:
+            return True
+        if event.startswith('typing.'):
+            return settings.typing_indicators_enabled
+        if event.startswith('receipt.'):
+            return settings.read_receipts_enabled
+        return True
 
     @database_sync_to_async
     def _save_receipt(self, event, payload):
