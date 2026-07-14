@@ -10,7 +10,6 @@ import '../../../core/models/organization_context.dart';
 import '../../../core/models/session_user.dart';
 import '../../../core/storage/local_ui_preferences_store.dart';
 import '../../../core/network/api_client.dart';
-import '../../../core/config/api_config.dart';
 import '../../chat/application/chat_facade.dart';
 import '../../crypto/durability/crypto_core_facade.dart';
 import '../../crypto/durability/crypto_durability_models.dart';
@@ -471,14 +470,6 @@ class ChatHubController extends ChangeNotifier {
   }
 
   Future<void> syncEnterpriseRecoveryManifest() async {
-    if (!ApiConfig.baseUrl.toLowerCase().startsWith('https://')) {
-      _backupState = _backupState.copyWith(
-        statusMessage: 'Automatic recovery is waiting for HTTPS transport.',
-        statusTone: UiStatusTone.warning,
-      );
-      notifyListeners();
-      return;
-    }
     final response = await apiClient.get('/users/me/crypto-recovery');
     final sequence = response is Map && response['available'] == true
         ? response['sequence'] as int? ?? 0
@@ -508,10 +499,11 @@ class ChatHubController extends ChangeNotifier {
       );
     } on ApiException catch (error) {
       if (error.code != 'recovery_approval_required') rethrow;
-      final approval = await apiClient.post(
-        '/users/me/crypto-recovery/approvals',
-        {'requester_device_id': sessionUserProvider().deviceId},
-      ) as Map<String, dynamic>;
+      final approval =
+          await apiClient.post('/users/me/crypto-recovery/approvals', {
+                'requester_device_id': sessionUserProvider().deviceId,
+              })
+              as Map<String, dynamic>;
       _recoveryApprovalChallenge = approval['challenge'] as String?;
       _backupState = _backupState.copyWith(
         statusMessage:
@@ -560,13 +552,10 @@ class ChatHubController extends ChangeNotifier {
     required int approvalId,
     required bool approved,
   }) {
-    return apiClient.post(
-      '/users/me/crypto-recovery/approvals/$approvalId',
-      {
-        'approver_device_id': sessionUserProvider().deviceId,
-        'approved': approved,
-      },
-    );
+    return apiClient.post('/users/me/crypto-recovery/approvals/$approvalId', {
+      'approver_device_id': sessionUserProvider().deviceId,
+      'approved': approved,
+    });
   }
 
   Future<void> _publishEnterpriseRecoverySnapshot({

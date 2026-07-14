@@ -24,7 +24,9 @@ GOOGLE_ANDROID_CLIENT_ID = os.environ.get(
 AWS_REGION = os.environ.get('AWS_REGION', '')
 AWS_KMS_ESCROW_KEY_ID = os.environ.get('AWS_KMS_ESCROW_KEY_ID', '')
 CRYPTO_ESCROW_REQUIRE_KMS = os.environ.get('DJANGO_ENV', '').lower() == 'production'
-CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL = os.environ.get('DJANGO_ENV', '').lower() == 'production'
+CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL = os.environ.get(
+    'CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL', 'false'
+).lower() == 'true'
 LOCAL_ESCROW_TEST_SECRET = os.environ.get('LOCAL_ESCROW_TEST_SECRET', SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
