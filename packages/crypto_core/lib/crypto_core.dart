@@ -26,6 +26,7 @@ export 'src/crypto/v3/v3_protocol_contract.dart';
 export 'src/crypto/v3/v3_capabilities.dart';
 export 'src/crypto/v3/v3_crypto_adapter.dart';
 export 'src/crypto/v3/v3_envelope.dart';
+export 'src/crypto/v3/pqc_v3_crypto_adapter.dart';
 export 'src/crypto/group_key_store.dart';
 export 'src/crypto/message_codec.dart';
 export 'src/crypto/outbound_message_cache.dart';
