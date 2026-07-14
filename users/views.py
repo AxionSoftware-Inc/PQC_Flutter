@@ -32,6 +32,7 @@ from users.models import (
     RecoveryDeviceApproval,
     CryptoRecoveryAuditEvent,
     HistoricalDeviceKey,
+    UserBlock, UserReport, AccountSettings,
 )
 from users.escrow import EscrowEnvelope, get_key_escrow_provider
 from users.audit import append_recovery_audit_event
@@ -551,6 +552,52 @@ class MeView(APIView):
         if updates:
             request.user.save(update_fields=updates)
         return Response(UserSerializer(request.user).data)
+
+
+class AccountSettingsView(APIView):
+    def get(self, request):
+        settings_obj, _ = AccountSettings.objects.get_or_create(user=request.user)
+        return Response({field: getattr(settings_obj, field) for field in (
+            'notifications_enabled', 'notification_previews', 'read_receipts_enabled',
+            'typing_indicators_enabled', 'last_seen_visibility', 'online_visibility')})
+
+    def patch(self, request):
+        settings_obj, _ = AccountSettings.objects.get_or_create(user=request.user)
+        allowed = {'notifications_enabled', 'notification_previews', 'read_receipts_enabled', 'typing_indicators_enabled', 'last_seen_visibility', 'online_visibility'}
+        for key, value in request.data.items():
+            if key in allowed:
+                setattr(settings_obj, key, value)
+        settings_obj.save()
+        return Response({field: getattr(settings_obj, field) for field in allowed})
+
+
+class UserBlockView(APIView):
+    def post(self, request, user_id):
+        if request.user.id == user_id:
+            return Response({'detail': 'Cannot block yourself.'}, status=400)
+        target = User.objects.filter(id=user_id).first()
+        if target is None:
+            return Response({'detail': 'User not found.'}, status=404)
+        UserBlock.objects.get_or_create(blocker=request.user, blocked=target)
+        return Response({'blocked': True, 'user_id': user_id})
+
+    def delete(self, request, user_id):
+        UserBlock.objects.filter(blocker=request.user, blocked_id=user_id).delete()
+        return Response(status=204)
+
+
+class UserReportView(APIView):
+    def post(self, request, user_id):
+        if request.user.id == user_id:
+            return Response({'detail': 'Cannot report yourself.'}, status=400)
+        target = User.objects.filter(id=user_id).first()
+        if target is None:
+            return Response({'detail': 'User not found.'}, status=404)
+        reason = str(request.data.get('reason', '')).strip()[:64]
+        if not reason:
+            return Response({'detail': 'reason is required.'}, status=400)
+        report = UserReport.objects.create(reporter=request.user, target=target, reason=reason, details=str(request.data.get('details', '')).strip())
+        return Response({'id': report.id, 'created': True}, status=201)
 
 
 class CryptoBackupView(APIView):

@@ -3,6 +3,7 @@ from django.urls import path
 from users.views import (
     DeviceListView,
     DeviceRevokeView,
+    AccountSettingsView, UserBlockView, UserReportView,
     DeviceSyncView,
     InvitationAcceptView,
     InvitationListCreateView,
@@ -26,6 +27,9 @@ urlpatterns = [
     path('auth/google', GoogleLoginView.as_view(), name='google-login'),
     path('users', UserListView.as_view(), name='users'),
     path('users/me', MeView.as_view(), name='me'),
+    path('users/me/settings', AccountSettingsView.as_view(), name='account-settings'),
+    path('users/<int:user_id>/block', UserBlockView.as_view(), name='user-block'),
+    path('users/<int:user_id>/report', UserReportView.as_view(), name='user-report'),
     path('users/me/crypto-backup', CryptoBackupView.as_view(), name='crypto-backup'),
     path('users/me/crypto-recovery', AccountRecoveryManifestView.as_view(), name='crypto-recovery'),
     path('users/me/crypto-observability', CryptoObservabilityView.as_view(), name='crypto-observability'),

@@ -453,6 +453,31 @@ class ChatHubController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> updateAccountSettings(Map<String, dynamic> values) async {
+    await apiClient.patch('/users/me/settings', values);
+  }
+
+  Future<void> blockUser(int userId) async {
+    await apiClient.post('/users/$userId/block', const {});
+    await refresh();
+  }
+
+  Future<void> unblockUser(int userId) async {
+    await apiClient.delete('/users/$userId/block');
+    await refresh();
+  }
+
+  Future<void> reportUser(
+    int userId, {
+    required String reason,
+    String details = '',
+  }) {
+    return apiClient.post('/users/$userId/report', {
+      'reason': reason,
+      'details': details,
+    });
+  }
+
   Future<String> exportBackup(String recoveryPassphrase) async {
     final blob = await cryptoCoreFacade.exportEncryptedBackup(
       BackupExportRequest(recoveryPassphrase: recoveryPassphrase),
