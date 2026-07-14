@@ -293,7 +293,8 @@ class ChatHubController extends ChangeNotifier {
     );
   }
 
-  Map<int, UserKeyTrust> get trustByUserId => _trustByUserId;
+  Map<int, UserKeyTrust> get trustByUserId =>
+      Map.unmodifiable(Map<int, UserKeyTrust>.of(_trustByUserId));
 
   Future<void> load() async {
     _isLoading = true;
@@ -637,6 +638,11 @@ class ChatHubController extends ChangeNotifier {
   Future<List<ConversationListItemState>> _buildConversationItems(
     SessionUser sessionUser,
   ) async {
+    final conversations = List<Conversation>.of(_conversations);
+    final users = List<AppUser>.of(_users);
+    final trustByUserId = Map<int, UserKeyTrust>.of(_trustByUserId);
+    final preferences = _chatPreferences;
+    final appPreferences = _appPreferences;
     final rows = await _database.readConversations();
     final rowMap = {
       for (final row in rows)
@@ -647,7 +653,7 @@ class ChatHubController extends ChangeNotifier {
     final draftMap = <int, String>{};
     final localPreviewMap = <int, String>{};
     final messageStateMap = <int, MessageDeliveryState?>{};
-    for (final conversation in _conversations) {
+    for (final conversation in conversations) {
       final draft = await _database.readDraft(conversation.id);
       if (draft != null && draft.draftText.trim().isNotEmpty) {
         draftMap[conversation.id] = draft.draftText.trim();
@@ -671,24 +677,17 @@ class ChatHubController extends ChangeNotifier {
       }
     }
 
-    final items = _conversations
+    final items = conversations
         .map((conversation) {
           final peerId = conversation.participantIds.firstWhere(
             (id) => id != currentUserId,
             orElse: () => -1,
           );
-          final peerUser = _users
-              .where((user) => user.id == peerId)
-              .firstOrNull;
-          final trust = peerUser == null ? null : _trustByUserId[peerUser.id];
+          final peerUser = users.where((user) => user.id == peerId).firstOrNull;
+          final trust = peerUser == null ? null : trustByUserId[peerUser.id];
           final draftPreview = draftMap[conversation.id];
           final row = rowMap[conversation.id];
           final unreadCount = row?.unreadCount ?? conversation.unreadCount;
-          final archived = _chatPreferences.archivedConversationIds.contains(
-            conversation.id,
-          );
-          final manuallyUnread = _chatPreferences.manuallyUnreadConversationIds
-              .contains(conversation.id);
           return ConversationListItemState(
             conversation: conversation,
             title: conversation.isGroup
@@ -696,17 +695,20 @@ class ChatHubController extends ChangeNotifier {
                 : (peerUser?.displayName.isNotEmpty == true
                       ? peerUser!.displayName
                       : conversation.title),
-            preview: draftPreview != null && _appPreferences.keepDrafts
+            preview: draftPreview != null && appPreferences.keepDrafts
                 ? 'Draft: $draftPreview'
                 : localPreviewMap[conversation.id] ??
                       conversation.lastMessagePreview,
             draftPreview: draftPreview,
             unreadCount: unreadCount,
-            isPinned: _chatPreferences.pinnedConversationIds.contains(
+            isPinned: preferences.pinnedConversationIds.contains(
               conversation.id,
             ),
-            isArchived: archived,
-            isManuallyUnread: manuallyUnread,
+            isArchived: preferences.archivedConversationIds.contains(
+              conversation.id,
+            ),
+            isManuallyUnread: preferences.manuallyUnreadConversationIds
+                .contains(conversation.id),
             updatedAt: conversation.updatedAt,
             deliveryState: messageStateMap[conversation.id],
             trustBadge: conversation.isGroup
@@ -773,7 +775,10 @@ class ChatHubController extends ChangeNotifier {
   }
 
   List<ContactsSectionState> _buildContactSections(SessionUser sessionUser) {
-    final items = _users
+    final users = List<AppUser>.of(_users);
+    final conversations = List<Conversation>.of(_conversations);
+    final trustByUserId = Map<int, UserKeyTrust>.of(_trustByUserId);
+    final items = users
         .map(
           (user) => ContactListItemState(
             user: user,
@@ -782,10 +787,20 @@ class ChatHubController extends ChangeNotifier {
                 : user.displayName,
             subtitle: user.username,
             sortKey: user.displayName.toLowerCase(),
-            badge: _buildContactBadge(user),
+            badge: _buildContactBadge(user, trustByUserId: trustByUserId),
             deviceSummary: _deviceSummaryForUser(user),
-            hasExistingConversation: _findPrivateConversation(user.id) != null,
-            privateConversation: _findPrivateConversation(user.id),
+            hasExistingConversation: conversations.any(
+              (conversation) =>
+                  !conversation.isGroup &&
+                  conversation.participantIds.contains(user.id),
+            ),
+            privateConversation: conversations
+                .where(
+                  (conversation) =>
+                      !conversation.isGroup &&
+                      conversation.participantIds.contains(user.id),
+                )
+                .firstOrNull,
             isCurrentUser: user.id == sessionUser.id,
           ),
         )
@@ -843,14 +858,17 @@ class ChatHubController extends ChangeNotifier {
     }
   }
 
-  ContactTrustBadgeState _buildContactBadge(AppUser user) {
+  ContactTrustBadgeState _buildContactBadge(
+    AppUser user, {
+    Map<int, UserKeyTrust>? trustByUserId,
+  }) {
     if (user.id == currentUserId) {
       return const ContactTrustBadgeState(
         label: 'Current device set',
         tone: UiStatusTone.info,
       );
     }
-    final trust = _trustByUserId[user.id];
+    final trust = (trustByUserId ?? _trustByUserId)[user.id];
     if (trust == null) {
       return const ContactTrustBadgeState(
         label: 'Unknown',
