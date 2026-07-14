@@ -40,6 +40,7 @@ class _ChatListPageState extends State<ChatListPage> {
       TextEditingController();
   int _selectedTabIndex = 0;
   bool _recoveryPromptShown = false;
+  final Set<int> _selectedConversationIds = <int>{};
 
   @override
   void initState() {
@@ -727,6 +728,32 @@ class _ChatListPageState extends State<ChatListPage> {
         spacing.lg,
       ),
       children: [
+        if (_selectedConversationIds.isNotEmpty) ...[
+          AppSurfaceCard(
+            backgroundColor: context.appColors.primarySoft,
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: 'Clear selection',
+                  onPressed: () => setState(_selectedConversationIds.clear),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+                Expanded(
+                  child: Text(
+                    '${_selectedConversationIds.length} selected',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Archive selected',
+                  onPressed: _archiveSelectedConversations,
+                  icon: const Icon(Icons.archive_outlined),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: spacing.sm),
+        ],
         AppSearchField(
           controller: _chatSearchController,
           hintText: 'Search chats, drafts, people',
@@ -743,15 +770,88 @@ class _ChatListPageState extends State<ChatListPage> {
           )
         else
           for (final item in items)
-            _ConversationListRow(
-              item: item,
-              onTap: () => _openConversationItem(item),
-              onLongPress: () => _showConversationActions(item),
-              onMorePressed: () => _showConversationActions(item),
-              relativeTime: _formatRelativeTime(item.updatedAt),
+            Dismissible(
+              key: ValueKey('conversation-${item.conversation.id}'),
+              direction: DismissDirection.horizontal,
+              background: _swipeActionBackground(
+                alignment: Alignment.centerLeft,
+                color: context.appColors.primary,
+                icon: Icons.mark_chat_read_outlined,
+                label: 'Unread',
+              ),
+              secondaryBackground: _swipeActionBackground(
+                alignment: Alignment.centerRight,
+                color: context.appColors.warning,
+                icon: item.isArchived
+                    ? Icons.unarchive_outlined
+                    : Icons.archive_outlined,
+                label: item.isArchived ? 'Restore' : 'Archive',
+              ),
+              confirmDismiss: (direction) async {
+                if (direction == DismissDirection.startToEnd) {
+                  await _controller.toggleManualUnread(item.conversation.id);
+                } else {
+                  await _controller.toggleArchived(item.conversation.id);
+                }
+                return false;
+              },
+              child: _ConversationListRow(
+                item: item,
+                selected: _selectedConversationIds.contains(
+                  item.conversation.id,
+                ),
+                onTap: () => _selectedConversationIds.isNotEmpty
+                    ? _toggleConversationSelection(item.conversation.id)
+                    : _openConversationItem(item),
+                onLongPress: () =>
+                    _toggleConversationSelection(item.conversation.id),
+                onMorePressed: () => _showConversationActions(item),
+                relativeTime: _formatRelativeTime(item.updatedAt),
+              ),
             ),
       ],
     );
+  }
+
+  Widget _swipeActionBackground({
+    required Alignment alignment,
+    required Color color,
+    required IconData icon,
+    required String label,
+  }) {
+    return Container(
+      alignment: alignment,
+      margin: EdgeInsets.symmetric(vertical: context.appSpacing.xs),
+      padding: EdgeInsets.symmetric(horizontal: context.appSpacing.lg),
+      color: color.withValues(alpha: 0.14),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color),
+          SizedBox(width: context.appSpacing.xs),
+          Text(
+            label,
+            style: TextStyle(color: color, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _toggleConversationSelection(int conversationId) {
+    setState(() {
+      if (!_selectedConversationIds.add(conversationId)) {
+        _selectedConversationIds.remove(conversationId);
+      }
+    });
+  }
+
+  Future<void> _archiveSelectedConversations() async {
+    final ids = List<int>.of(_selectedConversationIds);
+    for (final id in ids) {
+      await _controller.toggleArchived(id);
+    }
+    if (mounted) setState(_selectedConversationIds.clear);
   }
 
   Widget _buildContactsTab(ContactsViewState state) {
@@ -1333,6 +1433,7 @@ class _ChatListPageState extends State<ChatListPage> {
 class _ConversationListRow extends StatelessWidget {
   const _ConversationListRow({
     required this.item,
+    required this.selected,
     required this.onTap,
     required this.onLongPress,
     required this.onMorePressed,
@@ -1340,6 +1441,7 @@ class _ConversationListRow extends StatelessWidget {
   });
 
   final ConversationListItemState item;
+  final bool selected;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
   final VoidCallback onMorePressed;
@@ -1373,11 +1475,19 @@ class _ConversationListRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              AppAvatar(
-                label: item.title,
-                icon: item.conversation.isGroup ? Icons.forum_outlined : null,
-                radius: 25,
-              ),
+              selected
+                  ? IconButton.filledTonal(
+                      onPressed: onLongPress,
+                      icon: const Icon(Icons.check_rounded),
+                      tooltip: 'Selected',
+                    )
+                  : AppAvatar(
+                      label: item.title,
+                      icon: item.conversation.isGroup
+                          ? Icons.forum_outlined
+                          : null,
+                      radius: 25,
+                    ),
               SizedBox(width: spacing.md),
               Expanded(
                 child: Column(
