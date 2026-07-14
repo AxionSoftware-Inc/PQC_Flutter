@@ -357,6 +357,8 @@ class ChatAttachmentCard extends StatelessWidget {
   final String Function(AttachmentTransferState transfer) statusLabel;
 
   bool get isImage => attachment.mimeType.startsWith('image/');
+  bool get isVideo => attachment.mimeType.startsWith('video/');
+  bool get isMedia => isImage || isVideo;
 
   bool get isBusy =>
       transfer != null &&
@@ -379,25 +381,33 @@ class ChatAttachmentCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(context.appRadii.md),
         child: Container(
           constraints: BoxConstraints(
-            minWidth: isImage ? 0 : 220,
-            maxWidth: isImage ? 340 : 280,
+            minWidth: isMedia ? 0 : 220,
+            maxWidth: isMedia ? 340 : 280,
           ),
           decoration: BoxDecoration(
-            color: isImage
+            color: isMedia
                 ? Colors.transparent
                 : colors.surfaceMuted.withValues(alpha: 0.72),
             borderRadius: BorderRadius.circular(context.appRadii.md),
-            border: isImage ? null : Border.all(color: colors.border),
+            border: isMedia ? null : Border.all(color: colors.border),
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (isImage)
-                _buildImagePreview(context)
+              if (isMedia)
+                isImage
+                    ? _buildImagePreview(context)
+                    : _previewPlaceholder(
+                        context,
+                        isBusy
+                            ? Icons.downloading_rounded
+                            : Icons.play_circle_outline_rounded,
+                        isBusy ? 'Downloading video…' : 'Tap to open video',
+                      )
               else
                 _buildFilePreview(context),
-              if (!isImage)
+              if (!isMedia)
                 Padding(
                   padding: EdgeInsets.fromLTRB(
                     spacing.sm,
@@ -540,6 +550,14 @@ class ChatMessageBubble extends StatelessWidget {
         message.body == ChatCryptoService.decryptKeyMissingMarker;
     final isDecryptError = message.body == ChatCryptoService.decryptErrorMarker;
     final bodyColor = isMine ? Colors.white : null;
+    final mediaOnly =
+        message.body.trim().isEmpty &&
+        message.attachments.isNotEmpty &&
+        message.attachments.every(
+          (item) =>
+              item.mimeType.startsWith('image/') ||
+              item.mimeType.startsWith('video/'),
+        );
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -562,12 +580,16 @@ class ChatMessageBubble extends StatelessWidget {
                     : CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: spacing.md,
-                      vertical: spacing.sm,
-                    ),
+                    padding: mediaOnly
+                        ? EdgeInsets.zero
+                        : EdgeInsets.symmetric(
+                            horizontal: spacing.md,
+                            vertical: spacing.sm,
+                          ),
                     decoration: BoxDecoration(
-                      color: isMine ? colors.chatMine : colors.chatPeer,
+                      color: mediaOnly
+                          ? Colors.transparent
+                          : (isMine ? colors.chatMine : colors.chatPeer),
                       borderRadius: BorderRadius.only(
                         topLeft: Radius.circular(context.appRadii.md),
                         topRight: Radius.circular(context.appRadii.md),
@@ -578,11 +600,13 @@ class ChatMessageBubble extends StatelessWidget {
                           isMine ? context.appRadii.sm : context.appRadii.md,
                         ),
                       ),
-                      border: Border.all(
-                        color: isMine
-                            ? colors.primary.withValues(alpha: 0.16)
-                            : colors.border,
-                      ),
+                      border: mediaOnly
+                          ? null
+                          : Border.all(
+                              color: isMine
+                                  ? colors.primary.withValues(alpha: 0.16)
+                                  : colors.border,
+                            ),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,

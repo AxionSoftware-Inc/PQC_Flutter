@@ -1057,13 +1057,189 @@ class _ChatListPageState extends State<ChatListPage> {
                   MaterialPageRoute(
                     builder: (_) => _SettingsPage(
                       title: section.$1,
-                      child: _buildSettingsTab(state),
+                      child: _buildSettingsSection(section.$1, state),
                     ),
                   ),
                 ),
               ),
             ),
           ),
+      ],
+    );
+  }
+
+  Widget _buildSettingsSection(String title, SettingsViewState state) {
+    final spacing = context.appSpacing;
+    Widget content;
+    switch (title) {
+      case 'Account':
+        content = _buildAccountTab(state);
+      case 'Security':
+        content = ListView(
+          padding: EdgeInsets.all(spacing.lg),
+          children: [
+            const AppSectionHeader(
+              title: 'Security',
+              subtitle: 'Trust and historical decrypt health.',
+            ),
+            SizedBox(height: spacing.md),
+            AppSurfaceCard(
+              child: Column(
+                children: [
+                  AppStatusBanner(
+                    message: state.security.hasHistoricalDecryptCapability
+                        ? 'Historical decrypt ready.'
+                        : 'Backup restore may be required for older messages.',
+                    tone: state.security.hasHistoricalDecryptCapability
+                        ? AppStatusTone.success
+                        : AppStatusTone.warning,
+                  ),
+                  SizedBox(height: spacing.md),
+                  Text(
+                    '${state.security.verifiedPeersCount} verified contacts',
+                  ),
+                  Text(
+                    '${state.security.needsAttentionCount} contacts need attention',
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      case 'Devices':
+        content = _buildDevicesSettingsSection(state);
+      case 'Backup & Recovery':
+        content = _buildBackupSettingsSection(state);
+      case 'Preferences':
+        content = _buildPreferencesSettingsSection(state);
+      default:
+        content = _buildSettingsTab(state);
+    }
+    return content;
+  }
+
+  Widget _buildDevicesSettingsSection(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    return ListView(
+      padding: EdgeInsets.all(spacing.lg),
+      children: [
+        const AppSectionHeader(
+          title: 'Devices',
+          subtitle: 'Manage this account’s sessions and device keys.',
+        ),
+        SizedBox(height: spacing.md),
+        for (final device in state.devices)
+          Padding(
+            padding: EdgeInsets.only(bottom: spacing.sm),
+            child: AppSurfaceCard(
+              child: ListTile(
+                leading: const Icon(Icons.devices_outlined),
+                title: Text(
+                  device.deviceName.isEmpty
+                      ? device.deviceId
+                      : device.deviceName,
+                ),
+                subtitle: Text('${device.platform} • ${device.status}'),
+                trailing: AppBadge(
+                  label: device.hasUsableMlKemKey && device.hasUsableMlDsaKey
+                      ? 'Ready'
+                      : 'Needs setup',
+                  tone: device.hasUsableMlKemKey && device.hasUsableMlDsaKey
+                      ? AppStatusTone.success
+                      : AppStatusTone.warning,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildBackupSettingsSection(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    return ListView(
+      padding: EdgeInsets.all(spacing.lg),
+      children: [
+        const AppSectionHeader(
+          title: 'Backup & Recovery',
+          subtitle: 'Restore encrypted history on a new installation.',
+        ),
+        SizedBox(height: spacing.md),
+        AppSurfaceCard(
+          child: ListTile(
+            leading: const Icon(Icons.backup_outlined),
+            title: const Text('Encrypted history recovery'),
+            subtitle: Text(
+              state.backup.statusMessage ?? 'Backup status available.',
+            ),
+            trailing: IconButton(
+              icon: const Icon(Icons.restore_rounded),
+              onPressed: () async {
+                try {
+                  await _controller.restoreEnterpriseRecovery();
+                } catch (error) {
+                  if (mounted) {
+                    _showMessage(error.toString(), tone: AppStatusTone.danger);
+                  }
+                }
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPreferencesSettingsSection(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    return ListView(
+      padding: EdgeInsets.all(spacing.lg),
+      children: [
+        const AppSectionHeader(
+          title: 'Preferences',
+          subtitle: 'Notifications, privacy, theme and inbox behavior.',
+        ),
+        SizedBox(height: spacing.md),
+        AppSurfaceCard(
+          child: Column(
+            children: [
+              SwitchListTile(
+                value: _notificationsEnabled,
+                title: const Text('Notifications'),
+                onChanged: (value) {
+                  setState(() => _notificationsEnabled = value);
+                  _controller.updateAccountSettings({
+                    'notifications_enabled': value,
+                  });
+                },
+              ),
+              SwitchListTile(
+                value: _readReceiptsEnabled,
+                title: const Text('Read receipts'),
+                onChanged: (value) {
+                  setState(() => _readReceiptsEnabled = value);
+                  _controller.updateAccountSettings({
+                    'read_receipts_enabled': value,
+                  });
+                },
+              ),
+              SwitchListTile(
+                value: widget.themeController.themeMode == ThemeMode.dark,
+                title: const Text('Dark mode'),
+                onChanged: (value) => widget.themeController.setThemeMode(
+                  value ? ThemeMode.dark : ThemeMode.light,
+                ),
+              ),
+              SwitchListTile(
+                value: state.appPreferences.keepDrafts,
+                title: const Text('Keep drafts'),
+                onChanged: (value) => _controller.updateAppPreferences(
+                  state.appPreferences.copyWith(keepDrafts: value),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
