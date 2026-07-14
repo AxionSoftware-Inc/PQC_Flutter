@@ -42,6 +42,7 @@ class _ChatListPageState extends State<ChatListPage> {
   bool _recoveryPromptShown = false;
   bool _notificationsEnabled = true;
   bool _readReceiptsEnabled = true;
+  bool _accountSettingsHydrated = false;
   final Set<int> _selectedConversationIds = <int>{};
 
   @override
@@ -71,6 +72,14 @@ class _ChatListPageState extends State<ChatListPage> {
   void _onControllerChanged() {
     if (!mounted) {
       return;
+    }
+    final accountSettings = _controller.accountSettings;
+    if (!_accountSettingsHydrated && accountSettings.isNotEmpty) {
+      _notificationsEnabled =
+          accountSettings['notifications_enabled'] as bool? ?? true;
+      _readReceiptsEnabled =
+          accountSettings['read_receipts_enabled'] as bool? ?? true;
+      _accountSettingsHydrated = true;
     }
     final chatQuery = _controller.chatState.preferences.searchQuery;
     if (_chatSearchController.text != chatQuery) {
