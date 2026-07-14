@@ -15,12 +15,12 @@ import '../../../core/network/api_client.dart';
 import '../../../core/storage/local_ui_preferences_store.dart';
 import '../../crypto/chat_crypto_exceptions.dart';
 import '../../crypto/durability/crypto_core_facade.dart';
-import '../../security/key_verification_service.dart';
 import '../application/chat_controllers.dart';
 import '../application/chat_facade.dart';
 import '../application/chat_models.dart';
 import '../application/chat_services.dart';
 import '../../transfers/application/attachment_transfer.dart';
+import 'chat_page_widgets.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -57,6 +57,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _showTransferDetails = false;
   int _lastMessageCount = 0;
   bool _hasRenderedMessages = false;
+  final Map<int, String> _downloadedAttachmentPaths = {};
 
   @override
   void initState() {
@@ -117,6 +118,12 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
     final messageCount = _controller.messages.length;
+    for (final transfer in _controller.attachmentTransfers) {
+      if (transfer.attachmentId != null && transfer.localPath != null) {
+        _downloadedAttachmentPaths[transfer.attachmentId!] =
+            transfer.localPath!;
+      }
+    }
     final isNearBottom =
         !_scrollController.hasClients ||
         _scrollController.position.maxScrollExtent -
@@ -312,7 +319,7 @@ class _ChatPageState extends State<ChatPage> {
       appBar: AppBar(toolbarHeight: 0),
       body: Column(
         children: [
-          _ConversationHeader(
+          ChatConversationHeader(
             title: widget.title,
             conversation: widget.conversation,
             trust: conversationTrust,
@@ -337,7 +344,7 @@ class _ChatPageState extends State<ChatPage> {
           if (!widget.conversation.isGroup && conversationTrust != null)
             Column(
               children: [
-                _SecurityBanner(
+                ChatSecurityBanner(
                   trust: conversationTrust,
                   onVerify: _verifyCurrentKey,
                   isExpanded: _showSecurityDetails,
@@ -348,7 +355,7 @@ class _ChatPageState extends State<ChatPage> {
                   },
                 ),
                 if (_showSecurityDetails)
-                  _SecurityDetailCard(trust: conversationTrust),
+                  ChatSecurityDetailCard(trust: conversationTrust),
               ],
             ),
           if (needsBackupRestore)
@@ -391,11 +398,35 @@ class _ChatPageState extends State<ChatPage> {
                     itemBuilder: (context, index) {
                       final message = _controller.messages[index];
                       final isMine = message.senderId == widget.currentUserId;
-                      return _buildMessageItem(
-                        message: message,
-                        isMine: isMine,
-                        colors: colors,
-                        spacing: spacing,
+                      final previous = index == 0
+                          ? null
+                          : _controller.messages[index - 1];
+                      final showDate =
+                          previous == null ||
+                          !_isSameCalendarDay(
+                            previous.createdAt,
+                            message.createdAt,
+                          );
+                      final grouped =
+                          previous != null &&
+                          previous.senderId == message.senderId &&
+                          _isSameCalendarDay(
+                            previous.createdAt,
+                            message.createdAt,
+                          ) &&
+                          message.createdAt
+                                  .difference(previous.createdAt)
+                                  .inMinutes <=
+                              5;
+                      return Column(
+                        children: [
+                          if (showDate) _buildDateSeparator(message.createdAt),
+                          _buildMessageItem(
+                            message: message,
+                            isMine: isMine,
+                            isGrouped: grouped,
+                          ),
+                        ],
                       );
                     },
                   ),
@@ -434,7 +465,7 @@ class _ChatPageState extends State<ChatPage> {
                     backgroundColor: colors.surface.withValues(alpha: 0.96),
                     child: Row(
                       children: [
-                        _ComposerActionButton(
+                        ChatComposerActionButton(
                           icon: Icons.add_rounded,
                           onPressed: _controller.isSending
                               ? null
@@ -467,7 +498,7 @@ class _ChatPageState extends State<ChatPage> {
                           ),
                         ),
                         SizedBox(width: spacing.xs),
-                        _ComposerSendButton(
+                        ChatComposerSendButton(
                           isSending: _controller.isSending,
                           onPressed: _controller.isSending
                               ? null
@@ -591,155 +622,46 @@ class _ChatPageState extends State<ChatPage> {
   Widget _buildMessageItem({
     required ChatMessage message,
     required bool isMine,
-    required AppColors colors,
-    required AppSpacing spacing,
+    bool isGrouped = false,
   }) {
-    final isDecryptNeedsRestore =
-        message.body == ChatCryptoService.decryptNeedsBackupRestoreMarker ||
-        message.body == ChatCryptoService.decryptKeyMissingMarker;
-    final isDecryptError = message.body == ChatCryptoService.decryptErrorMarker;
-    return Align(
-      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: EdgeInsets.symmetric(
-          horizontal: spacing.xs,
-          vertical: spacing.xs,
+    return ChatMessageBubble(
+      message: message,
+      isMine: isMine,
+      isGrouped: isGrouped,
+      maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+      attachmentBuilder: _buildAttachmentCard,
+      statusLabel: _statusLabel,
+      formatTime: _formatMessageTime,
+      onRetry: () => _retryMessage(message),
+    );
+  }
+
+  Widget _buildDateSeparator(DateTime value) {
+    final local = value.toLocal();
+    final today = DateTime.now();
+    final yesterday = today.subtract(const Duration(days: 1));
+    final label = _isSameCalendarDay(local, today)
+        ? 'Today'
+        : _isSameCalendarDay(local, yesterday)
+        ? 'Yesterday'
+        : '${local.day.toString().padLeft(2, '0')}.${local.month.toString().padLeft(2, '0')}.${local.year}';
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: context.appSpacing.sm),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: context.appColors.surfaceMuted,
+          borderRadius: BorderRadius.circular(context.appRadii.pill),
         ),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: context.appSpacing.sm,
+            vertical: context.appSpacing.xs,
           ),
-          child: IntrinsicWidth(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: isMine
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: spacing.md,
-                    vertical: spacing.sm,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isMine ? colors.chatMine : colors.chatPeer,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(context.appRadii.md),
-                      topRight: Radius.circular(context.appRadii.md),
-                      bottomLeft: Radius.circular(
-                        isMine ? context.appRadii.md : context.appRadii.sm,
-                      ),
-                      bottomRight: Radius.circular(
-                        isMine ? context.appRadii.sm : context.appRadii.md,
-                      ),
-                    ),
-                    border: Border.all(
-                      color: isMine
-                          ? colors.primary.withValues(alpha: 0.16)
-                          : colors.border,
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (!isMine) ...[
-                        Text(
-                          message.senderName,
-                          style: Theme.of(context).textTheme.labelMedium
-                              ?.copyWith(
-                                color: colors.textMuted,
-                                fontWeight: FontWeight.w700,
-                              ),
-                        ),
-                        SizedBox(height: spacing.xs),
-                      ],
-                      if (message.attachments.isNotEmpty) ...[
-                        Wrap(
-                          spacing: spacing.xs,
-                          runSpacing: spacing.xs,
-                          children: message.attachments
-                              .map(_buildAttachmentChip)
-                              .toList(),
-                        ),
-                        if (message.body.trim().isNotEmpty)
-                          SizedBox(height: spacing.sm),
-                      ],
-                      if (isDecryptNeedsRestore)
-                        Text(
-                          'Historical decrypt unavailable on this device. Restore backup to read this message.',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: isMine ? Colors.white : null,
-                                height: 1.35,
-                              ),
-                        )
-                      else if (isDecryptError)
-                        Text(
-                          'Unable to decrypt this message.',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: isMine ? Colors.white : null,
-                                height: 1.35,
-                              ),
-                        )
-                      else if (message.body.trim().isNotEmpty)
-                        Text(
-                          message.body,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: isMine ? Colors.white : null,
-                                height: 1.35,
-                              ),
-                        ),
-                      SizedBox(height: spacing.xs),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Wrap(
-                          spacing: spacing.xs,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            if (message.deliveryState !=
-                                MessageDeliveryState.sent)
-                              Text(
-                                _statusLabel(message),
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: isMine
-                                          ? Colors.white.withValues(alpha: 0.72)
-                                          : colors.textMuted,
-                                    ),
-                              ),
-                            Text(
-                              _formatMessageTime(message.createdAt),
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: isMine
-                                        ? Colors.white.withValues(alpha: 0.68)
-                                        : colors.textMuted,
-                                  ),
-                            ),
-                            if (isMine)
-                              Icon(
-                                message.deliveryState ==
-                                        MessageDeliveryState.sent
-                                    ? Icons.done_all_rounded
-                                    : Icons.schedule_rounded,
-                                size: 14,
-                                color: Colors.white.withValues(alpha: 0.75),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (message.canRetry)
-                  TextButton(
-                    onPressed: () => _retryMessage(message),
-                    child: const Text('Retry'),
-                  ),
-              ],
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: context.appColors.textMuted,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ),
@@ -747,65 +669,76 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Widget _buildAttachmentChip(ChatAttachment attachment) {
+  bool _isSameCalendarDay(DateTime first, DateTime second) {
+    final a = first.toLocal();
+    final b = second.toLocal();
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  Widget _buildAttachmentCard(ChatAttachment attachment) {
+    return ChatAttachmentCard(
+      attachment: attachment,
+      transfer: _controller.findDownloadTransfer(attachment.id),
+      localPath: _downloadedAttachmentPaths[attachment.id],
+      formatBytes: _formatBytes,
+      statusLabel: _transferStatusLabel,
+      onPressed: () => _handleAttachmentTap(attachment),
+    );
+  }
+
+  Future<void> _handleAttachmentTap(ChatAttachment attachment) async {
     final transfer = _controller.findDownloadTransfer(attachment.id);
     final isBusy =
         transfer != null &&
         transfer.status != AttachmentTransferStatus.completed &&
         transfer.status != AttachmentTransferStatus.failed;
-    return ActionChip(
-      avatar: Icon(
-        attachment.mimeType.startsWith('image/')
-            ? Icons.image_outlined
-            : Icons.insert_drive_file_outlined,
-        size: 18,
-      ),
-      label: Text(
-        transfer == null
-            ? '${attachment.filename} (${_formatBytes(attachment.sizeBytes)})'
-            : '${attachment.filename} • ${_transferStatusLabel(transfer)}',
-      ),
-      onPressed: isBusy
-          ? () async {
-              await _controller.pauseTransfer(transfer.localId);
-            }
-          : () async {
-              try {
-                final path = await _controller.downloadAttachment(attachment);
-                if (!mounted) {
-                  return;
-                }
-                if (kIsWeb) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Attachment downloaded to $path')),
-                  );
-                  return;
-                }
-                final result = await OpenFilex.open(path);
-                if (!mounted) {
-                  return;
-                }
-                if (result.type != ResultType.done) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        result.message.isEmpty
-                            ? 'Downloaded, but no app can open this file.'
-                            : result.message,
-                      ),
-                    ),
-                  );
-                }
-              } catch (error) {
-                if (!mounted) {
-                  return;
-                }
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(error.toString())));
-              }
-            },
-    );
+    if (isBusy) {
+      await _controller.pauseTransfer(transfer.localId);
+      return;
+    }
+
+    final existingPath = _downloadedAttachmentPaths[attachment.id];
+    if (existingPath != null && attachment.mimeType.startsWith('image/')) {
+      return;
+    }
+    try {
+      final path =
+          existingPath ?? await _controller.downloadAttachment(attachment);
+      if (!mounted) {
+        return;
+      }
+      _downloadedAttachmentPaths[attachment.id] = path;
+      setState(() {});
+      if (attachment.mimeType.startsWith('image/')) {
+        return;
+      }
+      if (kIsWeb) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Attachment downloaded to $path')),
+        );
+        return;
+      }
+      final result = await OpenFilex.open(path);
+      if (!mounted || result.type == ResultType.done) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.message.isEmpty
+                ? 'Downloaded, but no app can open this file.'
+                : result.message,
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
   }
 
   Widget _buildTransferSection({
@@ -865,7 +798,9 @@ class _ChatPageState extends State<ChatPage> {
           ),
           if (expanded) ...[
             SizedBox(height: spacing.sm),
-            ..._controller.attachmentTransfers.map(
+            ...List<AttachmentTransferState>.of(
+              _controller.attachmentTransfers,
+            ).map(
               (transfer) => Padding(
                 padding: EdgeInsets.only(bottom: spacing.sm),
                 child: _buildTransferTile(transfer),
@@ -919,6 +854,14 @@ class _ChatPageState extends State<ChatPage> {
                   context,
                 ).textTheme.bodySmall?.copyWith(color: colors.textMuted),
               ),
+              if (!isTerminal) ...[
+                SizedBox(width: spacing.xs),
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ],
             ],
           ),
           SizedBox(height: spacing.xs),
@@ -1082,282 +1025,4 @@ class _SelectedAttachment {
   final String mimeType;
 
   bool get isImage => mimeType.startsWith('image/');
-}
-
-class _ComposerActionButton extends StatelessWidget {
-  const _ComposerActionButton({required this.icon, required this.onPressed});
-
-  final IconData icon;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton.filledTonal(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 18),
-      style: IconButton.styleFrom(
-        minimumSize: const Size.square(36),
-        maximumSize: const Size.square(36),
-        padding: EdgeInsets.zero,
-      ),
-    );
-  }
-}
-
-class _ComposerSendButton extends StatelessWidget {
-  const _ComposerSendButton({required this.isSending, required this.onPressed});
-
-  final bool isSending;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return FilledButton(
-      onPressed: onPressed,
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(44, 36),
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-      ),
-      child: isSending
-          ? const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : const Icon(Icons.arrow_upward_rounded, size: 18),
-    );
-  }
-}
-
-class _ConversationHeader extends StatelessWidget {
-  const _ConversationHeader({
-    required this.title,
-    required this.conversation,
-    required this.trust,
-    required this.brandLabel,
-    required this.onBack,
-    required this.onVerify,
-    required this.transferCount,
-  });
-
-  final String title;
-  final Conversation conversation;
-  final ConversationKeyTrust? trust;
-  final String? brandLabel;
-  final VoidCallback onBack;
-  final Future<void> Function()? onVerify;
-  final int transferCount;
-
-  @override
-  Widget build(BuildContext context) {
-    final spacing = context.appSpacing;
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        spacing.xs,
-        spacing.xs,
-        spacing.md,
-        spacing.sm,
-      ),
-      decoration: BoxDecoration(
-        color: context.appColors.background,
-        border: Border(bottom: BorderSide(color: context.appColors.border)),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-            tooltip: 'Back',
-          ),
-          AppAvatar(
-            label: title,
-            icon: conversation.isGroup ? Icons.forum_outlined : null,
-            radius: 20,
-          ),
-          SizedBox(width: spacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  _headerSubtitle(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: context.appColors.textMuted,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (transferCount > 0)
-            Icon(
-              Icons.sync_rounded,
-              size: 18,
-              color: context.appColors.textMuted,
-            ),
-          if (onVerify != null)
-            IconButton(
-              onPressed: onVerify,
-              icon: Icon(
-                trust?.isEnterpriseVerified == true
-                    ? Icons.verified_user_rounded
-                    : Icons.shield_outlined,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  String _headerSubtitle() {
-    final base = conversation.isGroup
-        ? 'Workspace group'
-        : 'Private conversation';
-    if (brandLabel?.isNotEmpty == true) {
-      return '$base • $brandLabel';
-    }
-    return base;
-  }
-}
-
-class _SecurityBanner extends StatelessWidget {
-  const _SecurityBanner({
-    required this.trust,
-    required this.onVerify,
-    required this.isExpanded,
-    required this.onToggleExpanded,
-  });
-
-  final ConversationKeyTrust trust;
-  final Future<void> Function() onVerify;
-  final bool isExpanded;
-  final VoidCallback onToggleExpanded;
-
-  @override
-  Widget build(BuildContext context) {
-    final summary = !trust.isAvailable
-        ? 'Peer device key hali tayyor emas.'
-        : trust.hasEnterpriseKeyChanged
-        ? 'Security material changed. Re-verify recommended.'
-        : trust.isEnterpriseVerified
-        ? 'Enterprise trust verified.'
-        : trust.isEnterpriseReady
-        ? 'PQC ready. First secure send can proceed.'
-        : trust.isVerified
-        ? 'Classical trust verified.'
-        : 'Key not verified yet.';
-
-    final tone = !trust.isAvailable
-        ? AppStatusTone.warning
-        : trust.hasEnterpriseKeyChanged
-        ? AppStatusTone.warning
-        : trust.isEnterpriseVerified
-        ? AppStatusTone.success
-        : trust.isEnterpriseReady
-        ? AppStatusTone.info
-        : trust.isVerified
-        ? AppStatusTone.success
-        : AppStatusTone.info;
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        context.appSpacing.sm,
-        context.appSpacing.xs,
-        context.appSpacing.sm,
-        0,
-      ),
-      child: AppStatusBanner(
-        message: summary,
-        tone: tone,
-        action: trust.isAvailable
-            ? Wrap(
-                spacing: context.appSpacing.xs,
-                children: [
-                  TextButton(
-                    onPressed: onVerify,
-                    child: Text(
-                      trust.isEnterpriseVerified || trust.isVerified
-                          ? 'Re-verify'
-                          : 'Verify',
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: onToggleExpanded,
-                    child: Text(isExpanded ? 'Hide details' : 'Details'),
-                  ),
-                ],
-              )
-            : null,
-      ),
-    );
-  }
-}
-
-class _SecurityDetailCard extends StatelessWidget {
-  const _SecurityDetailCard({required this.trust});
-
-  final ConversationKeyTrust trust;
-
-  @override
-  Widget build(BuildContext context) {
-    final spacing = context.appSpacing;
-    final rows = <(String, String)>[
-      ('X25519', trust.fingerprint ?? '-'),
-      ('PQC-KEM', trust.pqcFingerprint ?? '-'),
-      ('ML-DSA', trust.signingFingerprint ?? '-'),
-    ];
-    return Padding(
-      padding: EdgeInsets.fromLTRB(spacing.sm, spacing.xs, spacing.sm, 0),
-      child: AppSurfaceCard(
-        padding: EdgeInsets.all(spacing.md),
-        backgroundColor: context.appColors.surfaceMuted,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Security details',
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            SizedBox(height: spacing.sm),
-            ...rows.map(
-              (row) => Padding(
-                padding: EdgeInsets.only(bottom: spacing.xs),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 72,
-                      child: Text(
-                        row.$1,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: context.appColors.textMuted,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        row.$2,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
