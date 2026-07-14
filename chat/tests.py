@@ -1,5 +1,7 @@
 import base64
 import hashlib
+import os
+from unittest.mock import patch
 
 from django.test import SimpleTestCase, override_settings
 from django.contrib.auth import get_user_model
@@ -35,6 +37,19 @@ class CryptoProtocolContractTests(SimpleTestCase):
         self.assertEqual(response.data['protocol_version'], 2)
         self.assertEqual(response.data['attachment_cipher_versions'], ['attachment:v2'])
         self.assertEqual(response.data['backup_schema_revision'], 2)
+
+    def test_v3_test_mode_advertises_dual_read_and_v3_write(self):
+        with patch.dict(os.environ, {'CRYPTO_PROTOCOL_MODE': 'v3_test'}):
+            response = self.client.get('/api/crypto/protocols')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['active_writer'], 'v3')
+        self.assertEqual(
+            response.data['readable_private_message_prefixes'],
+            ['pqc:v2:', 'pqc:v3:'],
+        )
+        self.assertEqual(response.data['private_message_prefixes'], ['pqc:v2:', 'pqc:v3:'])
+        self.assertEqual(response.data['backup_schema_revision'], 3)
 
 
 class ChatApiTests(APITestCase):

@@ -1,0 +1,7 @@
+PRIVATE_PREFIXES = ('pqc:v3:',)
+GROUP_PREFIXES = ('group:v3:',)
+GROUP_ENVELOPE_PREFIX = 'group-wrap:pqc:v3:'
+GROUP_ENVELOPE_ALGORITHM = 'group-ml-kem-768-aesgcm-v3'
+ATTACHMENT_CIPHER_VERSIONS = ('attachment:v3',)
+BACKUP_SCHEMA_REVISION = 3
+
