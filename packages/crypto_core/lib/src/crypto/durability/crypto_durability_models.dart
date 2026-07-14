@@ -96,10 +96,7 @@ class KeysetSnapshot {
     );
   }
 
-  KeysetSnapshot copyWith({
-    String? status,
-    DateTime? restoredAt,
-  }) {
+  KeysetSnapshot copyWith({String? status, DateTime? restoredAt}) {
     return KeysetSnapshot(
       keysetId: keysetId,
       deviceId: deviceId,

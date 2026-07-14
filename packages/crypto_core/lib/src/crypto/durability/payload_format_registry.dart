@@ -38,12 +38,17 @@ class PayloadFormatRegistry {
 
   PayloadFormatDescriptor? describe(String payload) {
     for (final descriptor in _descriptors) {
-      if (payload.startsWith(descriptor.prefix)) {
+      if (descriptor.decryptSupported &&
+          payload.startsWith(descriptor.prefix)) {
         return descriptor;
       }
     }
     return null;
   }
+
+  List<PayloadFormatDescriptor> readersFor(PayloadKind kind) => _descriptors
+      .where((item) => item.payloadKind == kind && item.decryptSupported)
+      .toList(growable: false);
 
   /// The only formats this client is allowed to create.  Keep this separate
   /// from [describe]: a readable historical format must never become a writer

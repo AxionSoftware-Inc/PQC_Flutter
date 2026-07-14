@@ -9,6 +9,7 @@ import 'conversation_epoch_key_store.dart';
 import 'crypto_durability_models.dart';
 import 'key_material_registry.dart';
 import 'payload_format_registry.dart';
+import 'protocol_version_manager.dart';
 
 class CryptoCoreFacade {
   CryptoCoreFacade({
@@ -23,7 +24,10 @@ class CryptoCoreFacade {
            conversationEpochKeyStore ?? ConversationEpochKeyStore(),
        _secretStore = secretStore ?? LocalSecretStore(),
        _payloadFormatRegistry =
-           payloadFormatRegistry ?? PayloadFormatRegistry();
+           payloadFormatRegistry ?? PayloadFormatRegistry(),
+       protocolVersionManager = ProtocolVersionManager(
+         registry: payloadFormatRegistry,
+       );
 
   final ChatCipherService cipherService;
   final GroupKeyStore groupKeyStore;
@@ -32,6 +36,7 @@ class CryptoCoreFacade {
   final ConversationEpochKeyStore conversationEpochKeyStore;
   final LocalSecretStore _secretStore;
   final PayloadFormatRegistry _payloadFormatRegistry;
+  final ProtocolVersionManager protocolVersionManager;
 
   List<PayloadFormatDescriptor> get supportedFormats =>
       _payloadFormatRegistry.descriptors;
@@ -40,13 +45,11 @@ class CryptoCoreFacade {
   /// decoder class. This is the client side of the client/server protocol
   /// handshake.
   String activeMessageWriterPrefix({required bool isGroup}) {
-    final writers = _payloadFormatRegistry.writersFor(
-      isGroup ? PayloadKind.groupMessage : PayloadKind.privateMessage,
-    );
-    if (writers.length != 1) {
-      throw StateError('Exactly one active message writer must be registered.');
-    }
-    return writers.single.prefix;
+    return protocolVersionManager
+        .activeWriter(
+          isGroup ? PayloadKind.groupMessage : PayloadKind.privateMessage,
+        )
+        .prefix;
   }
 
   void assertRemoteSupportsActiveMessageWriter({
@@ -112,7 +115,7 @@ class CryptoCoreFacade {
   }
 
   PayloadFormatDescriptor? describePayload(String payload) {
-    return _payloadFormatRegistry.describe(payload);
+    return protocolVersionManager.readerForPayload(payload);
   }
 
   bool privatePayloadMayNeedHistoricalKey(String payload) {
