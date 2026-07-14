@@ -72,6 +72,9 @@ class ChatConversationHeader extends StatelessWidget {
     required this.onBack,
     required this.onVerify,
     required this.transferCount,
+    required this.isPeerOnline,
+    required this.isPeerTyping,
+    required this.peerLastSeenAt,
   });
 
   final String title;
@@ -81,6 +84,9 @@ class ChatConversationHeader extends StatelessWidget {
   final VoidCallback onBack;
   final Future<void> Function()? onVerify;
   final int transferCount;
+  final bool isPeerOnline;
+  final bool isPeerTyping;
+  final DateTime? peerLastSeenAt;
 
   @override
   Widget build(BuildContext context) {
@@ -153,6 +159,14 @@ class ChatConversationHeader extends StatelessWidget {
   }
 
   String _headerSubtitle() {
+    if (!conversation.isGroup) {
+      if (isPeerTyping) return 'typing…';
+      if (isPeerOnline) return 'online';
+      if (peerLastSeenAt != null) {
+        final seen = peerLastSeenAt!.toLocal();
+        return 'last seen ${seen.hour.toString().padLeft(2, '0')}:${seen.minute.toString().padLeft(2, '0')}';
+      }
+    }
     final base = conversation.isGroup
         ? 'Workspace group'
         : 'Private conversation';
