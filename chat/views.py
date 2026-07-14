@@ -236,9 +236,29 @@ class MessageListCreateView(APIView):
     def get(self, request, conversation_id):
         conversation = get_user_conversation_or_404(request, conversation_id)
         after_id = request.query_params.get('after_id', '').strip()
-        messages = conversation.messages.select_related('sender').prefetch_related('attachments').all()
+        before_id = request.query_params.get('before_id', '').strip()
+        limit_value = request.query_params.get('limit', '').strip()
+        try:
+            limit = min(max(int(limit_value), 1), 100) if limit_value else None
+        except (TypeError, ValueError):
+            limit = 50
+        messages_query = conversation.messages.select_related('sender').prefetch_related('attachments')
         if after_id.isdigit():
-            messages = messages.filter(id__gt=int(after_id))
+            messages = messages_query.filter(id__gt=int(after_id)).order_by('id')
+            if limit is not None:
+                messages = messages[:limit]
+        elif before_id.isdigit():
+            messages = messages_query.filter(id__lt=int(before_id)).order_by('-id')
+            if limit is not None:
+                messages = messages[:limit]
+            messages = list(messages)
+            messages.reverse()
+        else:
+            messages = messages_query.order_by('-id')
+            if limit is not None:
+                messages = messages[:limit]
+            messages = list(messages)
+            messages.reverse()
         return Response(MessageSerializer(messages, many=True).data)
 
     @transaction.atomic

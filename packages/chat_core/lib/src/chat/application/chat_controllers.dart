@@ -73,6 +73,8 @@ class ChatConversationController extends ChangeNotifier {
   List<ChatMessage> _messages = const [];
   bool _isLoading = true;
   bool _isSending = false;
+  bool _isLoadingOlder = false;
+  bool _hasOlderMessages = true;
   String? _error;
   ConversationTrustState? _trust;
   Timer? _pollingTimer;
@@ -85,6 +87,8 @@ class ChatConversationController extends ChangeNotifier {
   List<ChatMessage> get messages => _messages;
   bool get isLoading => _isLoading;
   bool get isSending => _isSending;
+  bool get isLoadingOlder => _isLoadingOlder;
+  bool get hasOlderMessages => _hasOlderMessages;
   String? get error => _error;
   ConversationTrustState? get trust => _trust;
   List<AttachmentTransferState> get attachmentTransfers => _attachmentTransfers
@@ -131,6 +135,7 @@ class ChatConversationController extends ChangeNotifier {
         currentUserId: currentUserId,
       );
       _messages = state.messages;
+      _hasOlderMessages = state.messages.length >= 50;
       _trust = state.trust;
       _error = null;
       for (final message in _messages) {
@@ -147,6 +152,25 @@ class ChatConversationController extends ChangeNotifier {
       if (showLoader) {
         _isLoading = false;
       }
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadOlderMessages() async {
+    if (_isLoadingOlder || !_hasOlderMessages || _messages.isEmpty) return;
+    _isLoadingOlder = true;
+    notifyListeners();
+    try {
+      final state = await chatFacade.loadOlderConversationMessages(
+        conversation: conversation,
+        currentUserId: currentUserId,
+      );
+      if (state.messages.length == _messages.length) {
+        _hasOlderMessages = false;
+      }
+      _messages = state.messages;
+    } finally {
+      _isLoadingOlder = false;
       notifyListeners();
     }
   }

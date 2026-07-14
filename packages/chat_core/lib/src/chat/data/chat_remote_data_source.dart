@@ -68,13 +68,16 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
   Future<List<ChatMessage>> fetchMessages(
     int conversationId, {
     int? afterId,
+    int? beforeId,
+    int limit = 50,
   }) async {
+    final query = <String, String>{'limit': '$limit'};
+    if (afterId != null) query['after_id'] = '$afterId';
+    if (beforeId != null) query['before_id'] = '$beforeId';
     final response =
         await apiClient.get(
               '/conversations/$conversationId/messages',
-              queryParameters: afterId == null
-                  ? null
-                  : {'after_id': '$afterId'},
+              queryParameters: query,
             )
             as List<dynamic>;
     return response

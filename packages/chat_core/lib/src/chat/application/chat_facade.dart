@@ -206,6 +206,24 @@ class ChatFacade {
     return ChatConversationState(messages: mergedMessages, trust: trust);
   }
 
+  Future<ChatConversationState> loadOlderConversationMessages({
+    required Conversation conversation,
+    required int currentUserId,
+  }) async {
+    _activeCurrentUserId = currentUserId;
+    await _ensureUsersLoaded();
+    final syncResult = await _messageSyncService.syncOlderMessages(
+      conversation: conversation,
+      currentUserId: currentUserId,
+      usersById: _usersById,
+      refreshUsers: fetchUsers,
+    );
+    final pending = await _outboxStore.readForConversation(conversation.id);
+    return ChatConversationState(
+      messages: _mergeMessages(syncResult.messages, pending),
+    );
+  }
+
   Future<ChatMessage> sendMessage(SendMessageCommand command) async {
     _activeCurrentUserId = command.currentUserId;
     await _ensureUsersLoaded();
