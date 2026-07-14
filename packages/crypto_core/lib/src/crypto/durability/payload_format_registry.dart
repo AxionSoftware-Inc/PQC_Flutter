@@ -3,35 +3,56 @@ import 'v2_protocol_contract.dart';
 
 class PayloadFormatRegistry {
   PayloadFormatRegistry({List<PayloadFormatDescriptor>? descriptors})
-    : _descriptors =
-          descriptors ??
-          const [
-            PayloadFormatDescriptor(
-              formatId: 'pqc-private-v2',
-              payloadKind: PayloadKind.privateMessage,
-              prefix: '${PqcV2ProtocolContract.privatePrefix}:',
-              introducedAtVersion: '2.0.0',
-              decryptSupported: true,
-              writeEnabled: true,
-            ),
-            PayloadFormatDescriptor(
-              formatId: 'group-message-v2',
-              payloadKind: PayloadKind.groupMessage,
-              prefix: '${PqcV2ProtocolContract.groupPrefix}:',
-              introducedAtVersion: '2.0.0',
-              decryptSupported: true,
-              writeEnabled: true,
-            ),
-            PayloadFormatDescriptor(
-              formatId: 'group-envelope-pqc-v2',
-              payloadKind: PayloadKind.groupEnvelope,
-              prefix: '${PqcV2ProtocolContract.groupWrapPrefix}:',
-              introducedAtVersion: '2.0.0',
-              decryptSupported: true,
-            ),
-          ];
+    : _descriptors = descriptors ?? _defaultDescriptors;
 
   final List<PayloadFormatDescriptor> _descriptors;
+
+  static final bool _v3WriterEnabled = bool.fromEnvironment(
+    'V3_WRITER',
+    defaultValue: false,
+  );
+
+  static final List<PayloadFormatDescriptor> _defaultDescriptors = [
+    PayloadFormatDescriptor(
+      formatId: 'pqc-private-v2',
+      payloadKind: PayloadKind.privateMessage,
+      prefix: '${PqcV2ProtocolContract.privatePrefix}:',
+      introducedAtVersion: '2.0.0',
+      decryptSupported: true,
+      writeEnabled: !_v3WriterEnabled,
+    ),
+    PayloadFormatDescriptor(
+      formatId: 'group-message-v2',
+      payloadKind: PayloadKind.groupMessage,
+      prefix: '${PqcV2ProtocolContract.groupPrefix}:',
+      introducedAtVersion: '2.0.0',
+      decryptSupported: true,
+      writeEnabled: !_v3WriterEnabled,
+    ),
+    const PayloadFormatDescriptor(
+      formatId: 'group-envelope-pqc-v2',
+      payloadKind: PayloadKind.groupEnvelope,
+      prefix: '${PqcV2ProtocolContract.groupWrapPrefix}:',
+      introducedAtVersion: '2.0.0',
+      decryptSupported: true,
+    ),
+    PayloadFormatDescriptor(
+      formatId: 'pqc-private-v3',
+      payloadKind: PayloadKind.privateMessage,
+      prefix: 'pqc:v3:',
+      introducedAtVersion: '3.0.0',
+      decryptSupported: true,
+      writeEnabled: _v3WriterEnabled,
+    ),
+    PayloadFormatDescriptor(
+      formatId: 'group-message-v3',
+      payloadKind: PayloadKind.groupMessage,
+      prefix: 'group:v3:',
+      introducedAtVersion: '3.0.0',
+      decryptSupported: true,
+      writeEnabled: _v3WriterEnabled,
+    ),
+  ];
 
   List<PayloadFormatDescriptor> get descriptors =>
       List.unmodifiable(_descriptors);
