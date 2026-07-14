@@ -36,7 +36,7 @@ void main() {
       usersById: fixture.usersById,
     );
 
-    expect(payload, startsWith('pqc:v1:'));
+    expect(payload, startsWith('pqc:v2:'));
     expect(payload.contains('salom pqc'), isFalse);
     expect(decryptedByBob, 'salom pqc');
     expect(decryptedByAlice, 'salom pqc');
@@ -53,45 +53,56 @@ void main() {
         usersById: fixture.usersById,
       );
 
-      final parts = payload
-          .substring(PqcPrivateMessageCodec.prefix.length + 1)
-          .split(':');
+      final document = _decodePayload(payload);
+      final wraps = (document['wraps'] as List).cast<Map>();
 
-      expect(parts, hasLength(15));
-      expect(parts[0], 'alice-device');
-      expect(parts[2], 'bob-device');
+      expect(document['protocol_version'], 2);
+      expect(document['sender_device_id'], 'alice-device');
       expect(
-        base64Decode(parts[1]).length,
+        wraps.map((item) => item['target_device_id']),
+        containsAll(['alice-device', 'bob-device']),
+      );
+      expect(
+        base64Decode(document['signing_public_key'] as String).length,
         DevicePqcSigningKeyService.publicKeyLength,
       );
+      for (final wrap in wraps) {
+        expect(
+          base64Decode(wrap['kem_ciphertext'] as String).length,
+          DevicePqcKeyService.ciphertextLength,
+        );
+        expect(base64Decode(wrap['nonce'] as String).length, 12);
+        expect(
+          base64Decode(wrap['ciphertext'] as String).length,
+          DevicePqcKeyService.sharedSecretLength,
+        );
+        expect(base64Decode(wrap['mac'] as String).length, 16);
+      }
+      expect(base64Decode(document['content_nonce'] as String).length, 12);
       expect(
-        base64Decode(parts[3]).length,
-        DevicePqcKeyService.ciphertextLength,
+        base64Decode(document['content_ciphertext'] as String).length,
+        greaterThanOrEqualTo(19),
       );
+      expect(base64Decode(document['content_mac'] as String).length, 16);
       expect(
-        base64Decode(parts[7]).length,
-        DevicePqcKeyService.ciphertextLength,
+        base64Decode(document['signature'] as String).length,
+        greaterThan(3000),
       );
-      expect(base64Decode(parts[4]).length, 12);
-      expect(base64Decode(parts[8]).length, 12);
-      expect(
-        base64Decode(parts[5]).length,
-        DevicePqcKeyService.sharedSecretLength,
-      );
-      expect(
-        base64Decode(parts[9]).length,
-        DevicePqcKeyService.sharedSecretLength,
-      );
-      expect(base64Decode(parts[6]).length, 16);
-      expect(base64Decode(parts[10]).length, 16);
-      expect(base64Decode(parts[11]).length, 12);
-      expect(base64Decode(parts[12]).length, greaterThanOrEqualTo(19));
-      expect(base64Decode(parts[13]).length, 16);
-      expect(base64Decode(parts[14]).length, greaterThan(3000));
       expect(payload.length, greaterThan(9000));
       expect(payload.contains('PQC payload metrics'), isFalse);
     },
   );
+
+}
+
+Map<String, dynamic> _decodePayload(String payload) {
+  final encoded = payload.substring(PqcPrivateMessageCodec.prefix.length + 1);
+  final padded = encoded.padRight(
+    encoded.length + ((4 - encoded.length % 4) % 4),
+    '=',
+  );
+  return jsonDecode(utf8.decode(base64Url.decode(padded)))
+      as Map<String, dynamic>;
 }
 
 Future<_Fixture> _buildFixture() async {

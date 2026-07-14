@@ -10,14 +10,26 @@ from chat.models import (
     ConversationParticipant,
     Message,
     MessageAttachment,
+    ConversationCryptoEpoch,
 )
 
 
 User = get_user_model()
-PRIVATE_MESSAGE_PREFIX = 'pqc:v1:'
-GROUP_MESSAGE_PREFIX = 'group:v1:'
-GROUP_ENVELOPE_PREFIX = 'group-wrap:pqc:v1:'
-GROUP_ENVELOPE_ALGORITHM = 'group-ml-kem-768-aesgcm-v1'
+PRIVATE_MESSAGE_PREFIX = ('pqc:v2:',)
+GROUP_MESSAGE_PREFIX = ('group:v2:',)
+GROUP_ENVELOPE_PREFIX = 'group-wrap:pqc:v2:'
+GROUP_ENVELOPE_ALGORITHM = 'group-ml-kem-768-aesgcm-v2'
+
+# This is a public wire-protocol contract.  Existing payload readers stay in
+# clients, while this list tells clients which current writers this deployment
+# can accept.  A client must check it before encrypting a new outgoing message.
+CRYPTO_PROTOCOL_CAPABILITIES = {
+    'protocol_version': 2,
+    'private_message_prefixes': list(PRIVATE_MESSAGE_PREFIX),
+    'group_message_prefixes': list(GROUP_MESSAGE_PREFIX),
+    'attachment_cipher_versions': ['attachment:v2'],
+    'backup_schema_revision': 2,
+}
 
 
 class PrivateConversationSerializer(serializers.Serializer):
@@ -54,13 +66,20 @@ class MessageCreateSerializer(serializers.Serializer):
         if conversation.type == Conversation.ConversationType.PRIVATE:
             if not body.startswith(PRIVATE_MESSAGE_PREFIX):
                 raise serializers.ValidationError(
-                    {'body': 'Private chat messages must use pqc:v1 payloads.'}
+                    {'body': 'Private chat messages must use pqc:v2 payloads.'}
                 )
             return attrs
         if conversation.type == Conversation.ConversationType.GROUP:
+            if ConversationCryptoEpoch.objects.filter(
+                conversation=conversation,
+                state=ConversationCryptoEpoch.State.PENDING,
+            ).exists():
+                raise serializers.ValidationError(
+                    {'body': 'Group rekey is required before sending after device revoke.'}
+                )
             if not body.startswith(GROUP_MESSAGE_PREFIX):
                 raise serializers.ValidationError(
-                    {'body': 'Group chat messages must use group:v1 payloads.'}
+                    {'body': 'Group chat messages must use group:v2 payloads.'}
                 )
         return attrs
 
@@ -80,6 +99,8 @@ class AttachmentSessionCreateSerializer(serializers.Serializer):
     plaintext_sha256 = serializers.CharField()
     manifest_sha256 = serializers.CharField()
     file_key_wrap = serializers.CharField()
+    conversation_epoch_id = serializers.CharField(required=False, allow_blank=True, default='')
+    recovery_manifest_sequence = serializers.IntegerField(required=False, min_value=0, default=0)
 
     def validate(self, attrs):
         plaintext_size = attrs.get('plaintext_size', 0)
@@ -159,6 +180,8 @@ class AttachmentUploadSessionSerializer(serializers.ModelSerializer):
             'plaintext_sha256',
             'manifest_sha256',
             'file_key_wrap',
+            'conversation_epoch_id',
+            'recovery_manifest_sequence',
             'blob_storage_key',
             'status',
             'expires_at',
@@ -193,6 +216,8 @@ class MessageAttachmentSerializer(serializers.ModelSerializer):
             'plaintext_sha256',
             'manifest_sha256',
             'file_key_wrap',
+            'conversation_epoch_id',
+            'recovery_manifest_sequence',
             'created_at',
         ]
 
@@ -254,7 +279,7 @@ class ConversationKeyEnvelopeInputSerializer(serializers.Serializer):
     def validate_wrapped_key(self, value):
         if not value.startswith(GROUP_ENVELOPE_PREFIX):
             raise serializers.ValidationError(
-                'wrapped_key must use group-wrap:pqc:v1 payloads.'
+                'wrapped_key must use group-wrap:pqc:v2 payloads.'
             )
         return value
 
@@ -267,7 +292,7 @@ class ConversationKeyEnvelopeSyncSerializer(serializers.Serializer):
     def validate_algorithm(self, value):
         if value != GROUP_ENVELOPE_ALGORITHM:
             raise serializers.ValidationError(
-                'Only group-ml-kem-768-aesgcm-v1 is accepted.'
+                'Only group-ml-kem-768-aesgcm-v2 is accepted.'
             )
         return value
 

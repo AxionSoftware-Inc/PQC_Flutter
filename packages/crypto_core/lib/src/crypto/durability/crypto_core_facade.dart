@@ -1,7 +1,11 @@
+import 'dart:convert';
+
 import '../chat_cipher_service.dart';
 import '../group_key_store.dart';
 import '../message_codec.dart';
+import '../../core/storage/local_secret_store.dart';
 import 'crypto_backup_service.dart';
+import 'conversation_epoch_key_store.dart';
 import 'crypto_durability_models.dart';
 import 'key_material_registry.dart';
 import 'payload_format_registry.dart';
@@ -12,21 +16,79 @@ class CryptoCoreFacade {
     required this.groupKeyStore,
     required this.keyMaterialRegistry,
     required this.backupService,
+    ConversationEpochKeyStore? conversationEpochKeyStore,
+    LocalSecretStore? secretStore,
     PayloadFormatRegistry? payloadFormatRegistry,
-  }) : _payloadFormatRegistry =
+  }) : conversationEpochKeyStore =
+           conversationEpochKeyStore ?? ConversationEpochKeyStore(),
+       _secretStore = secretStore ?? LocalSecretStore(),
+       _payloadFormatRegistry =
            payloadFormatRegistry ?? PayloadFormatRegistry();
 
   final ChatCipherService cipherService;
   final GroupKeyStore groupKeyStore;
   final KeyMaterialRegistry keyMaterialRegistry;
   final CryptoBackupService backupService;
+  final ConversationEpochKeyStore conversationEpochKeyStore;
+  final LocalSecretStore _secretStore;
   final PayloadFormatRegistry _payloadFormatRegistry;
 
   List<PayloadFormatDescriptor> get supportedFormats =>
       _payloadFormatRegistry.descriptors;
 
+  /// The active writer is selected from the registry, never inferred from a
+  /// decoder class. This is the client side of the client/server protocol
+  /// handshake.
+  String activeMessageWriterPrefix({required bool isGroup}) {
+    final writers = _payloadFormatRegistry.writersFor(
+      isGroup ? PayloadKind.groupMessage : PayloadKind.privateMessage,
+    );
+    if (writers.length != 1) {
+      throw StateError('Exactly one active message writer must be registered.');
+    }
+    return writers.single.prefix;
+  }
+
+  void assertRemoteSupportsActiveMessageWriter({
+    required bool isGroup,
+    required Iterable<String> remotePrefixes,
+  }) {
+    final writer = activeMessageWriterPrefix(isGroup: isGroup);
+    if (!remotePrefixes.contains(writer)) {
+      throw StateError(
+        'Server does not support the active crypto protocol $writer. '
+        'Update the server before sending encrypted messages.',
+      );
+    }
+  }
+
   Future<void> initialize() {
     return keyMaterialRegistry.ensureCurrentKeysetRegistered();
+  }
+
+  /// Account identity is injected by the app; the core is independent of its
+  /// OIDC/Google provider. A different account cannot reuse local recovery
+  /// material from the prior account.
+  Future<void> activateAccount(String accountNamespace) async {
+    if (accountNamespace.trim().isEmpty) {
+      throw ArgumentError.value(accountNamespace, 'accountNamespace');
+    }
+    const markerKey = 'crypto_core_active_account_namespace_v2';
+    final previous = await _secretStore.read(markerKey);
+    if (previous != null &&
+        previous.isNotEmpty &&
+        previous != accountNamespace) {
+      for (final key in await _secretStore.listManagedKeys()) {
+        if (key == 'crypto_keyset_registry_v1' ||
+            key.startsWith('crypto_keyset_entry_v1') ||
+            key.startsWith('group_secret_key_') ||
+            key.startsWith('group_participant_signature_') ||
+            key.startsWith('attachment_conversation_epoch_v2_')) {
+          await _secretStore.delete(key);
+        }
+      }
+    }
+    await _secretStore.write(key: markerKey, value: accountNamespace);
   }
 
   Future<String> exportEncryptedBackup(BackupExportRequest request) {
@@ -35,6 +97,14 @@ class CryptoCoreFacade {
 
   Future<void> importEncryptedBackup(BackupImportRequest request) {
     return backupService.importEncryptedBackup(request);
+  }
+
+  Future<String> exportEnterpriseRecoveryManifest() {
+    return backupService.exportEnterpriseRecoveryManifest();
+  }
+
+  Future<void> importEnterpriseRecoveryManifest(String payload) {
+    return backupService.importEnterpriseRecoveryManifest(payload);
   }
 
   Future<HistoricalDecryptCheck> historicalDecryptCheck() {
@@ -46,36 +116,56 @@ class CryptoCoreFacade {
   }
 
   bool privatePayloadMayNeedHistoricalKey(String payload) {
-    if (!payload.startsWith('${PqcPrivateMessageCodec.prefix}:')) {
-      return false;
-    }
-    return true;
+    return describePayload(payload)?.payloadKind == PayloadKind.privateMessage;
   }
 
   bool groupPayloadMayNeedHistoricalKey(String payload) {
-    return payload.startsWith('${GroupCipherMessageCodec.prefix}:');
+    return describePayload(payload)?.payloadKind == PayloadKind.groupMessage;
   }
 
-  Future<DeviceKeyMatch> evaluatePrivatePayloadLocalKeyMatch(String payload) async {
+  Future<DeviceKeyMatch> evaluatePrivatePayloadLocalKeyMatch(
+    String payload,
+  ) async {
     if (!payload.startsWith('${PqcPrivateMessageCodec.prefix}:')) {
-      return const DeviceKeyMatch(isKnownFormat: false, hasMatchingKeyset: false);
+      return const DeviceKeyMatch(
+        isKnownFormat: false,
+        hasMatchingKeyset: false,
+      );
     }
-    final parts = payload.substring(PqcPrivateMessageCodec.prefix.length + 1).split(':');
-    if (parts.length != 15) {
-      return const DeviceKeyMatch(isKnownFormat: true, hasMatchingKeyset: false);
+    final encoded = payload.substring(PqcPrivateMessageCodec.prefix.length + 1);
+    try {
+      final padded = encoded.padRight(
+        encoded.length + ((4 - encoded.length % 4) % 4),
+        '=',
+      );
+      final document =
+          jsonDecode(utf8.decode(base64Url.decode(padded)))
+              as Map<String, dynamic>;
+      final senderDeviceId = document['sender_device_id'] as String? ?? '';
+      final wraps = (document['wraps'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .toList();
+      final keysets = await keyMaterialRegistry.readHistoricalDecryptKeysets();
+      final hasMatchingKeyset = wraps.any((wrap) {
+        final targetKeysetId = wrap['target_keyset_id'] as String? ?? '';
+        final targetDeviceId = wrap['target_device_id'] as String? ?? '';
+        return keysets.any(
+          (keyset) =>
+              keyset.keysetId == targetKeysetId &&
+              keyset.deviceId == targetDeviceId,
+        );
+      });
+      return DeviceKeyMatch(
+        isKnownFormat: document['protocol_version'] == 2,
+        hasMatchingKeyset: hasMatchingKeyset,
+        senderDeviceId: senderDeviceId,
+      );
+    } catch (_) {
+      return const DeviceKeyMatch(
+        isKnownFormat: true,
+        hasMatchingKeyset: false,
+      );
     }
-    final senderDeviceId = parts[0];
-    final targetDeviceId = parts[2];
-    final keysets = await keyMaterialRegistry.readHistoricalDecryptKeysets();
-    final hasMatchingKeyset = keysets.any(
-      (item) => item.deviceId == senderDeviceId || item.deviceId == targetDeviceId,
-    );
-    return DeviceKeyMatch(
-      isKnownFormat: true,
-      hasMatchingKeyset: hasMatchingKeyset,
-      senderDeviceId: senderDeviceId,
-      targetDeviceId: targetDeviceId,
-    );
   }
 
   Future<DecryptionOutcome> classifyFailedDecrypt(String payload) async {

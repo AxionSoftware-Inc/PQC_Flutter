@@ -1,12 +1,16 @@
 // ignore_for_file: implementation_imports
 
+import 'dart:async';
+
 import '../../core/database/app_database.dart';
 import 'package:crypto_core/src/models/app_user.dart';
 import 'package:crypto_core/src/models/attachment.dart';
+import 'package:crypto_core/src/models/attachment_transfer.dart';
 import 'package:crypto_core/src/models/chat_message.dart';
 import 'package:crypto_core/src/models/conversation.dart';
 import '../../core/network/api_client.dart';
 import 'package:crypto_core/src/crypto/chat_cipher_service.dart';
+import 'package:crypto_core/src/crypto/attachment_crypto_service.dart';
 import 'package:crypto_core/src/crypto/chat_crypto_context.dart';
 import 'package:crypto_core/src/crypto/chat_crypto_exceptions.dart';
 import 'package:crypto_core/src/crypto/durability/crypto_core_facade.dart';
@@ -39,11 +43,10 @@ class ChatCryptoService {
   static const decryptNeedsBackupRestoreMarker =
       '[decrypt-needs-backup-restore]';
   static const decryptKeyMissingMarker = '[decrypt-key-missing]';
+  static const decryptHistoryRecoveryPendingMarker =
+      '[history-recovery-pending]';
 
-  const ChatCryptoService({
-    required this.cipherService,
-    this.cryptoCoreFacade,
-  });
+  const ChatCryptoService({required this.cipherService, this.cryptoCoreFacade});
 
   final ChatCipherService cipherService;
   final CryptoCoreFacade? cryptoCoreFacade;
@@ -59,6 +62,53 @@ class ChatCryptoService {
         usersById: request.usersById,
       ),
       plaintext: plaintext,
+    );
+  }
+
+  Future<void> assertRemoteCanSend({
+    required bool isGroup,
+    required Iterable<String> remotePrefixes,
+  }) async {
+    final facade = cryptoCoreFacade;
+    if (facade == null) {
+      // The server capability gate still protects the wire protocol. Older
+      // repository integrations may not expose the optional durability
+      // facade, so message sending remains compatible for text payloads.
+      return;
+    }
+    facade.assertRemoteSupportsActiveMessageWriter(
+      isGroup: isGroup,
+      remotePrefixes: remotePrefixes,
+    );
+  }
+
+  Future<AttachmentEncryptionDescriptor> deriveAttachmentDescriptor({
+    required ChatCryptoRequest request,
+    required String attachmentId,
+  }) async {
+    final facade = cryptoCoreFacade;
+    if (facade == null) {
+      throw StateError('Crypto durability core is required for attachments.');
+    }
+    if (request.conversation.isGroup) {
+      final epoch = await facade.groupKeyStore.getOrCreateKey(
+        conversation: request.conversation,
+        usersById: request.usersById,
+      );
+      return AttachmentCryptoService().deriveEpochBoundDescriptor(
+        conversationEpochSecret: epoch.secretKeyBytes,
+        conversationEpochId: epoch.keyId,
+        attachmentId: attachmentId,
+        manifestSequence: 0,
+      );
+    }
+    final epoch = await facade.conversationEpochKeyStore
+        .getOrCreatePrivateEpoch(request.conversation.id);
+    return AttachmentCryptoService().deriveEpochBoundDescriptor(
+      conversationEpochSecret: epoch.secretKeyBytes,
+      conversationEpochId: epoch.epochId,
+      attachmentId: attachmentId,
+      manifestSequence: 0,
     );
   }
 
@@ -80,7 +130,8 @@ class ChatCryptoService {
   bool isDecryptFailureMarker(String value) {
     return value == decryptErrorMarker ||
         value == decryptNeedsBackupRestoreMarker ||
-        value == decryptKeyMissingMarker;
+        value == decryptKeyMissingMarker ||
+        value == decryptHistoryRecoveryPendingMarker;
   }
 
   Future<DecryptionOutcome> decryptDetailed({
@@ -148,9 +199,7 @@ class ChatTrustService {
   final PrivateConversationSecurityCoordinator
   privateConversationSecurityCoordinator;
 
-  Future<Map<int, UserKeyTrust>> buildUserTrustMap(
-    Iterable<AppUser> users,
-  ) {
+  Future<Map<int, UserKeyTrust>> buildUserTrustMap(Iterable<AppUser> users) {
     return keyVerificationService.buildUserTrustMap(users);
   }
 
@@ -271,7 +320,8 @@ class ConversationSyncService {
       ),
       payload: payload,
     );
-    if (conversation.isGroup || !cryptoService.isDecryptFailureMarker(plaintext)) {
+    if (conversation.isGroup ||
+        !cryptoService.isDecryptFailureMarker(plaintext)) {
       return plaintext;
     }
     await refreshUsers();
@@ -287,10 +337,7 @@ class ConversationSyncService {
 }
 
 class MessageSyncResult {
-  const MessageSyncResult({
-    required this.messages,
-    this.lastMessageId,
-  });
+  const MessageSyncResult({required this.messages, this.lastMessageId});
 
   final List<ChatMessage> messages;
   final int? lastMessageId;
@@ -388,7 +435,8 @@ class MessageSyncService {
       ),
       payload: payload,
     );
-    if (conversation.isGroup || !cryptoService.isDecryptFailureMarker(plaintext)) {
+    if (conversation.isGroup ||
+        !cryptoService.isDecryptFailureMarker(plaintext)) {
       return plaintext;
     }
     await refreshUsers();
@@ -427,7 +475,9 @@ class MessageSyncService {
     final existingByMessageId = existingById[message.id];
     if (existingByMessageId != null &&
         existingByMessageId.plaintextBody.isNotEmpty &&
-        !cryptoService.isDecryptFailureMarker(existingByMessageId.plaintextBody)) {
+        !cryptoService.isDecryptFailureMarker(
+          existingByMessageId.plaintextBody,
+        )) {
       return existingByMessageId.plaintextBody;
     }
     final clientMessageId = message.clientMessageId;
@@ -467,7 +517,10 @@ class MessageSyncService {
       if (cryptoService.isDecryptFailureMarker(plaintext)) {
         continue;
       }
-      await localStore.repairPlaintext(row: unprotectedRow, plaintext: plaintext);
+      await localStore.repairPlaintext(
+        row: unprotectedRow,
+        plaintext: plaintext,
+      );
     }
   }
 }
@@ -479,6 +532,7 @@ class OutgoingMessageService {
     required this.localStore,
     required this.outboxStore,
     this.attachmentTransferFacade,
+    this.onCryptoStateChanged,
   });
 
   final ChatRemoteDataSource remoteDataSource;
@@ -486,12 +540,14 @@ class OutgoingMessageService {
   final ChatLocalStore localStore;
   final OutboxStore outboxStore;
   final AttachmentTransferFacade? attachmentTransferFacade;
+  final Future<void> Function()? onCryptoStateChanged;
 
   Future<ChatMessage> sendMessage({
     required SendMessageCommand command,
     required Map<int, AppUser> usersById,
     required Future<void> Function() refreshUsers,
-    required Future<void> Function(Conversation conversation) persistConversation,
+    required Future<void> Function(Conversation conversation)
+    persistConversation,
   }) async {
     final now = DateTime.now().toUtc();
     final clientMessageId =
@@ -519,6 +575,10 @@ class OutgoingMessageService {
         refreshUsers: refreshUsers,
         persistConversation: persistConversation,
       );
+      final cryptoStateChanged = onCryptoStateChanged;
+      if (cryptoStateChanged != null) {
+        unawaited(cryptoStateChanged());
+      }
       await outboxStore.remove(clientMessageId);
       return sent;
     } on ApiException catch (error) {
@@ -548,7 +608,8 @@ class OutgoingMessageService {
     required int currentUserId,
     required Map<int, AppUser> usersById,
     required Future<void> Function() refreshUsers,
-    required Future<void> Function(Conversation conversation) persistConversation,
+    required Future<void> Function(Conversation conversation)
+    persistConversation,
   }) async {
     final pending = await outboxStore.readForConversation(conversation.id);
     for (final item in pending) {
@@ -594,10 +655,13 @@ class OutgoingMessageService {
     required String clientMessageId,
     required Map<int, AppUser> usersById,
     required Future<void> Function() refreshUsers,
-    required Future<void> Function(Conversation conversation) persistConversation,
+    required Future<void> Function(Conversation conversation)
+    persistConversation,
   }) async {
     final queued = await outboxStore.readForConversation(conversation.id);
-    final target = queued.where((item) => item.clientMessageId == clientMessageId);
+    final target = queued.where(
+      (item) => item.clientMessageId == clientMessageId,
+    );
     if (target.isEmpty) {
       return;
     }
@@ -624,10 +688,37 @@ class OutgoingMessageService {
     required int currentUserId,
     required Map<int, AppUser> usersById,
     required Future<void> Function() refreshUsers,
-    required Future<void> Function(Conversation conversation) persistConversation,
+    required Future<void> Function(Conversation conversation)
+    persistConversation,
   }) async {
+    final capabilities = await remoteDataSource
+        .fetchCryptoProtocolCapabilities();
+    try {
+      await cryptoService.assertRemoteCanSend(
+        isGroup: conversation.isGroup,
+        remotePrefixes: conversation.isGroup
+            ? capabilities.groupMessagePrefixes
+            : capabilities.privateMessagePrefixes,
+      );
+    } on StateError catch (error) {
+      // A protocol mismatch is permanent for this queued payload. Persist it
+      // as a delivery failure instead of allowing a crypto assertion to escape
+      // through the UI event loop.
+      throw ApiException(
+        error.message,
+        code: 'crypto_protocol_mismatch',
+        isRetryable: false,
+      );
+    }
     final attachmentIds = <int>[];
     for (final attachment in queued.attachments) {
+      if (!capabilities.attachmentCipherVersions.contains('attachment:v2')) {
+        throw ApiException(
+          'Server does not support the v2 attachment protocol.',
+          code: 'attachment_protocol_mismatch',
+          isRetryable: false,
+        );
+      }
       if (!attachment.hasUploadSource) {
         throw ApiException(
           'Attachment source is missing. Please pick the file again.',
@@ -648,6 +739,16 @@ class OutgoingMessageService {
                 usersById: usersById,
               ),
               plaintext: plaintext,
+            );
+          },
+          deriveDescriptor: (attachmentId) {
+            return cryptoService.deriveAttachmentDescriptor(
+              request: ChatCryptoRequest(
+                currentUserId: currentUserId,
+                conversation: conversation,
+                usersById: usersById,
+              ),
+              attachmentId: attachmentId,
             );
           },
         );
@@ -703,7 +804,10 @@ class OutgoingMessageService {
       clientMessageId: message.clientMessageId,
       deliveryState: MessageDeliveryState.sent,
     );
-    await localStore.persistMessage(decoded: decoded, encryptedBody: message.body);
+    await localStore.persistMessage(
+      decoded: decoded,
+      encryptedBody: message.body,
+    );
     await persistConversation(
       conversation.copyWith(
         lastMessagePreview: decoded.body.length > 80
@@ -764,7 +868,8 @@ class OutgoingMessageService {
       ),
       payload: payload,
     );
-    if (conversation.isGroup || !cryptoService.isDecryptFailureMarker(plaintext)) {
+    if (conversation.isGroup ||
+        !cryptoService.isDecryptFailureMarker(plaintext)) {
       return plaintext;
     }
     await refreshUsers();
@@ -794,7 +899,8 @@ class ChatRealtimeCoordinator {
     required int currentUserId,
     required Map<int, AppUser> usersById,
     required Future<void> Function() refreshUsers,
-    required Future<void> Function(Conversation conversation) persistConversation,
+    required Future<void> Function(Conversation conversation)
+    persistConversation,
   }) async {
     if (event.event == 'conversation.updated') {
       return null;
@@ -854,7 +960,8 @@ class ChatRealtimeCoordinator {
       ),
       payload: payload,
     );
-    if (conversation.isGroup || !cryptoService.isDecryptFailureMarker(plaintext)) {
+    if (conversation.isGroup ||
+        !cryptoService.isDecryptFailureMarker(plaintext)) {
       return plaintext;
     }
     await refreshUsers();

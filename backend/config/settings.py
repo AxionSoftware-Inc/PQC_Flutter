@@ -15,6 +15,17 @@ SECRET_KEY = os.environ.get(
     'DJANGO_SECRET_KEY',
     'django-insecure-dev-only-change-me',
 )
+GOOGLE_ANDROID_CLIENT_ID = os.environ.get(
+    'GOOGLE_ANDROID_CLIENT_ID',
+    '937305477350-n9h2s4e6ra9rvs6s1s95gel6p4ldl5tg.apps.googleusercontent.com',
+)
+# Enterprise recovery is backed by AWS KMS in production.  The development
+# adapter is intentionally allowed only outside a production deployment.
+AWS_REGION = os.environ.get('AWS_REGION', '')
+AWS_KMS_ESCROW_KEY_ID = os.environ.get('AWS_KMS_ESCROW_KEY_ID', '')
+CRYPTO_ESCROW_REQUIRE_KMS = os.environ.get('DJANGO_ENV', '').lower() == 'production'
+CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL = os.environ.get('DJANGO_ENV', '').lower() == 'production'
+LOCAL_ESCROW_TEST_SECRET = os.environ.get('LOCAL_ESCROW_TEST_SECRET', SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', '').lower() == 'true'

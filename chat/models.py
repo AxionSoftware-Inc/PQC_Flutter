@@ -114,6 +114,8 @@ class MessageAttachment(models.Model):
     plaintext_sha256 = models.CharField(max_length=128, blank=True)
     manifest_sha256 = models.CharField(max_length=128, blank=True)
     file_key_wrap = models.TextField(blank=True)
+    conversation_epoch_id = models.CharField(max_length=128, blank=True)
+    recovery_manifest_sequence = models.PositiveBigIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -165,6 +167,8 @@ class AttachmentUploadSession(models.Model):
     plaintext_sha256 = models.CharField(max_length=128)
     manifest_sha256 = models.CharField(max_length=128)
     file_key_wrap = models.TextField()
+    conversation_epoch_id = models.CharField(max_length=128, blank=True)
+    recovery_manifest_sequence = models.PositiveBigIntegerField(default=0)
     blob_storage_key = models.CharField(max_length=512, blank=True)
     status = models.CharField(
         max_length=16,
@@ -205,6 +209,25 @@ class AttachmentChunkReceipt(models.Model):
 
     def __str__(self) -> str:
         return f'{self.session.session_id}:{self.chunk_index}'
+
+
+class ConversationCryptoEpoch(models.Model):
+    class State(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        ACTIVE = 'active', 'Active'
+        CLOSED = 'closed', 'Closed'
+
+    conversation = models.ForeignKey(
+        Conversation, on_delete=models.CASCADE, related_name='crypto_epochs',
+    )
+    epoch_id = models.CharField(max_length=64, unique=True)
+    state = models.CharField(max_length=16, choices=State.choices, default=State.PENDING)
+    reason = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    activated_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-id']
 
 
 class ConversationKeyEnvelope(models.Model):

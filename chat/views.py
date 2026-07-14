@@ -21,6 +21,7 @@ from chat.models import (
     AttachmentChunkReceipt,
     AttachmentUploadSession,
     Conversation,
+    ConversationCryptoEpoch,
     Message,
     MessageAttachment,
 )
@@ -29,6 +30,7 @@ from chat.serializers import (
     AttachmentSessionCompleteSerializer,
     AttachmentSessionCreateSerializer,
     AttachmentUploadSessionSerializer,
+    CRYPTO_PROTOCOL_CAPABILITIES,
     ConversationSerializer,
     GROUP_ENVELOPE_ALGORITHM,
     ConversationKeyEnvelopeSerializer,
@@ -44,6 +46,16 @@ from users.models import UserDevice, WorkspaceMember
 
 User = get_user_model()
 DEFAULT_ATTACHMENT_SESSION_TTL_DAYS = 7
+
+
+class CryptoProtocolCapabilitiesView(APIView):
+    """Public, immutable writer capabilities for the deployed API."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        return Response(CRYPTO_PROTOCOL_CAPABILITIES)
 
 
 def get_user_conversation_or_404(request, conversation_id):
@@ -352,7 +364,7 @@ class ConversationKeyEnvelopeView(APIView):
         if serializer.validated_data['algorithm'] != GROUP_ENVELOPE_ALGORITHM:
             return Response(
                 {
-                    'detail': 'Only group-ml-kem-768-aesgcm-v1 is accepted.',
+                    'detail': 'Only group-ml-kem-768-aesgcm-v2 is accepted.',
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -374,6 +386,25 @@ class ConversationKeyEnvelopeView(APIView):
                 },
             )
             saved.append(envelope)
+
+        ConversationCryptoEpoch.objects.filter(
+            conversation=conversation,
+            state__in=[
+                ConversationCryptoEpoch.State.ACTIVE,
+                ConversationCryptoEpoch.State.PENDING,
+            ],
+        ).exclude(epoch_id=serializer.validated_data['key_id']).update(
+            state=ConversationCryptoEpoch.State.CLOSED,
+        )
+        ConversationCryptoEpoch.objects.update_or_create(
+            conversation=conversation,
+            epoch_id=serializer.validated_data['key_id'],
+            defaults={
+                'state': ConversationCryptoEpoch.State.ACTIVE,
+                'reason': '',
+                'activated_at': timezone.now(),
+            },
+        )
 
         return Response(
             ConversationKeyEnvelopeSerializer(saved, many=True).data,
@@ -453,6 +484,8 @@ class AttachmentSessionCreateView(APIView):
             plaintext_sha256=payload['plaintext_sha256'],
             manifest_sha256=payload['manifest_sha256'],
             file_key_wrap=payload['file_key_wrap'],
+            conversation_epoch_id=payload['conversation_epoch_id'],
+            recovery_manifest_sequence=payload['recovery_manifest_sequence'],
             status=AttachmentUploadSession.Status.PENDING,
             expires_at=timezone.now() + timedelta(days=DEFAULT_ATTACHMENT_SESSION_TTL_DAYS),
         )
@@ -609,6 +642,8 @@ class AttachmentSessionCompleteView(APIView):
             plaintext_sha256=session.plaintext_sha256,
             manifest_sha256=session.manifest_sha256,
             file_key_wrap=session.file_key_wrap,
+            conversation_epoch_id=session.conversation_epoch_id,
+            recovery_manifest_sequence=session.recovery_manifest_sequence,
         )
         session.completed_attachment = attachment
         session.blob_storage_key = blob_storage_key

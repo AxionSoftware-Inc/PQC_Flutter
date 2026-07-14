@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/database/app_database.dart';
@@ -7,6 +9,8 @@ import '../../../core/models/conversation.dart';
 import '../../../core/models/organization_context.dart';
 import '../../../core/models/session_user.dart';
 import '../../../core/storage/local_ui_preferences_store.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/config/api_config.dart';
 import '../../chat/application/chat_facade.dart';
 import '../../crypto/durability/crypto_core_facade.dart';
 import '../../crypto/durability/crypto_durability_models.dart';
@@ -48,10 +52,7 @@ class ConversationListItemState {
 }
 
 class ChatListViewState {
-  const ChatListViewState({
-    required this.preferences,
-    required this.items,
-  });
+  const ChatListViewState({required this.preferences, required this.items});
 
   final ChatListPreferences preferences;
   final List<ConversationListItemState> items;
@@ -94,10 +95,7 @@ class ContactListItemState {
 }
 
 class ContactsSectionState {
-  const ContactsSectionState({
-    required this.label,
-    required this.items,
-  });
+  const ContactsSectionState({required this.label, required this.items});
 
   final String label;
   final List<ContactListItemState> items;
@@ -213,6 +211,7 @@ class ChatHubController extends ChangeNotifier {
     required this.cryptoCoreFacade,
     required this.currentUserId,
     required this.sessionUserProvider,
+    required this.apiClient,
     AppDatabase? database,
     LocalUiPreferencesStore? preferencesStore,
   }) : _database = database ?? AppDatabase(),
@@ -222,6 +221,7 @@ class ChatHubController extends ChangeNotifier {
   final CryptoCoreFacade cryptoCoreFacade;
   final int currentUserId;
   final SessionUser Function() sessionUserProvider;
+  final ApiClient apiClient;
   final AppDatabase _database;
   final LocalUiPreferencesStore _preferencesStore;
 
@@ -245,6 +245,7 @@ class ChatHubController extends ChangeNotifier {
   Map<int, UserKeyTrust> _trustByUserId = const {};
   List<ConversationListItemState> _conversationItems = const [];
   List<ContactsSectionState> _contactSections = const [];
+  String? _recoveryApprovalChallenge;
 
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -259,7 +260,9 @@ class ChatHubController extends ChangeNotifier {
   );
   SettingsViewState get settingsState {
     final sessionUser = sessionUserProvider();
-    final currentUser = _users.where((item) => item.id == sessionUser.id).firstOrNull;
+    final currentUser = _users
+        .where((item) => item.id == sessionUser.id)
+        .firstOrNull;
     final currentDevice = currentUser?.devices
         .where((item) => item.deviceId == sessionUser.deviceId)
         .firstOrNull;
@@ -290,6 +293,7 @@ class ChatHubController extends ChangeNotifier {
       ),
     );
   }
+
   Map<int, UserKeyTrust> get trustByUserId => _trustByUserId;
 
   Future<void> load() async {
@@ -443,13 +447,151 @@ class ChatHubController extends ChangeNotifier {
     final blob = await cryptoCoreFacade.exportEncryptedBackup(
       BackupExportRequest(recoveryPassphrase: recoveryPassphrase),
     );
+    final bytes = utf8.encode(blob);
+    await apiClient.put('/users/me/crypto-backup', {
+      'version': 1,
+      'encrypted_blob': blob,
+      'blob_sha256': sha256.convert(bytes).toString(),
+    });
     _backupState = _backupState.copyWith(
       lastExportedBlob: blob,
-        statusMessage: 'Encrypted backup tayyor bo‘ldi.',
-        statusTone: UiStatusTone.success,
+      statusMessage: 'Encrypted backup tayyor bo‘ldi.',
+      statusTone: UiStatusTone.success,
     );
     notifyListeners();
     return blob;
+  }
+
+  Future<String?> downloadServerBackup() async {
+    final response = await apiClient.get('/users/me/crypto-backup');
+    if (response is! Map || response['available'] != true) return null;
+    final blob = response['encrypted_blob'] as String?;
+    if (blob == null || blob.isEmpty) return null;
+    return blob;
+  }
+
+  Future<void> syncEnterpriseRecoveryManifest() async {
+    if (!ApiConfig.baseUrl.toLowerCase().startsWith('https://')) {
+      _backupState = _backupState.copyWith(
+        statusMessage: 'Automatic recovery is waiting for HTTPS transport.',
+        statusTone: UiStatusTone.warning,
+      );
+      notifyListeners();
+      return;
+    }
+    final response = await apiClient.get('/users/me/crypto-recovery');
+    final sequence = response is Map && response['available'] == true
+        ? response['sequence'] as int? ?? 0
+        : 0;
+    await _publishEnterpriseRecoverySnapshot(expectedSequence: sequence);
+    _backupState = _backupState.copyWith(
+      statusMessage:
+          'Enterprise recovery snapshot is synchronized. Restore history explicitly from Security when needed.',
+      statusTone: UiStatusTone.success,
+    );
+    notifyListeners();
+  }
+
+  /// Explicit user action: the app must never silently import escrowed keys
+  /// while merely opening a chat list on a newly installed device.
+  Future<void> restoreEnterpriseRecovery() async {
+    Map<String, String>? queryParameters;
+    final challenge = _recoveryApprovalChallenge;
+    if (challenge != null && challenge.isNotEmpty) {
+      queryParameters = {'approval': challenge};
+    }
+    dynamic response;
+    try {
+      response = await apiClient.get(
+        '/users/me/crypto-recovery',
+        queryParameters: queryParameters,
+      );
+    } on ApiException catch (error) {
+      if (error.code != 'recovery_approval_required') rethrow;
+      final approval = await apiClient.post(
+        '/users/me/crypto-recovery/approvals',
+        {'requester_device_id': sessionUserProvider().deviceId},
+      ) as Map<String, dynamic>;
+      _recoveryApprovalChallenge = approval['challenge'] as String?;
+      _backupState = _backupState.copyWith(
+        statusMessage:
+            'Recovery request sent. Approve it from another active device, then press Restore again.',
+        statusTone: UiStatusTone.warning,
+      );
+      notifyListeners();
+      return;
+    }
+    if (response is! Map || response['available'] != true) {
+      throw ApiException('No enterprise recovery manifest is available.');
+    }
+    final records = response['records'] as List<dynamic>? ?? const [];
+    if (records.isEmpty) {
+      throw ApiException('Enterprise recovery manifest has no records.');
+    }
+    for (final record in records) {
+      final payload = (record as Map)['payload'] as String?;
+      if (payload != null && payload.isNotEmpty) {
+        await cryptoCoreFacade.importEnterpriseRecoveryManifest(payload);
+      }
+    }
+    final historical = await cryptoCoreFacade.historicalDecryptCheck();
+    _securityState = _securityState.copyWith(
+      hasHistoricalDecryptCapability: historical.hasHistoricalCapability,
+      availableHistoricalKeysets: historical.availableKeysets,
+    );
+    _backupState = _backupState.copyWith(
+      statusMessage: 'Enterprise history recovery completed.',
+      statusTone: UiStatusTone.success,
+    );
+    await refresh();
+    notifyListeners();
+  }
+
+  Future<List<Map<String, dynamic>>> pendingRecoveryApprovals() async {
+    final response = await apiClient.get('/users/me/crypto-recovery/approvals');
+    if (response is! Map) return const [];
+    return (response['approvals'] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+  }
+
+  Future<void> decideRecoveryApproval({
+    required int approvalId,
+    required bool approved,
+  }) {
+    return apiClient.post(
+      '/users/me/crypto-recovery/approvals/$approvalId',
+      {
+        'approver_device_id': sessionUserProvider().deviceId,
+        'approved': approved,
+      },
+    );
+  }
+
+  Future<void> _publishEnterpriseRecoverySnapshot({
+    required int expectedSequence,
+  }) async {
+    final payload = await cryptoCoreFacade.exportEnterpriseRecoveryManifest();
+    final deviceId = sessionUserProvider().deviceId;
+    try {
+      await apiClient.put('/users/me/crypto-recovery', {
+        'schema_version': 2,
+        'payload': payload,
+        'source_device_id': deviceId,
+        'expected_sequence': expectedSequence,
+      });
+    } on ApiException catch (error) {
+      if (error.code != 'recovery_manifest_conflict') rethrow;
+      final latest = await apiClient.get('/users/me/crypto-recovery');
+      if (latest is! Map || latest['available'] != true) rethrow;
+      await apiClient.put('/users/me/crypto-recovery', {
+        'schema_version': 2,
+        'payload': payload,
+        'source_device_id': deviceId,
+        'expected_sequence': latest['sequence'] as int? ?? 0,
+      });
+    }
   }
 
   Future<void> importBackup({
@@ -509,19 +651,29 @@ class ChatHubController extends ChangeNotifier {
     final rows = await _database.readConversations();
     final rowMap = {
       for (final row in rows)
-        if (row.workspaceId == sessionUser.activeWorkspaceId || row.workspaceId == 0)
+        if (row.workspaceId == sessionUser.activeWorkspaceId ||
+            row.workspaceId == 0)
           row.id: row,
     };
     final draftMap = <int, String>{};
+    final localPreviewMap = <int, String>{};
     final messageStateMap = <int, MessageDeliveryState?>{};
     for (final conversation in _conversations) {
       final draft = await _database.readDraft(conversation.id);
       if (draft != null && draft.draftText.trim().isNotEmpty) {
         draftMap[conversation.id] = draft.draftText.trim();
       }
-      final messages = await _database.readMessagesForConversation(conversation.id);
+      final messages = await _database.readMessagesForConversation(
+        conversation.id,
+      );
       if (messages.isNotEmpty) {
         final latest = messages.last;
+        final body = latest.plaintextBody.trim();
+        if (body.isNotEmpty &&
+            !body.startsWith('[decrypt-') &&
+            !body.contains('Historical decrypt unavailable')) {
+          localPreviewMap[conversation.id] = body;
+        }
         if (latest.senderId == currentUserId) {
           messageStateMap[conversation.id] = _deliveryStateFromStored(
             latest.deliveryState,
@@ -536,7 +688,9 @@ class ChatHubController extends ChangeNotifier {
             (id) => id != currentUserId,
             orElse: () => -1,
           );
-          final peerUser = _users.where((user) => user.id == peerId).firstOrNull;
+          final peerUser = _users
+              .where((user) => user.id == peerId)
+              .firstOrNull;
           final trust = peerUser == null ? null : _trustByUserId[peerUser.id];
           final draftPreview = draftMap[conversation.id];
           final row = rowMap[conversation.id];
@@ -555,7 +709,8 @@ class ChatHubController extends ChangeNotifier {
                       : conversation.title),
             preview: draftPreview != null && _appPreferences.keepDrafts
                 ? 'Draft: $draftPreview'
-                : conversation.lastMessagePreview,
+                : localPreviewMap[conversation.id] ??
+                      conversation.lastMessagePreview,
             draftPreview: draftPreview,
             unreadCount: unreadCount,
             isPinned: _chatPreferences.pinnedConversationIds.contains(
@@ -601,8 +756,8 @@ class ChatHubController extends ChangeNotifier {
   bool _matchesConversationFilter(ConversationListItemState item) {
     final query = _chatPreferences.searchQuery.trim().toLowerCase();
     if (query.isNotEmpty) {
-      final haystack =
-          '${item.title} ${item.preview} ${item.deviceSummary}'.toLowerCase();
+      final haystack = '${item.title} ${item.preview} ${item.deviceSummary}'
+          .toLowerCase();
       if (!haystack.contains(query)) {
         return false;
       }
@@ -683,8 +838,8 @@ class ChatHubController extends ChangeNotifier {
     final query = _contactsSearchQuery.trim().toLowerCase();
     if (query.isNotEmpty &&
         !('${item.title} ${item.subtitle} ${item.deviceSummary}'
-                .toLowerCase()
-                .contains(query))) {
+            .toLowerCase()
+            .contains(query))) {
       return false;
     }
     switch (_contactsFilter) {
@@ -739,8 +894,8 @@ class ChatHubController extends ChangeNotifier {
       );
     }
     return const ContactTrustBadgeState(
-        label: 'Ready',
-        tone: UiStatusTone.info,
+      label: 'Ready',
+      tone: UiStatusTone.info,
       details: 'PQC ready, lekin hali verify qilinmagan.',
     );
   }
@@ -791,11 +946,14 @@ class ChatHubController extends ChangeNotifier {
         verified += 1;
       }
     }
-    final currentUser = users.where((item) => item.id == sessionUser.id).firstOrNull;
+    final currentUser = users
+        .where((item) => item.id == sessionUser.id)
+        .firstOrNull;
     final currentDevice = currentUser?.devices
         .where((item) => item.deviceId == sessionUser.deviceId)
         .firstOrNull;
-    final isCurrentDeviceReady = currentDevice != null &&
+    final isCurrentDeviceReady =
+        currentDevice != null &&
         currentDevice.hasUsableMlKemKey &&
         currentDevice.hasUsableMlDsaKey &&
         currentDevice.isActive;

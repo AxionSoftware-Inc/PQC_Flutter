@@ -50,6 +50,21 @@ class SessionController extends ChangeNotifier {
     }
   }
 
+  Future<bool> loginWithGoogle() async {
+    _setLoading(true);
+    _error = null;
+    try {
+      _sessionUser = await authRepository.loginWithGoogle();
+      await _notifySessionChanged(_sessionUser);
+      return true;
+    } catch (error) {
+      _error = error.toString();
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   Future<bool> bootstrapLogin() async {
     _setLoading(true);
     _error = null;

@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:crypto_core/crypto_core.dart'
+    show GroupCipherMessageCodec, PqcPrivateMessageCodec;
 
 import 'app/app.dart';
 import 'app/design_system/app_design_system.dart';
@@ -29,6 +31,7 @@ import 'features/crypto/chat_cipher_service.dart';
 import 'features/crypto/durability/crypto_backup_service.dart';
 import 'features/crypto/durability/crypto_core_facade.dart';
 import 'features/crypto/durability/key_material_registry.dart';
+import 'features/crypto/durability/enterprise_recovery_sync_service.dart';
 import 'features/crypto/group_key_store.dart';
 import 'features/crypto/outbound_message_cache.dart';
 import 'features/security/key_verification_service.dart';
@@ -93,12 +96,21 @@ Future<void> main() async {
   final chatRealtimeService = ChatRealtimeService(apiClient: apiClient);
   final chatCipherService = RoutedChatCipherService(
     algorithms: [
-      GroupChatCipherAlgorithm(groupKeyStore: groupKeyStore),
+      GroupChatCipherAlgorithm(
+        groupKeyStore: groupKeyStore,
+        codec: GroupCipherMessageCodec(groupKeyStore: groupKeyStore),
+      ),
       PqcPrivateChatAlgorithm(
         deviceIdentityService: deviceIdentityService,
         devicePqcKeyService: devicePqcKeyService,
         devicePqcSigningKeyService: devicePqcSigningKeyService,
         keyMaterialRegistry: keyMaterialRegistry,
+        codec: PqcPrivateMessageCodec(
+          deviceIdentityService: deviceIdentityService,
+          devicePqcKeyService: devicePqcKeyService,
+          devicePqcSigningKeyService: devicePqcSigningKeyService,
+          keyMaterialRegistry: keyMaterialRegistry,
+        ),
       ),
     ],
     outboundMessageCache: outboundMessageCache,
@@ -110,6 +122,11 @@ Future<void> main() async {
     backupService: CryptoBackupService(
       keyMaterialRegistry: keyMaterialRegistry,
     ),
+  );
+  final enterpriseRecoverySyncService = EnterpriseRecoverySyncService(
+    apiClient: apiClient,
+    cryptoCoreFacade: cryptoCoreFacade,
+    deviceIdentityService: deviceIdentityService,
   );
   final privateConversationSecurityCoordinator =
       PrivateConversationSecurityCoordinator(
@@ -138,6 +155,7 @@ Future<void> main() async {
     ),
     cryptoService: chatCryptoService,
     attachmentTransferFacade: attachmentTransferFacade,
+    onCryptoStateChanged: enterpriseRecoverySyncService.publishInBackground,
   );
   final sessionController = SessionController(
     authRepository: authRepository,
@@ -149,6 +167,8 @@ Future<void> main() async {
         await chatRealtimeService.disconnect();
         return;
       }
+      await cryptoCoreFacade.activateAccount('${sessionUser.accountId}');
+      await cryptoCoreFacade.initialize();
       await chatRealtimeService.connect(
         token: sessionUser.token,
         workspaceId: '${sessionUser.activeWorkspaceId}',
@@ -165,10 +185,10 @@ Future<void> main() async {
       cryptoCoreFacade: cryptoCoreFacade,
       themeController: themeController,
       skin: AppSkinRegistry.resolve(skinId),
+      apiClient: apiClient,
     ),
   );
 
-  await cryptoCoreFacade.initialize();
   await themeController.initialize();
   unawaited(sessionController.initialize());
 }

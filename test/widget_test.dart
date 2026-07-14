@@ -50,9 +50,7 @@ void main() {
           devicePqcSigningKeyService: devicePqcSigningKeyService,
           deviceSecurityStateService: deviceSecurityStateService,
         ),
-        outboundMessageCache: OutboundMessageCache(
-          secretStore: secretStore,
-        ),
+        outboundMessageCache: OutboundMessageCache(secretStore: secretStore),
       ),
     );
     final skin = AppSkinRegistry.resolve(AppSkinRegistry.defaultSkinId);
@@ -68,9 +66,9 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.text('PQC Messenger Workspace'), findsOneWidget);
-    expect(find.text('Display name'), findsOneWidget);
-    expect(find.byType(FilledButton), findsOneWidget);
+    expect(find.text('Sign in to PQC Chat'), findsOneWidget);
+    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(find.byType(FilledButton), findsNothing);
     expect(find.byType(OutlinedButton), findsOneWidget);
   });
 }

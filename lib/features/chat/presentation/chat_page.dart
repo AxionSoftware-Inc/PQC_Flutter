@@ -112,7 +112,8 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
-    if ((text.isEmpty && _selectedAttachments.isEmpty) || _controller.isSending) {
+    if ((text.isEmpty && _selectedAttachments.isEmpty) ||
+        _controller.isSending) {
       return;
     }
 
@@ -293,7 +294,9 @@ class _ChatPageState extends State<ChatPage> {
             conversation: widget.conversation,
             trust: conversationTrust,
             brandLabel: brand?.label,
-            onVerify: !widget.conversation.isGroup &&
+            onBack: () => Navigator.of(context).maybePop(),
+            onVerify:
+                !widget.conversation.isGroup &&
                     conversationTrust?.isAvailable == true
                 ? _verifyCurrentKey
                 : null,
@@ -347,7 +350,8 @@ class _ChatPageState extends State<ChatPage> {
                     child: Padding(
                       padding: EdgeInsets.all(24),
                       child: AppEmptyState(
-                        message: 'Conversation hali bo‘sh. Birinchi xabarni yuboring.',
+                        message:
+                            'Conversation hali bo‘sh. Birinchi xabarni yuboring.',
                         icon: Icons.chat_bubble_outline_rounded,
                       ),
                     ),
@@ -409,14 +413,16 @@ class _ChatPageState extends State<ChatPage> {
                       children: [
                         _ComposerActionButton(
                           icon: Icons.add_rounded,
-                          onPressed:
-                              _controller.isSending ? null : _pickAttachments,
+                          onPressed: _controller.isSending
+                              ? null
+                              : _pickAttachments,
                         ),
                         Expanded(
                           child: Theme(
                             data: Theme.of(context).copyWith(
-                              inputDecorationTheme:
-                                  Theme.of(context).inputDecorationTheme.copyWith(
+                              inputDecorationTheme: Theme.of(context)
+                                  .inputDecorationTheme
+                                  .copyWith(
                                     filled: false,
                                     fillColor: Colors.transparent,
                                     contentPadding: EdgeInsets.symmetric(
@@ -440,8 +446,9 @@ class _ChatPageState extends State<ChatPage> {
                         SizedBox(width: spacing.xs),
                         _ComposerSendButton(
                           isSending: _controller.isSending,
-                          onPressed:
-                              _controller.isSending ? null : _sendMessage,
+                          onPressed: _controller.isSending
+                              ? null
+                              : _sendMessage,
                         ),
                       ],
                     ),
@@ -571,145 +578,146 @@ class _ChatPageState extends State<ChatPage> {
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: EdgeInsets.symmetric(horizontal: spacing.xs, vertical: spacing.xs),
+        margin: EdgeInsets.symmetric(
+          horizontal: spacing.xs,
+          vertical: spacing.xs,
+        ),
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: MediaQuery.sizeOf(context).width * 0.78,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-            children: [
-              Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: spacing.md,
-                vertical: spacing.sm,
-              ),
-              decoration: BoxDecoration(
-                color: isMine ? colors.chatMine : colors.chatPeer,
-                borderRadius: BorderRadius.circular(context.appRadii.md),
-                border: Border.all(
-                  color: isMine
-                      ? colors.primary.withValues(alpha: 0.16)
-                      : colors.border,
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (!isMine) ...[
-                    Text(
-                      message.senderName,
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: colors.textMuted,
-                        fontWeight: FontWeight.w700,
+          child: IntrinsicWidth(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: isMine
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: spacing.md,
+                    vertical: spacing.sm,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isMine ? colors.chatMine : colors.chatPeer,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(context.appRadii.md),
+                      topRight: Radius.circular(context.appRadii.md),
+                      bottomLeft: Radius.circular(
+                        isMine ? context.appRadii.md : context.appRadii.sm,
+                      ),
+                      bottomRight: Radius.circular(
+                        isMine ? context.appRadii.sm : context.appRadii.md,
                       ),
                     ),
-                    SizedBox(height: spacing.xs),
-                  ],
-                  if (message.attachments.isNotEmpty) ...[
-                    Wrap(
-                      spacing: spacing.xs,
-                      runSpacing: spacing.xs,
-                      children: message.attachments.map(_buildAttachmentChip).toList(),
+                    border: Border.all(
+                      color: isMine
+                          ? colors.primary.withValues(alpha: 0.16)
+                          : colors.border,
                     ),
-                    if (message.body.trim().isNotEmpty) SizedBox(height: spacing.sm),
-                  ],
-                  if (isDecryptNeedsRestore)
-                    Text(
-                      'Historical decrypt unavailable on this device. Restore backup to read this message.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: isMine ? Colors.white : null,
-                        height: 1.35,
-                      ),
-                    )
-                  else if (isDecryptError)
-                    Text(
-                      'Unable to decrypt this message.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: isMine ? Colors.white : null,
-                        height: 1.35,
-                      ),
-                    )
-                  else if (message.body.trim().isNotEmpty)
-                    Text(
-                      message.body,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: isMine ? Colors.white : null,
-                        height: 1.35,
-                      ),
-                    ),
-                  if (!widget.conversation.isGroup ||
-                      message.deliveryState != MessageDeliveryState.sent) ...[
-                    SizedBox(height: spacing.sm),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Wrap(
-                        spacing: spacing.xs,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.lock_outline_rounded,
-                            size: 14,
-                            color: isMine
-                                ? Colors.white.withValues(alpha: 0.72)
-                                : colors.textMuted,
-                          ),
-                          if (!widget.conversation.isGroup)
-                            Icon(
-                              _controller.trust?.trust.isEnterpriseVerified == true
-                                  ? Icons.verified_user_rounded
-                                  : Icons.shield_outlined,
-                              size: 14,
-                              color: isMine
-                                  ? Colors.white.withValues(alpha: 0.72)
-                                  : colors.textMuted,
-                            ),
-                          if (message.deliveryState != MessageDeliveryState.sent)
-                            Text(
-                              _statusLabel(message),
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: isMine
-                                    ? Colors.white.withValues(alpha: 0.72)
-                                    : colors.textMuted,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (!isMine) ...[
+                        Text(
+                          message.senderName,
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: colors.textMuted,
+                                fontWeight: FontWeight.w700,
                               ),
+                        ),
+                        SizedBox(height: spacing.xs),
+                      ],
+                      if (message.attachments.isNotEmpty) ...[
+                        Wrap(
+                          spacing: spacing.xs,
+                          runSpacing: spacing.xs,
+                          children: message.attachments
+                              .map(_buildAttachmentChip)
+                              .toList(),
+                        ),
+                        if (message.body.trim().isNotEmpty)
+                          SizedBox(height: spacing.sm),
+                      ],
+                      if (isDecryptNeedsRestore)
+                        Text(
+                          'Historical decrypt unavailable on this device. Restore backup to read this message.',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: isMine ? Colors.white : null,
+                                height: 1.35,
+                              ),
+                        )
+                      else if (isDecryptError)
+                        Text(
+                          'Unable to decrypt this message.',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: isMine ? Colors.white : null,
+                                height: 1.35,
+                              ),
+                        )
+                      else if (message.body.trim().isNotEmpty)
+                        Text(
+                          message.body,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: isMine ? Colors.white : null,
+                                height: 1.35,
+                              ),
+                        ),
+                      SizedBox(height: spacing.xs),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Wrap(
+                          spacing: spacing.xs,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (message.deliveryState !=
+                                MessageDeliveryState.sent)
+                              Text(
+                                _statusLabel(message),
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: isMine
+                                          ? Colors.white.withValues(alpha: 0.72)
+                                          : colors.textMuted,
+                                    ),
+                              ),
+                            Text(
+                              _formatMessageTime(message.createdAt),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: isMine
+                                        ? Colors.white.withValues(alpha: 0.68)
+                                        : colors.textMuted,
+                                  ),
                             ),
-                          Text(
-                            _formatMessageTime(message.createdAt),
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: isMine
-                                  ? Colors.white.withValues(alpha: 0.68)
-                                  : colors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ] else
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Padding(
-                        padding: EdgeInsets.only(top: spacing.sm / 2),
-                        child: Text(
-                          _formatMessageTime(message.createdAt),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: isMine
-                                ? Colors.white.withValues(alpha: 0.68)
-                                : colors.textMuted,
-                          ),
+                            if (isMine)
+                              Icon(
+                                message.deliveryState ==
+                                        MessageDeliveryState.sent
+                                    ? Icons.done_all_rounded
+                                    : Icons.schedule_rounded,
+                                size: 14,
+                                color: Colors.white.withValues(alpha: 0.75),
+                              ),
+                          ],
                         ),
                       ),
-                    ),
-                ],
-              ),
-            ),
-              if (message.canRetry)
-                TextButton(
-                  onPressed: () => _retryMessage(message),
-                  child: const Text('Retry'),
+                    ],
+                  ),
                 ),
-            ],
+                if (message.canRetry)
+                  TextButton(
+                    onPressed: () => _retryMessage(message),
+                    child: const Text('Retry'),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -739,25 +747,23 @@ class _ChatPageState extends State<ChatPage> {
               await _controller.pauseTransfer(transfer.localId);
             }
           : () async {
-        try {
-          final path = await _controller.downloadAttachment(attachment);
-          if (!mounted) {
-            return;
-          }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Attachment downloaded to $path'),
-            ),
-          );
-        } catch (error) {
-          if (!mounted) {
-            return;
-          }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(error.toString())),
-          );
-        }
-      },
+              try {
+                final path = await _controller.downloadAttachment(attachment);
+                if (!mounted) {
+                  return;
+                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Attachment downloaded to $path')),
+                );
+              } catch (error) {
+                if (!mounted) {
+                  return;
+                }
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(error.toString())));
+              }
+            },
     );
   }
 
@@ -782,7 +788,11 @@ class _ChatPageState extends State<ChatPage> {
               padding: EdgeInsets.symmetric(vertical: spacing.xs),
               child: Row(
                 children: [
-                  Icon(Icons.sync_alt_rounded, size: 18, color: colors.textMuted),
+                  Icon(
+                    Icons.sync_alt_rounded,
+                    size: 18,
+                    color: colors.textMuted,
+                  ),
                   SizedBox(width: spacing.sm),
                   Expanded(
                     child: Column(
@@ -796,9 +806,8 @@ class _ChatPageState extends State<ChatPage> {
                           activeCount > 0
                               ? '$activeCount active • ${_controller.attachmentTransfers.length} total'
                               : '${_controller.attachmentTransfers.length} recent transfers',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: colors.textMuted,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: colors.textMuted),
                         ),
                       ],
                     ),
@@ -858,9 +867,9 @@ class _ChatPageState extends State<ChatPage> {
                   transfer.filename,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
               Text(
@@ -909,7 +918,8 @@ class _ChatPageState extends State<ChatPage> {
                 ),
               if (transfer.status == AttachmentTransferStatus.completed)
                 AppSecondaryButton(
-                  onPressed: () => _controller.clearCompletedTransfer(transfer.localId),
+                  onPressed: () =>
+                      _controller.clearCompletedTransfer(transfer.localId),
                   label: const Text('Clear'),
                 ),
               AppSecondaryButton(
@@ -922,9 +932,9 @@ class _ChatPageState extends State<ChatPage> {
             SizedBox(height: spacing.xs),
             Text(
               transfer.error!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colors.danger,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colors.danger),
             ),
           ],
         ],
@@ -937,7 +947,9 @@ class _ChatPageState extends State<ChatPage> {
       await _controller.resumeTransfer(transfer.localId);
       if (transfer.direction == AttachmentTransferDirection.download &&
           transfer.attachmentId != null) {
-        final attachments = _controller.messages.expand((item) => item.attachments);
+        final attachments = _controller.messages.expand(
+          (item) => item.attachments,
+        );
         for (final attachment in attachments) {
           if (attachment.id == transfer.attachmentId) {
             await _controller.downloadAttachment(attachment);
@@ -1032,10 +1044,7 @@ class _SelectedAttachment {
 }
 
 class _ComposerActionButton extends StatelessWidget {
-  const _ComposerActionButton({
-    required this.icon,
-    required this.onPressed,
-  });
+  const _ComposerActionButton({required this.icon, required this.onPressed});
 
   final IconData icon;
   final VoidCallback? onPressed;
@@ -1055,10 +1064,7 @@ class _ComposerActionButton extends StatelessWidget {
 }
 
 class _ComposerSendButton extends StatelessWidget {
-  const _ComposerSendButton({
-    required this.isSending,
-    required this.onPressed,
-  });
+  const _ComposerSendButton({required this.isSending, required this.onPressed});
 
   final bool isSending;
   final VoidCallback? onPressed;
@@ -1088,6 +1094,7 @@ class _ConversationHeader extends StatelessWidget {
     required this.conversation,
     required this.trust,
     required this.brandLabel,
+    required this.onBack,
     required this.onVerify,
     required this.transferCount,
   });
@@ -1096,97 +1103,76 @@ class _ConversationHeader extends StatelessWidget {
   final Conversation conversation;
   final ConversationKeyTrust? trust;
   final String? brandLabel;
+  final VoidCallback onBack;
   final Future<void> Function()? onVerify;
   final int transferCount;
 
   @override
   Widget build(BuildContext context) {
     final spacing = context.appSpacing;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(spacing.sm, spacing.xs, spacing.sm, 0),
-      child: AppSurfaceCard(
-        padding: EdgeInsets.symmetric(
-          horizontal: spacing.md,
-          vertical: spacing.sm,
-        ),
-        child: Row(
-          children: [
-            AppAvatar(
-              label: title,
-              icon: conversation.isGroup ? Icons.forum_outlined : null,
-              radius: 20,
-            ),
-            SizedBox(width: spacing.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        spacing.xs,
+        spacing.xs,
+        spacing.md,
+        spacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: context.appColors.background,
+        border: Border(bottom: BorderSide(color: context.appColors.border)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+            tooltip: 'Back',
+          ),
+          AppAvatar(
+            label: title,
+            icon: conversation.isGroup ? Icons.forum_outlined : null,
+            radius: 20,
+          ),
+          SizedBox(width: spacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
-                  Text(
-                    _headerSubtitle(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: context.appColors.textMuted,
-                    ),
-                  ),
-                  SizedBox(height: spacing.xs),
-                  Wrap(
-                    spacing: spacing.xs,
-                    runSpacing: spacing.xs,
-                    children: [
-                      if (!conversation.isGroup && trust != null)
-                        AppBadge(
-                          label: trust!.isEnterpriseVerified
-                              ? 'Verified'
-                              : trust!.hasEnterpriseKeyChanged
-                              ? 'Attention'
-                              : trust!.isEnterpriseReady
-                              ? 'Ready'
-                              : 'Not ready',
-                          tone: trust!.isEnterpriseVerified
-                              ? AppStatusTone.success
-                              : trust!.hasEnterpriseKeyChanged
-                              ? AppStatusTone.warning
-                              : trust!.isEnterpriseReady
-                              ? AppStatusTone.info
-                              : AppStatusTone.danger,
-                        ),
-                      if (transferCount > 0)
-                        AppBadge(
-                          label: '$transferCount transfers',
-                          tone: AppStatusTone.info,
-                          icon: Icons.sync_alt_rounded,
-                        ),
-                      AppBadge(
-                        label: conversation.isGroup
-                            ? 'Multi-device'
-                            : 'Device trust',
-                        tone: AppStatusTone.info,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            if (onVerify != null)
-              IconButton(
-                onPressed: onVerify,
-                icon: Icon(
-                  trust?.isEnterpriseVerified == true
-                      ? Icons.verified_user_rounded
-                      : Icons.shield_outlined,
                 ),
+                Text(
+                  _headerSubtitle(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: context.appColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (transferCount > 0)
+            Icon(
+              Icons.sync_rounded,
+              size: 18,
+              color: context.appColors.textMuted,
+            ),
+          if (onVerify != null)
+            IconButton(
+              onPressed: onVerify,
+              icon: Icon(
+                trust?.isEnterpriseVerified == true
+                    ? Icons.verified_user_rounded
+                    : Icons.shield_outlined,
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -1298,9 +1284,9 @@ class _SecurityDetailCard extends StatelessWidget {
           children: [
             Text(
               'Security details',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             SizedBox(height: spacing.sm),
             ...rows.map(

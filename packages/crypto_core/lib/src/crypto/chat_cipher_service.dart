@@ -88,6 +88,9 @@ class RoutedChatCipherService implements ChatCipherService {
       return plaintext;
     }
 
-    return payload;
+    // Ciphertext is never plaintext.  Returning an unrecognised wire payload
+    // here made unsupported historical formats appear as chat text and hid the
+    // actual compatibility failure from the durability layer.
+    return '[decrypt-error]';
   }
 }
