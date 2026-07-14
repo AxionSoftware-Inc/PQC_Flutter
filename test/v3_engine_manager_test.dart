@@ -4,13 +4,14 @@ import 'package:pqc_chat_app/features/crypto/v3/v3_engine_module.dart';
 import 'package:pqc_chat_app/features/crypto/durability/crypto_durability_models.dart';
 import 'package:pqc_chat_app/features/crypto/v3/v3_envelope.dart';
 import 'package:pqc_chat_app/features/crypto/v3/pqc_v3_crypto_adapter.dart';
+import 'package:pqc_chat_app/features/crypto/v3/v3_capabilities.dart';
 
 class _Encoder implements V3Encoder {
   @override
-  String encode({
+  Future<String> encode({
     required String plaintext,
     required Map<String, dynamic> context,
-  }) => 'pqc:v3:$plaintext';
+  }) async => 'pqc:v3:$plaintext';
 }
 
 class _Decoder implements V3Decoder {
@@ -24,28 +25,31 @@ class _Decoder implements V3Decoder {
 }
 
 void main() {
-  test('v3 writer stays disabled until explicit compatibility approval', () {
-    final manager = V3EngineManager(
-      module: V3EngineModule(
-        formatId: 'pqc-v3-draft',
-        privatePrefix: 'pqc:v3:',
-        groupPrefix: 'group:v3:',
-        encoder: _Encoder(),
-        decoder: _Decoder(),
-      ),
-    );
+  test(
+    'v3 writer stays disabled until explicit compatibility approval',
+    () async {
+      final manager = V3EngineManager(
+        module: V3EngineModule(
+          formatId: 'pqc-v3-draft',
+          privatePrefix: 'pqc:v3:',
+          groupPrefix: 'group:v3:',
+          encoder: _Encoder(),
+          decoder: _Decoder(),
+        ),
+      );
 
-    expect(manager.canWriteProduction, isFalse);
-    expect(
-      () => manager.encode(plaintext: 'hello', context: const {}),
-      throwsStateError,
-    );
-    manager.openProductionWriteGate(approval: 'V3_COMPATIBILITY_APPROVED');
-    expect(
-      manager.encode(plaintext: 'hello', context: const {}),
-      'pqc:v3:hello',
-    );
-  });
+      expect(manager.canWriteProduction, isFalse);
+      expect(
+        () => manager.encode(plaintext: 'hello', context: const {}),
+        throwsStateError,
+      );
+      manager.openProductionWriteGate(approval: 'V3_COMPATIBILITY_APPROVED');
+      expect(
+        await manager.encode(plaintext: 'hello', context: const {}),
+        'pqc:v3:hello',
+      );
+    },
+  );
 
   test('v3 envelope round trips private and group prefixes', () {
     for (final isGroup in [false, true]) {
@@ -88,5 +92,26 @@ void main() {
     );
     expect(first, second);
     expect(first, isNot(changed));
+  });
+
+  test('v3 negotiation rejects downgrade and missing group support', () {
+    final manager = V3EngineManager(
+      module: V3EngineModule(
+        formatId: 'v3',
+        privatePrefix: 'pqc:v3:',
+        groupPrefix: 'group:v3:',
+        encoder: _Encoder(),
+        decoder: _Decoder(),
+      ),
+    );
+    expect(manager.negotiate(const V3Capabilities()), isTrue);
+    expect(
+      manager.negotiate(const V3Capabilities(protocolVersion: 2)),
+      isFalse,
+    );
+    expect(
+      manager.negotiate(const V3Capabilities(groupPrefix: 'group:v2')),
+      isFalse,
+    );
   });
 }

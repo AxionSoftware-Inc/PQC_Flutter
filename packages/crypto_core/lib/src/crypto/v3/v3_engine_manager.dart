@@ -1,5 +1,6 @@
 import 'v3_engine_module.dart';
 import '../durability/crypto_durability_models.dart';
+import 'v3_capabilities.dart';
 
 /// Isolated v3 engine coordinator. It is not wired into production until a
 /// module is registered and the compatibility gate is explicitly opened.
@@ -20,6 +21,18 @@ class V3EngineManager {
   V3EngineModule get module => _module;
   bool get canWriteProduction => _productionWriteGate;
 
+  bool negotiate(V3Capabilities remote) {
+    final compatible =
+        remote.protocolVersion == 3 &&
+        _samePrefix(remote.privatePrefix, _module.privatePrefix) &&
+        _samePrefix(remote.groupPrefix, _module.groupPrefix);
+    if (!compatible) return false;
+    return true;
+  }
+
+  bool _samePrefix(String left, String right) =>
+      left == right || '$left:' == right || left == '$right:';
+
   void openProductionWriteGate({required String approval}) {
     if (approval != 'V3_COMPATIBILITY_APPROVED') {
       throw StateError('V3 compatibility approval is required before writing.');
@@ -27,7 +40,7 @@ class V3EngineManager {
     _productionWriteGate = true;
   }
 
-  String encode({
+  Future<String> encode({
     required String plaintext,
     required Map<String, dynamic> context,
   }) {
