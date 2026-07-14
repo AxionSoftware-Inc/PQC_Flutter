@@ -17,3 +17,11 @@ Widget buildChatLocalImage(BuildContext context, String path) {
     ),
   );
 }
+
+Widget buildChatLocalImageViewer(BuildContext context, String path) {
+  return InteractiveViewer(
+    minScale: 0.5,
+    maxScale: 5,
+    child: Center(child: Image.file(File(path), fit: BoxFit.contain)),
+  );
+}
