@@ -18,6 +18,7 @@ export 'src/crypto/durability/conversation_epoch_key_store.dart';
 export 'src/crypto/durability/crypto_durability_models.dart';
 export 'src/crypto/durability/key_material_registry.dart';
 export 'src/crypto/durability/payload_format_registry.dart';
+export 'src/crypto/durability/protocol_version_manager.dart';
 export 'src/crypto/durability/v2_protocol_contract.dart';
 export 'src/crypto/group_key_store.dart';
 export 'src/crypto/message_codec.dart';
