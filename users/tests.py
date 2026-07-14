@@ -490,3 +490,29 @@ class AuthApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual([item['device_id'] for item in response.data], ['device-1'])
+
+
+class AccountSettingsSyncTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='settings-owner')
+        self.client.force_authenticate(self.user)
+
+    def test_settings_round_trip_survives_fresh_client_load(self):
+        updated = self.client.patch(
+            '/api/users/me/settings',
+            {
+                'notifications_enabled': False,
+                'read_receipts_enabled': False,
+                'typing_indicators_enabled': False,
+                'last_seen_visibility': 'nobody',
+            },
+            format='json',
+        )
+        self.assertEqual(updated.status_code, 200, updated.data)
+
+        fresh_read = self.client.get('/api/users/me/settings')
+        self.assertEqual(fresh_read.status_code, 200, fresh_read.data)
+        self.assertFalse(fresh_read.data['notifications_enabled'])
+        self.assertFalse(fresh_read.data['read_receipts_enabled'])
+        self.assertFalse(fresh_read.data['typing_indicators_enabled'])
+        self.assertEqual(fresh_read.data['last_seen_visibility'], 'nobody')
