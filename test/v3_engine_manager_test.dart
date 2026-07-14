@@ -3,6 +3,7 @@ import 'package:pqc_chat_app/features/crypto/v3/v3_engine_manager.dart';
 import 'package:pqc_chat_app/features/crypto/v3/v3_engine_module.dart';
 import 'package:pqc_chat_app/features/crypto/durability/crypto_durability_models.dart';
 import 'package:pqc_chat_app/features/crypto/v3/v3_envelope.dart';
+import 'package:pqc_chat_app/features/crypto/v3/pqc_v3_crypto_adapter.dart';
 
 class _Encoder implements V3Encoder {
   @override
@@ -61,5 +62,31 @@ void main() {
       expect(decoded.messageId, original.messageId);
       expect(decoded.metadata['kind'], 'text');
     }
+  });
+
+  test('v3 associated data is deterministic and conversation-bound', () {
+    final first = PqcV3CryptoAdapter.associatedData(
+      conversationId: 4,
+      conversationType: 'private',
+      messageId: 'm1',
+      senderDeviceId: 'd1',
+      keysetId: 'k1',
+    );
+    final second = PqcV3CryptoAdapter.associatedData(
+      conversationId: 4,
+      conversationType: 'private',
+      messageId: 'm1',
+      senderDeviceId: 'd1',
+      keysetId: 'k1',
+    );
+    final changed = PqcV3CryptoAdapter.associatedData(
+      conversationId: 5,
+      conversationType: 'private',
+      messageId: 'm1',
+      senderDeviceId: 'd1',
+      keysetId: 'k1',
+    );
+    expect(first, second);
+    expect(first, isNot(changed));
   });
 }
