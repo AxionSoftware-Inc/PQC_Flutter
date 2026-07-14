@@ -650,6 +650,16 @@ class _ChatListPageState extends State<ChatListPage> {
         icon: Icons.people_alt_outlined,
         title: 'Contacts',
       ),
+      const _TabMeta(
+        label: 'Account',
+        icon: Icons.person_outline_rounded,
+        title: 'Account',
+      ),
+      const _TabMeta(
+        label: 'Settings',
+        icon: Icons.settings_outlined,
+        title: 'Settings',
+      ),
     ];
 
     return AppScaffold(
@@ -750,6 +760,14 @@ class _ChatListPageState extends State<ChatListPage> {
                   RefreshIndicator(
                     onRefresh: _refresh,
                     child: _buildContactsTab(contactsState),
+                  ),
+                  RefreshIndicator(
+                    onRefresh: _refresh,
+                    child: _buildAccountTab(settingsState),
+                  ),
+                  RefreshIndicator(
+                    onRefresh: _refresh,
+                    child: _buildSettingsTab(settingsState),
                   ),
                 ],
               ),
@@ -962,6 +980,71 @@ class _ChatListPageState extends State<ChatListPage> {
               ),
             SizedBox(height: spacing.md),
           ],
+      ],
+    );
+  }
+
+  Widget _buildAccountTab(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    final theme = Theme.of(context);
+    final session = state.sessionUser;
+    return ListView(
+      padding: EdgeInsets.all(spacing.lg),
+      children: [
+        AppSurfaceCard(
+          backgroundColor: context.appColors.primarySoft,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(child: AppAvatar(label: session.displayName, radius: 42)),
+              SizedBox(height: spacing.md),
+              Center(
+                child: Text(
+                  session.displayName,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              SizedBox(height: spacing.xs),
+              Center(
+                child: Text(
+                  session.username,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: context.appColors.textMuted,
+                  ),
+                ),
+              ),
+              SizedBox(height: spacing.md),
+              Align(
+                alignment: Alignment.center,
+                child: AppPrimaryButton(
+                  onPressed: _editProfile,
+                  label: const Text('Edit profile'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: spacing.lg),
+        AppSurfaceCard(
+          child: Column(
+            children: [
+              _buildInfoRow(
+                'Workspace',
+                state.currentWorkspace?.name ?? 'None',
+              ),
+              _buildInfoRow('Workspace ID', '${session.activeWorkspaceId}'),
+              _buildInfoRow('Device ID', session.deviceId),
+              _buildInfoRow('App skin', state.appSkinId),
+            ],
+          ),
+        ),
+        SizedBox(height: spacing.lg),
+        AppSecondaryButton(
+          onPressed: _openSettingsPage,
+          label: const Text('Open full settings'),
+        ),
       ],
     );
   }
