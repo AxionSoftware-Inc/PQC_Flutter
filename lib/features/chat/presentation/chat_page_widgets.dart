@@ -135,6 +135,31 @@ class ChatConversationHeader extends StatelessWidget {
                     color: context.appColors.textMuted,
                   ),
                 ),
+                if (!conversation.isGroup && (isPeerOnline || isPeerTyping))
+                  Row(
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: isPeerTyping
+                              ? context.appColors.primary
+                              : Colors.green,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        isPeerTyping ? 'typing now' : 'active now',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: isPeerTyping
+                              ? context.appColors.primary
+                              : Colors.green.shade700,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
               ],
             ),
           ),
