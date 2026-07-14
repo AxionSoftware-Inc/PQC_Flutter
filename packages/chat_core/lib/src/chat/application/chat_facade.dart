@@ -123,7 +123,10 @@ class ChatFacade {
     return users;
   }
 
-  Future<ChatListState> loadChatList({required int currentUserId}) async {
+  Future<ChatListState> loadChatList({
+    required int currentUserId,
+    String searchQuery = '',
+  }) async {
     _activeCurrentUserId = currentUserId;
     final users = await fetchUsers();
     final existingRows = await _localStore.readVisibleConversationRows(
@@ -133,6 +136,7 @@ class ChatFacade {
       currentUserId: currentUserId,
       usersById: _usersById,
       updatedAfter: _lastConversationSyncAt,
+      search: searchQuery,
       hasLocalRows: existingRows.isNotEmpty,
       refreshUsers: fetchUsers,
     );

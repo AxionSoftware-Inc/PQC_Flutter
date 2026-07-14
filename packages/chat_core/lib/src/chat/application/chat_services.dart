@@ -272,9 +272,11 @@ class ConversationSyncService {
     required DateTime? updatedAfter,
     required bool hasLocalRows,
     required Future<void> Function() refreshUsers,
+    String search = '',
   }) async {
     var conversations = await remoteDataSource.fetchConversations(
       updatedAfter: updatedAfter,
+      search: search,
     );
     if (conversations.isEmpty && !hasLocalRows && updatedAfter != null) {
       conversations = await remoteDataSource.fetchConversations();
