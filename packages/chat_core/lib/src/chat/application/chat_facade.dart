@@ -231,6 +231,10 @@ class ChatFacade {
     return _remoteDataSource.deleteMessage(messageId);
   }
 
+  Future<ChatMessage> forwardMessage(int messageId, int conversationId) {
+    return _remoteDataSource.forwardMessage(messageId, conversationId);
+  }
+
   Future<Map<String, dynamic>> setReaction(int messageId, String emoji) {
     return _remoteDataSource.setReaction(messageId, emoji);
   }
