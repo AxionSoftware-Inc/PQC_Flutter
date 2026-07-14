@@ -536,6 +536,22 @@ class MeView(APIView):
             }
         )
 
+    def patch(self, request):
+        display_name = str(request.data.get('display_name', '')).strip()
+        email = str(request.data.get('email', '')).strip()
+        if not display_name and not email:
+            return Response({'detail': 'display_name or email is required.'}, status=400)
+        updates = []
+        if display_name:
+            request.user.first_name = display_name
+            updates.append('first_name')
+        if email:
+            request.user.email = email
+            updates.append('email')
+        if updates:
+            request.user.save(update_fields=updates)
+        return Response(UserSerializer(request.user).data)
+
 
 class CryptoBackupView(APIView):
     """Stores and returns only the user's client-encrypted recovery blob."""

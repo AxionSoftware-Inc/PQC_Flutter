@@ -909,6 +909,14 @@ class _ChatListPageState extends State<ChatListPage> {
                 'Profile and workspace',
                 style: theme.textTheme.headlineSmall,
               ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: _editProfile,
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('Edit profile'),
+                ),
+              ),
               SizedBox(height: spacing.md),
               _buildInfoRow('Display name', sessionUser.displayName),
               _buildInfoRow('Username', sessionUser.username),
@@ -1242,6 +1250,47 @@ class _ChatListPageState extends State<ChatListPage> {
         ),
       ],
     );
+  }
+
+  Future<void> _editProfile() async {
+    final controller = TextEditingController(
+      text: widget.sessionController.sessionUser?.displayName ?? '',
+    );
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Edit profile'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Display name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.isEmpty || !mounted) return;
+    try {
+      await widget.apiClient.patch('/users/me', {'display_name': name});
+      await widget.sessionController.initialize();
+      if (mounted) setState(() {});
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
   }
 
   Widget _buildChatFilterSelector(ChatListFilter filter) {
