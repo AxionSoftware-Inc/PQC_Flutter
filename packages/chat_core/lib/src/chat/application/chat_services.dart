@@ -29,11 +29,13 @@ class ChatCryptoRequest {
     required this.currentUserId,
     required this.conversation,
     required this.usersById,
+    this.messageId = '',
   });
 
   final int currentUserId;
   final Conversation conversation;
   final Map<int, AppUser> usersById;
+  final String messageId;
 }
 
 class ChatCryptoService {
@@ -60,6 +62,7 @@ class ChatCryptoService {
         currentUserId: request.currentUserId,
         conversation: request.conversation,
         usersById: request.usersById,
+        messageId: request.messageId,
       ),
       plaintext: plaintext,
     );
@@ -143,6 +146,7 @@ class ChatCryptoService {
         currentUserId: request.currentUserId,
         conversation: request.conversation,
         usersById: request.usersById,
+        messageId: request.messageId,
       ),
       payload: payload,
     );
@@ -808,6 +812,7 @@ class OutgoingMessageService {
             currentUserId: currentUserId,
             usersById: usersById,
             plaintext: queued.plaintext,
+            messageId: queued.clientMessageId,
             refreshUsers: refreshUsers,
           );
     if (queued.encryptedPayload.isEmpty) {
@@ -861,6 +866,7 @@ class OutgoingMessageService {
     required int currentUserId,
     required Map<int, AppUser> usersById,
     required String plaintext,
+    required String messageId,
     required Future<void> Function() refreshUsers,
   }) async {
     try {
@@ -869,6 +875,7 @@ class OutgoingMessageService {
           currentUserId: currentUserId,
           conversation: conversation,
           usersById: usersById,
+          messageId: messageId,
         ),
         plaintext: plaintext,
       );
@@ -884,6 +891,7 @@ class OutgoingMessageService {
           currentUserId: currentUserId,
           conversation: conversation,
           usersById: usersById,
+          messageId: messageId,
         ),
         plaintext: plaintext,
       );

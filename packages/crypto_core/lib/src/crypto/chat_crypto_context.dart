@@ -6,9 +6,11 @@ class ChatCryptoContext {
     required this.currentUserId,
     required this.conversation,
     required this.usersById,
+    this.messageId = '',
   });
 
   final int currentUserId;
   final Conversation conversation;
   final Map<int, AppUser> usersById;
+  final String messageId;
 }

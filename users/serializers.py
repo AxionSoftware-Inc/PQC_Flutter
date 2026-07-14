@@ -1,4 +1,5 @@
 import base64
+import hashlib
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
@@ -6,6 +7,11 @@ from users.models import Invitation, Organization, OrganizationMember, Workspace
 
 
 User = get_user_model()
+
+
+def device_keyset_id(device_id, pqc_public_key):
+    digest = hashlib.sha256(f'{device_id}|{pqc_public_key}'.encode()).digest()
+    return base64.urlsafe_b64encode(digest).decode().rstrip('=')
 
 
 def validate_identity_public_key_fields(key_algorithm, identity_public_key):
@@ -192,6 +198,7 @@ class UserSerializer(serializers.ModelSerializer):
         device_rows = [
             {
                 'device_id': device.device_id,
+                'keyset_id': device_keyset_id(device.device_id, device.pqc_public_key),
                 'device_name': device.device_name,
                 'platform': device.platform,
                 'identity_public_key': device.identity_public_key,
@@ -213,6 +220,7 @@ class UserSerializer(serializers.ModelSerializer):
         device_rows.extend(
             {
                 'device_id': item.device_id,
+                'keyset_id': device_keyset_id(item.device_id, item.pqc_public_key),
                 'device_name': 'Historical device',
                 'platform': 'historical',
                 'identity_public_key': item.identity_public_key,
