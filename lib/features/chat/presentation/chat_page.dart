@@ -909,6 +909,15 @@ class _ChatPageState extends State<ChatPage> {
     final activeCount = _controller.attachmentTransfers
         .where((item) => item.status != AttachmentTransferStatus.completed)
         .length;
+    final activeTransfers = _controller.attachmentTransfers
+        .where((item) => item.status != AttachmentTransferStatus.completed)
+        .toList();
+    final aggregateProgress = activeTransfers.isEmpty
+        ? 1.0
+        : activeTransfers
+                  .map((item) => item.progress.fraction.clamp(0, 1).toDouble())
+                  .fold<double>(0, (sum, value) => sum + value) /
+              activeTransfers.length;
     return AppSurfaceCard(
       padding: EdgeInsets.all(spacing.md),
       child: Column(
@@ -935,6 +944,18 @@ class _ChatPageState extends State<ChatPage> {
                           'Transfers',
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
+                        if (activeCount > 0) ...[
+                          SizedBox(height: spacing.xs),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(
+                              context.appRadii.sm,
+                            ),
+                            child: LinearProgressIndicator(
+                              value: aggregateProgress,
+                              minHeight: 3,
+                            ),
+                          ),
+                        ],
                         Text(
                           activeCount > 0
                               ? '$activeCount active • ${_controller.attachmentTransfers.length} total'
