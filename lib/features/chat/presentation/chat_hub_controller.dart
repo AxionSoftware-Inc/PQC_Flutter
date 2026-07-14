@@ -330,7 +330,10 @@ class ChatHubController extends ChangeNotifier {
       accountId: sessionUser.accountId,
       workspaceId: sessionUser.activeWorkspaceId,
     );
-    final state = await chatFacade.loadChatList(currentUserId: currentUserId);
+    final state = await chatFacade.loadChatList(
+      currentUserId: currentUserId,
+      searchQuery: _chatPreferences.searchQuery,
+    );
     _users = state.users;
     _conversations = state.conversations;
     _trustByUserId = state.trustByUserId;
@@ -378,6 +381,13 @@ class ChatHubController extends ChangeNotifier {
   Future<void> setChatSearchQuery(String value) async {
     _chatPreferences = _chatPreferences.copyWith(searchQuery: value);
     await _persistChatPreferences();
+    final state = await chatFacade.loadChatList(
+      currentUserId: currentUserId,
+      searchQuery: value,
+    );
+    _users = state.users;
+    _conversations = state.conversations;
+    _trustByUserId = state.trustByUserId;
     _conversationItems = await _buildConversationItems(sessionUserProvider());
     notifyListeners();
   }

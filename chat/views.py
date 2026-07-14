@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
+from django.db.models import Q
 from django.http import Http404, HttpResponse
 from django.utils import timezone
 from asgiref.sync import async_to_sync
@@ -183,7 +184,25 @@ class ConversationListView(APIView):
         )
         if updated_after:
             conversations = conversations.filter(updated_at__gt=updated_after)
-        return Response(ConversationSerializer(conversations, many=True).data)
+        search = request.query_params.get('search', '').strip()
+        if search:
+            conversations = conversations.filter(
+                Q(title__icontains=search)
+                | Q(participants__username__icontains=search)
+                | Q(participants__first_name__icontains=search)
+            ).distinct()
+        try:
+            offset = max(0, int(request.query_params.get('offset', '0')))
+            limit = min(100, max(1, int(request.query_params.get('limit', '50'))))
+        except ValueError:
+            return Response({'detail': 'offset and limit must be integers.'}, status=400)
+        page = list(conversations[offset:offset + limit + 1])
+        has_more = len(page) > limit
+        page = page[:limit]
+        response = Response(ConversationSerializer(page, many=True).data)
+        response['X-Has-More'] = 'true' if has_more else 'false'
+        response['X-Next-Offset'] = str(offset + limit if has_more else '')
+        return response
 
 
 class PrivateConversationView(APIView):

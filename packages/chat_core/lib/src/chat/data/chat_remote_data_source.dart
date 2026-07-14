@@ -37,14 +37,19 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
 
   Future<List<Conversation>> fetchConversations({
     DateTime? updatedAfter,
+    String search = '',
+    int offset = 0,
+    int limit = 50,
   }) async {
+    final query = <String, String>{
+      if (updatedAfter != null)
+        'updated_after': updatedAfter.toUtc().toIso8601String(),
+      if (search.trim().isNotEmpty) 'search': search.trim(),
+      'offset': '$offset',
+      'limit': '$limit',
+    };
     final response =
-        await apiClient.get(
-              '/conversations',
-              queryParameters: updatedAfter == null
-                  ? null
-                  : {'updated_after': updatedAfter.toUtc().toIso8601String()},
-            )
+        await apiClient.get('/conversations', queryParameters: query)
             as List<dynamic>;
     return response
         .map((item) => Conversation.fromJson(item as Map<String, dynamic>))
