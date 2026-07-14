@@ -133,6 +133,13 @@ class ChatConversationController extends ChangeNotifier {
       _messages = state.messages;
       _trust = state.trust;
       _error = null;
+      for (final message in _messages) {
+        if (message.senderId == currentUserId || message.id <= 0) continue;
+        chatFacade.sendRealtimeEvent('receipt.delivered', {
+          'conversation_id': conversation.id,
+          'message_id': message.id,
+        });
+      }
     } catch (error) {
       _error = error.toString();
       rethrow;
