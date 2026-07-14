@@ -10,6 +10,7 @@ import 'crypto_durability_models.dart';
 import 'key_material_registry.dart';
 import 'payload_format_registry.dart';
 import 'protocol_version_manager.dart';
+import '../v3/v3_envelope.dart';
 
 class CryptoCoreFacade {
   CryptoCoreFacade({
@@ -129,14 +130,35 @@ class CryptoCoreFacade {
   Future<DeviceKeyMatch> evaluatePrivatePayloadLocalKeyMatch(
     String payload,
   ) async {
-    if (!payload.startsWith('${PqcPrivateMessageCodec.prefix}:')) {
+    final isV2 = payload.startsWith('${PqcPrivateMessageCodec.prefix}:');
+    final isV3 = payload.startsWith('pqc:v3:');
+    if (!isV2 && !isV3) {
       return const DeviceKeyMatch(
         isKnownFormat: false,
         hasMatchingKeyset: false,
       );
     }
-    final encoded = payload.substring(PqcPrivateMessageCodec.prefix.length + 1);
     try {
+      if (isV3) {
+        final envelope = V3Envelope.decode(payload);
+        final keysets = await keyMaterialRegistry
+            .readHistoricalDecryptKeysets();
+        final hasMatchingKeyset = envelope.wraps.any(
+          (wrap) => keysets.any(
+            (keyset) =>
+                keyset.keysetId == wrap.keysetId &&
+                keyset.deviceId == wrap.deviceId,
+          ),
+        );
+        return DeviceKeyMatch(
+          isKnownFormat: true,
+          hasMatchingKeyset: hasMatchingKeyset,
+          senderDeviceId: envelope.senderDeviceId,
+        );
+      }
+      final encoded = payload.substring(
+        PqcPrivateMessageCodec.prefix.length + 1,
+      );
       final padded = encoded.padRight(
         encoded.length + ((4 - encoded.length % 4) % 4),
         '=',
