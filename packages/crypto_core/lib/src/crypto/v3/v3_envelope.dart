@@ -10,6 +10,12 @@ class V3Envelope {
     required this.keysetId,
     required this.ciphertext,
     this.metadata = const {},
+    this.conversationId,
+    this.conversationType,
+    this.senderKeysetId,
+    this.signingPublicKey,
+    this.wraps = const [],
+    this.signature,
   });
 
   final bool isGroup;
@@ -18,22 +24,36 @@ class V3Envelope {
   final String keysetId;
   final String ciphertext;
   final Map<String, dynamic> metadata;
+  final int? conversationId;
+  final String? conversationType;
+  final String? senderKeysetId;
+  final String? signingPublicKey;
+  final List<V3RecipientWrap> wraps;
+  final String? signature;
 
   String get prefix => isGroup
       ? V3ProtocolContract.groupPrefix
       : V3ProtocolContract.privatePrefix;
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson({bool includeSignature = true}) => {
     'protocol_version': V3ProtocolContract.protocolVersion,
     'message_id': messageId,
     'sender_device_id': senderDeviceId,
     'keyset_id': keysetId,
     'ciphertext': ciphertext,
     'metadata': metadata,
+    if (conversationId != null) 'conversation_id': conversationId,
+    if (conversationType != null) 'conversation_type': conversationType,
+    if (senderKeysetId != null) 'sender_keyset_id': senderKeysetId,
+    if (signingPublicKey != null) 'signing_public_key': signingPublicKey,
+    if (wraps.isNotEmpty) 'wraps': wraps.map((item) => item.toJson()).toList(),
+    if (includeSignature && signature != null) 'signature': signature,
   };
 
   String encode() =>
       '$prefix:${base64UrlEncode(utf8.encode(jsonEncode(toJson())))}';
+
+  String unsignedCanonicalJson() => jsonEncode(toJson(includeSignature: false));
 
   static V3Envelope decode(String payload) {
     final isGroup = payload.startsWith('${V3ProtocolContract.groupPrefix}:');
@@ -63,6 +83,46 @@ class V3Envelope {
       metadata: Map<String, dynamic>.from(
         decoded['metadata'] as Map? ?? const {},
       ),
+      conversationId: decoded['conversation_id'] as int?,
+      conversationType: decoded['conversation_type'] as String?,
+      senderKeysetId: decoded['sender_keyset_id'] as String?,
+      signingPublicKey: decoded['signing_public_key'] as String?,
+      wraps: (decoded['wraps'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map(
+            (item) => V3RecipientWrap.fromJson(Map<String, dynamic>.from(item)),
+          )
+          .toList(growable: false),
+      signature: decoded['signature'] as String?,
     );
   }
+}
+
+class V3RecipientWrap {
+  const V3RecipientWrap({
+    required this.deviceId,
+    required this.keysetId,
+    required this.kemCiphertext,
+    required this.wrappedKey,
+  });
+
+  final String deviceId;
+  final String keysetId;
+  final String kemCiphertext;
+  final String wrappedKey;
+
+  Map<String, dynamic> toJson() => {
+    'device_id': deviceId,
+    'keyset_id': keysetId,
+    'kem_ciphertext': kemCiphertext,
+    'wrapped_key': wrappedKey,
+  };
+
+  factory V3RecipientWrap.fromJson(Map<String, dynamic> json) =>
+      V3RecipientWrap(
+        deviceId: json['device_id'] as String? ?? '',
+        keysetId: json['keyset_id'] as String? ?? '',
+        kemCiphertext: json['kem_ciphertext'] as String? ?? '',
+        wrappedKey: json['wrapped_key'] as String? ?? '',
+      );
 }
