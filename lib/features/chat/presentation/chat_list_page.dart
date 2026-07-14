@@ -234,46 +234,13 @@ class _ChatListPageState extends State<ChatListPage> {
     }
   }
 
-  Future<void> _showGlobalSearch() async {
-    final controller = TextEditingController(text: _chatSearchController.text);
-    final query = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Search chats'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'Search messages or contacts',
-          ),
-          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, controller.text.trim()),
-            child: const Text('Search'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (query == null || !mounted) return;
-    setState(() => _selectedTabIndex = 0);
-    await _controller.setChatSearchQuery(query);
-  }
-
   Future<void> _openSettingsPage() async {
     _scaffoldKey.currentState?.closeDrawer();
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => _SettingsPage(
           title: 'Settings',
-          child: _buildSettingsTab(_controller.settingsState),
+          child: _buildSettingsOverview(_controller.settingsState),
         ),
       ),
     );
@@ -667,6 +634,11 @@ class _ChatListPageState extends State<ChatListPage> {
       drawer: _buildNavigationDrawer(settingsState),
       appBar: AppBar(
         toolbarHeight: 68,
+        leading: IconButton(
+          tooltip: 'Menu',
+          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+          icon: const Icon(Icons.menu_rounded),
+        ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.end,
@@ -682,16 +654,6 @@ class _ChatListPageState extends State<ChatListPage> {
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: 'Search',
-            onPressed: _showGlobalSearch,
-            icon: const Icon(Icons.search_rounded),
-          ),
-          IconButton(
-            tooltip: 'Menu',
-            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-            icon: const Icon(Icons.menu_rounded),
-          ),
           if (sessionUser.organizations.isNotEmpty)
             PopupMenuButton<int>(
               tooltip: 'Switch workspace',
@@ -724,11 +686,6 @@ class _ChatListPageState extends State<ChatListPage> {
               },
               icon: const Icon(Icons.apartment_outlined),
             ),
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: _refresh,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
         ],
       ),
       body: SafeArea(
@@ -767,7 +724,7 @@ class _ChatListPageState extends State<ChatListPage> {
                   ),
                   RefreshIndicator(
                     onRefresh: _refresh,
-                    child: _buildSettingsTab(settingsState),
+                    child: _buildSettingsOverview(settingsState),
                   ),
                 ],
               ),
@@ -1045,6 +1002,68 @@ class _ChatListPageState extends State<ChatListPage> {
           onPressed: _openSettingsPage,
           label: const Text('Open full settings'),
         ),
+      ],
+    );
+  }
+
+  Widget _buildSettingsOverview(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    final sections = <(String, IconData, String)>[
+      (
+        'Account',
+        Icons.person_outline_rounded,
+        'Profile, workspace and account identity',
+      ),
+      (
+        'Security',
+        Icons.shield_outlined,
+        'Trust, encryption and recovery health',
+      ),
+      (
+        'Devices',
+        Icons.devices_outlined,
+        'Sessions, device keys and revoke controls',
+      ),
+      (
+        'Backup & Recovery',
+        Icons.backup_outlined,
+        'Encrypted history recovery and approvals',
+      ),
+      (
+        'Preferences',
+        Icons.tune_rounded,
+        'Notifications, privacy, theme and inbox behavior',
+      ),
+    ];
+    return ListView(
+      padding: EdgeInsets.all(spacing.lg),
+      children: [
+        const AppSectionHeader(
+          title: 'Settings',
+          subtitle: 'Choose a section to manage your account.',
+        ),
+        SizedBox(height: spacing.md),
+        for (final section in sections)
+          Padding(
+            padding: EdgeInsets.only(bottom: spacing.sm),
+            child: AppSurfaceCard(
+              child: ListTile(
+                contentPadding: EdgeInsets.symmetric(horizontal: spacing.md),
+                leading: Icon(section.$2, color: context.appColors.primary),
+                title: Text(section.$1),
+                subtitle: Text(section.$3),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => _SettingsPage(
+                      title: section.$1,
+                      child: _buildSettingsTab(state),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
