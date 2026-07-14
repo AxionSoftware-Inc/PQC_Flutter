@@ -9,3 +9,7 @@ Widget buildChatLocalImage(BuildContext context, String path) {
     child: const Text('Preview unavailable on this platform'),
   );
 }
+
+Widget buildChatLocalImageViewer(BuildContext context, String path) {
+  return const Center(child: Text('Preview unavailable on this platform'));
+}

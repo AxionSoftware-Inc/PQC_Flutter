@@ -21,6 +21,7 @@ import '../application/chat_models.dart';
 import '../application/chat_services.dart';
 import '../../transfers/application/attachment_transfer.dart';
 import 'chat_page_widgets.dart';
+import 'chat_local_image.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -826,6 +827,7 @@ class _ChatPageState extends State<ChatPage> {
 
     final existingPath = _downloadedAttachmentPaths[attachment.id];
     if (existingPath != null && attachment.mimeType.startsWith('image/')) {
+      await _showImageLightbox(attachment.filename, existingPath);
       return;
     }
     try {
@@ -837,6 +839,7 @@ class _ChatPageState extends State<ChatPage> {
       _downloadedAttachmentPaths[attachment.id] = path;
       setState(() {});
       if (attachment.mimeType.startsWith('image/')) {
+        await _showImageLightbox(attachment.filename, path);
         return;
       }
       if (kIsWeb) {
@@ -866,6 +869,35 @@ class _ChatPageState extends State<ChatPage> {
         context,
       ).showSnackBar(SnackBar(content: Text(error.toString())));
     }
+  }
+
+  Future<void> _showImageLightbox(String title, String path) async {
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.88),
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(
+          children: [
+            SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.82,
+              width: double.infinity,
+              child: buildChatLocalImageViewer(dialogContext, path),
+            ),
+            Positioned(
+              top: 0,
+              right: 0,
+              child: IconButton.filledTonal(
+                onPressed: () => Navigator.pop(dialogContext),
+                icon: const Icon(Icons.close_rounded),
+                tooltip: title,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildTransferSection({
