@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../../app/design_system/app_design_system.dart';
 import '../../../core/database/app_database.dart';
@@ -22,6 +23,8 @@ import '../application/chat_services.dart';
 import '../../transfers/application/attachment_transfer.dart';
 import 'chat_page_widgets.dart';
 import 'chat_local_image.dart';
+import '../application/voice_message_recorder.dart';
+import '../application/voice_file_size.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -56,6 +59,9 @@ class _ChatPageState extends State<ChatPage> {
   bool _keepDrafts = true;
   bool _showSecurityDetails = false;
   bool _showTransferDetails = false;
+  final VoiceMessageRecorder _voiceRecorder = VoiceMessageRecorder();
+  bool _isRecordingVoice = false;
+  DateTime? _voiceStartedAt;
   ChatMessage? _replyingTo;
   final Map<int, String> _localReactions = <int, String>{};
   int _lastMessageCount = 0;
@@ -82,6 +88,7 @@ class _ChatPageState extends State<ChatPage> {
     _draftDebounce?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
+    unawaited(_voiceRecorder.dispose());
     super.dispose();
   }
 
@@ -247,6 +254,49 @@ class _ChatPageState extends State<ChatPage> {
     setState(() {
       _selectedAttachments = [..._selectedAttachments, ...picked];
     });
+  }
+
+  Future<void> _toggleVoiceRecording() async {
+    if (_isRecordingVoice) {
+      final path = await _voiceRecorder.stop();
+      if (!mounted) return;
+      setState(() => _isRecordingVoice = false);
+      if (path == null) return;
+      final size = await voiceFileSize(path);
+      if (size <= 0) return;
+      setState(() {
+        _selectedAttachments = [
+          ..._selectedAttachments,
+          _SelectedAttachment(
+            name:
+                'voice-${(_voiceStartedAt ?? DateTime.now()).millisecondsSinceEpoch}.m4a',
+            filePath: path,
+            sizeBytes: size,
+            mimeType: 'audio/mp4',
+          ),
+        ];
+      });
+      return;
+    }
+    if (!await _voiceRecorder.hasPermission()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Microphone permission is required.')),
+        );
+      }
+      return;
+    }
+    final directory = await getTemporaryDirectory();
+    final startedAt = DateTime.now();
+    await _voiceRecorder.start(
+      '${directory.path}/voice-${startedAt.millisecondsSinceEpoch}.m4a',
+    );
+    if (mounted) {
+      setState(() {
+        _isRecordingVoice = true;
+        _voiceStartedAt = startedAt;
+      });
+    }
   }
 
   void _removeSelectedAttachment(_SelectedAttachment attachment) {
@@ -478,6 +528,14 @@ class _ChatPageState extends State<ChatPage> {
                           onPressed: _controller.isSending
                               ? null
                               : _pickAttachments,
+                        ),
+                        ChatComposerActionButton(
+                          icon: _isRecordingVoice
+                              ? Icons.stop_rounded
+                              : Icons.mic_none_rounded,
+                          onPressed: _controller.isSending
+                              ? null
+                              : _toggleVoiceRecording,
                         ),
                         Expanded(
                           child: Theme(
