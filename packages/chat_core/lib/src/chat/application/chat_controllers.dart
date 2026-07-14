@@ -172,6 +172,26 @@ class ChatConversationController extends ChangeNotifier {
     await refresh(showLoader: false);
   }
 
+  Future<void> editMessage(int messageId, String body) async {
+    await chatFacade.editMessage(messageId, body);
+    await refresh(showLoader: false);
+  }
+
+  Future<void> deleteMessage(int messageId) async {
+    await chatFacade.deleteMessage(messageId);
+    await refresh(showLoader: false);
+  }
+
+  Future<void> setReaction(int messageId, String emoji) async {
+    await chatFacade.setReaction(messageId, emoji);
+    await refresh(showLoader: false);
+  }
+
+  Future<void> removeReaction(int messageId) async {
+    await chatFacade.removeReaction(messageId);
+    await refresh(showLoader: false);
+  }
+
   Future<void> verifyCurrentKey() async {
     await chatFacade.verifyConversationPeerKey(
       currentUserId: currentUserId,

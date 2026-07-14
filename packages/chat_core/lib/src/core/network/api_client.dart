@@ -98,6 +98,25 @@ class ApiClient {
     return _decode(response);
   }
 
+  Future<dynamic> patch(String path, Map<String, dynamic> body) async {
+    final response = await _send(
+      () => _client.patch(
+        _buildUri(path),
+        headers: _headers(),
+        body: jsonEncode(body),
+      ),
+    );
+    return _decode(response);
+  }
+
+  Future<dynamic> delete(String path) async {
+    final response = await _send(
+      () => _client.delete(_buildUri(path), headers: _headers()),
+    );
+    if (response.statusCode == 204) return null;
+    return _decode(response);
+  }
+
   Future<dynamic> multipartPost(
     String path, {
     required List<http.MultipartFile> files,

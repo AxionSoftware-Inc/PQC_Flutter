@@ -726,13 +726,13 @@ class _ChatPageState extends State<ChatPage> {
       case 'react':
         await _chooseReaction(message);
       case 'forward':
-      case 'edit':
-      case 'delete':
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$action will be connected to the server contract.'),
-          ),
+          const SnackBar(content: Text('Forward target selection is next.')),
         );
+      case 'edit':
+        await _editMessage(message);
+      case 'delete':
+        await _controller.deleteMessage(message.id);
     }
   }
 
@@ -764,6 +764,47 @@ class _ChatPageState extends State<ChatPage> {
     );
     if (reaction != null && mounted) {
       setState(() => _localReactions[message.id] = reaction);
+      try {
+        await _controller.setReaction(message.id, reaction);
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(error.toString())));
+        }
+      }
+    }
+  }
+
+  Future<void> _editMessage(ChatMessage message) async {
+    final editor = TextEditingController(text: message.body);
+    final next = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Edit message'),
+        content: TextField(controller: editor, autofocus: true, maxLines: 5),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, editor.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    editor.dispose();
+    if (next == null || next.isEmpty || !mounted) return;
+    try {
+      await _controller.editMessage(message.id, next);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.toString())));
+      }
     }
   }
 
