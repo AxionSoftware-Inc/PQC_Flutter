@@ -34,6 +34,17 @@ class PqcV3CryptoAdapter implements V3CryptoAdapter {
   }
 
   @override
+  Future<List<int>> decapsulateWithSecretKey({
+    required String ciphertext,
+    required String secretKey,
+  }) {
+    return keyService.decapsulateWithSecretKey(
+      ciphertextBase64: ciphertext,
+      secretKeyBase64: secretKey,
+    );
+  }
+
+  @override
   Future<String> sign(List<int> message) {
     return signingService.sign(Uint8List.fromList(message));
   }

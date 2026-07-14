@@ -94,19 +94,34 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
     try {
       final current = await keyMaterialRegistry.ensureCurrentKeysetRegistered();
       final identity = await identityService.getIdentity();
-      return await _codec.decrypt(
-        context: V3CodecContext(
-          conversationId: context.conversation.id,
-          conversationType: context.conversation.type,
-          messageId: context.messageId,
-          senderDeviceId: '',
-          senderKeysetId: '',
-          signingPublicKey: '',
-          localDeviceId: identity.id,
-          localKeysetId: current.keysetId,
-        ),
-        payload: payload,
-      );
+      final candidates = <dynamic>[
+        current,
+        ...await keyMaterialRegistry.readHistoricalDecryptKeysets(),
+      ];
+      Object? lastError;
+      for (final keyset in candidates) {
+        if (keyset.deviceId != identity.id) continue;
+        try {
+          return await _codec.decrypt(
+            context: V3CodecContext(
+              conversationId: context.conversation.id,
+              conversationType: context.conversation.type,
+              messageId: context.messageId,
+              senderDeviceId: '',
+              senderKeysetId: '',
+              signingPublicKey: '',
+              localDeviceId: identity.id,
+              localKeysetId: keyset.keysetId,
+              localSecretKey: keyset.pqcSecretKey,
+            ),
+            payload: payload,
+          );
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (lastError != null) throw lastError;
+      throw StateError('No local V3 keyset is available.');
     } catch (_) {
       // A lost/revoked device key must classify the message instead of
       // aborting the entire conversation sync with a SecretBox MAC error.

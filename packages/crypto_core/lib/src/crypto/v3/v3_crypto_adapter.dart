@@ -7,6 +7,11 @@ abstract interface class V3CryptoAdapter {
 
   Future<List<int>> decapsulate(String ciphertext);
 
+  Future<List<int>> decapsulateWithSecretKey({
+    required String ciphertext,
+    required String secretKey,
+  });
+
   Future<String> sign(List<int> message);
 
   bool verify({
