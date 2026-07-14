@@ -75,6 +75,7 @@ class ChatConversationHeader extends StatelessWidget {
     required this.isPeerOnline,
     required this.isPeerTyping,
     required this.peerLastSeenAt,
+    this.onOpenContactDetails,
   });
 
   final String title;
@@ -87,6 +88,7 @@ class ChatConversationHeader extends StatelessWidget {
   final bool isPeerOnline;
   final bool isPeerTyping;
   final DateTime? peerLastSeenAt;
+  final Future<void> Function()? onOpenContactDetails;
 
   @override
   Widget build(BuildContext context) {
@@ -109,58 +111,66 @@ class ChatConversationHeader extends StatelessWidget {
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
             tooltip: 'Back',
           ),
-          AppAvatar(
-            label: title,
-            icon: conversation.isGroup ? Icons.forum_outlined : null,
-            radius: 20,
+          GestureDetector(
+            onTap: onOpenContactDetails,
+            child: AppAvatar(
+              label: title,
+              icon: conversation.isGroup ? Icons.forum_outlined : null,
+              radius: 20,
+            ),
           ),
           SizedBox(width: spacing.sm),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+            child: GestureDetector(
+              onTap: onOpenContactDetails,
+              behavior: HitTestBehavior.opaque,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                Text(
-                  _headerSubtitle(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: context.appColors.textMuted,
+                  Text(
+                    _headerSubtitle(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: context.appColors.textMuted,
+                    ),
                   ),
-                ),
-                if (!conversation.isGroup && (isPeerOnline || isPeerTyping))
-                  Row(
-                    children: [
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          color: isPeerTyping
-                              ? context.appColors.primary
-                              : Colors.green,
-                          shape: BoxShape.circle,
+                  if (!conversation.isGroup && (isPeerOnline || isPeerTyping))
+                    Row(
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: isPeerTyping
+                                ? context.appColors.primary
+                                : Colors.green,
+                            shape: BoxShape.circle,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        isPeerTyping ? 'typing now' : 'active now',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: isPeerTyping
-                              ? context.appColors.primary
-                              : Colors.green.shade700,
-                          fontWeight: FontWeight.w700,
+                        const SizedBox(width: 5),
+                        Text(
+                          isPeerTyping ? 'typing now' : 'active now',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: isPeerTyping
+                                    ? context.appColors.primary
+                                    : Colors.green.shade700,
+                                fontWeight: FontWeight.w700,
+                              ),
                         ),
-                      ),
-                    ],
-                  ),
-              ],
+                      ],
+                    ),
+                ],
+              ),
             ),
           ),
           if (transferCount > 0)
@@ -368,11 +378,16 @@ class ChatAttachmentCard extends StatelessWidget {
         onTap: onPressed,
         borderRadius: BorderRadius.circular(context.appRadii.md),
         child: Container(
-          constraints: const BoxConstraints(minWidth: 220, maxWidth: 280),
+          constraints: BoxConstraints(
+            minWidth: isImage ? 0 : 220,
+            maxWidth: isImage ? 340 : 280,
+          ),
           decoration: BoxDecoration(
-            color: colors.surfaceMuted.withValues(alpha: 0.72),
+            color: isImage
+                ? Colors.transparent
+                : colors.surfaceMuted.withValues(alpha: 0.72),
             borderRadius: BorderRadius.circular(context.appRadii.md),
-            border: Border.all(color: colors.border),
+            border: isImage ? null : Border.all(color: colors.border),
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
@@ -382,42 +397,43 @@ class ChatAttachmentCard extends StatelessWidget {
                 _buildImagePreview(context)
               else
                 _buildFilePreview(context),
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  spacing.sm,
-                  spacing.sm,
-                  spacing.sm,
-                  spacing.xs,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            attachment.filename,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            '${formatBytes(attachment.sizeBytes)} • $actionLabel',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: colors.textMuted),
-                          ),
-                        ],
+              if (!isImage)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    spacing.sm,
+                    spacing.sm,
+                    spacing.sm,
+                    spacing.xs,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              attachment.filename,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              '${formatBytes(attachment.sizeBytes)} • $actionLabel',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: colors.textMuted),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    SizedBox(width: spacing.xs),
-                    _TransferIndicator(transfer: transfer, isBusy: isBusy),
-                  ],
+                      SizedBox(width: spacing.xs),
+                      _TransferIndicator(transfer: transfer, isBusy: isBusy),
+                    ],
+                  ),
                 ),
-              ),
               if (isBusy && progress != null)
                 LinearProgressIndicator(value: progress, minHeight: 3),
             ],

@@ -257,6 +257,22 @@ class ChatHubController extends ChangeNotifier {
     selectedFilter: _contactsFilter,
     sections: _contactSections,
   );
+
+  ContactListItemState? contactItemForConversation(Conversation conversation) {
+    if (conversation.isGroup) return null;
+    final sessionId = currentUserId;
+    final peerId = conversation.participantIds
+        .where((id) => id != sessionId)
+        .firstOrNull;
+    if (peerId == null) return null;
+    for (final section in _contactSections) {
+      for (final item in section.items) {
+        if (item.user.id == peerId) return item;
+      }
+    }
+    return null;
+  }
+
   SettingsViewState get settingsState {
     final sessionUser = sessionUserProvider();
     final currentUser = _users

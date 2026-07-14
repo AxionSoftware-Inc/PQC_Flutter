@@ -35,6 +35,7 @@ class ChatPage extends StatefulWidget {
     required this.chatFacade,
     required this.cryptoCoreFacade,
     required this.onUnauthorized,
+    this.onOpenContactDetails,
   });
 
   final int currentUserId;
@@ -43,6 +44,7 @@ class ChatPage extends StatefulWidget {
   final ChatFacade chatFacade;
   final CryptoCoreFacade cryptoCoreFacade;
   final Future<void> Function() onUnauthorized;
+  final Future<void> Function()? onOpenContactDetails;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -388,6 +390,7 @@ class _ChatPageState extends State<ChatPage> {
             isPeerOnline: _controller.peerOnline,
             isPeerTyping: _controller.isPeerTyping,
             peerLastSeenAt: _controller.peerLastSeenAt,
+            onOpenContactDetails: widget.onOpenContactDetails,
           ),
           if (_controller.isLoading) const LinearProgressIndicator(),
           if (_controller.error != null)
