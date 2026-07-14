@@ -91,20 +91,26 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
     required ChatCryptoContext context,
     required String payload,
   }) async {
-    final current = await keyMaterialRegistry.ensureCurrentKeysetRegistered();
-    final identity = await identityService.getIdentity();
-    return _codec.decrypt(
-      context: V3CodecContext(
-        conversationId: context.conversation.id,
-        conversationType: context.conversation.type,
-        messageId: context.messageId,
-        senderDeviceId: '',
-        senderKeysetId: '',
-        signingPublicKey: '',
-        localDeviceId: identity.id,
-        localKeysetId: current.keysetId,
-      ),
-      payload: payload,
-    );
+    try {
+      final current = await keyMaterialRegistry.ensureCurrentKeysetRegistered();
+      final identity = await identityService.getIdentity();
+      return await _codec.decrypt(
+        context: V3CodecContext(
+          conversationId: context.conversation.id,
+          conversationType: context.conversation.type,
+          messageId: context.messageId,
+          senderDeviceId: '',
+          senderKeysetId: '',
+          signingPublicKey: '',
+          localDeviceId: identity.id,
+          localKeysetId: current.keysetId,
+        ),
+        payload: payload,
+      );
+    } catch (_) {
+      // A lost/revoked device key must classify the message instead of
+      // aborting the entire conversation sync with a SecretBox MAC error.
+      return '[decrypt-error]';
+    }
   }
 }
