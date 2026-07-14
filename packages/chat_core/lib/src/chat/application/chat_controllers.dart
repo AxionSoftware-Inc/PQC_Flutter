@@ -14,10 +14,7 @@ import 'chat_facade.dart';
 import 'chat_models.dart';
 
 class ChatListController extends ChangeNotifier {
-  ChatListController({
-    required this.chatFacade,
-    required this.currentUserId,
-  });
+  ChatListController({required this.chatFacade, required this.currentUserId});
 
   final ChatFacade chatFacade;
   final int currentUserId;
@@ -91,10 +88,24 @@ class ChatConversationController extends ChangeNotifier {
 
   Future<void> initialize() async {
     chatFacade.attachmentTransfers?.addListener(_handleTransferUpdates);
-    _attachmentTransfers = await chatFacade.loadAttachmentTransfers();
+    try {
+      _attachmentTransfers = await chatFacade.loadAttachmentTransfers();
+    } catch (_) {
+      // Transfer history is auxiliary state. A stale/corrupt transfer cache
+      // must not block conversation history from loading.
+      _attachmentTransfers = const [];
+    }
     await refresh();
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      unawaited(refresh(showLoader: false));
+      // Polling is best-effort. A transient network/API failure must not
+      // become an unhandled async exception that restarts the screen or
+      // clears an already loaded conversation history.
+      unawaited(
+        refresh(showLoader: false).catchError((_) {
+          // `refresh` stores the error on the controller; keep the current
+          // message list visible until the next successful poll.
+        }),
+      );
     });
   }
 

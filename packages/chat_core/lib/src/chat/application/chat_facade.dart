@@ -164,13 +164,6 @@ class ChatFacade {
       conversation: conversation,
       currentUserId: currentUserId,
     );
-    await _outgoingMessageService.flushPendingMessages(
-      conversation: conversation,
-      currentUserId: currentUserId,
-      usersById: _usersById,
-      refreshUsers: _refreshUsersForSecureSend,
-      persistConversation: _persistConversation,
-    );
     final syncResult = await _messageSyncService.syncMessages(
       conversation: conversation,
       currentUserId: currentUserId,
@@ -272,6 +265,9 @@ class ChatFacade {
         knownConversation: _conversationsById[row.id],
       );
       _conversationsById[conversation.id] = conversation;
+      // Attachment messages are user-driven and can be large. Never restart
+      // their upload automatically during app startup; otherwise opening a
+      // chat can spend minutes replaying old file sends.
       try {
         await _outgoingMessageService.flushPendingMessages(
           conversation: conversation,
@@ -321,24 +317,13 @@ class ChatFacade {
   }) async {
     _activeCurrentUserId = currentUserId;
     await _ensureUsersLoaded();
-    final transferFacade = _attachmentTransferFacade;
-    if (transferFacade == null) {
-      throw StateError('Attachment transfer is not configured.');
-    }
-    return transferFacade.downloadAttachment(
-      conversation: conversation,
+    final bytes = await _remoteDataSource.downloadAttachmentFile(attachment.id);
+    final transfer = await _attachmentTransferFacade?.saveDirectDownload(
       attachment: attachment,
-      decryptKeyEnvelope: (payload) {
-        return _outgoingMessageService.cryptoService.decrypt(
-          request: ChatCryptoRequest(
-            currentUserId: currentUserId,
-            conversation: conversation,
-            usersById: _usersById,
-          ),
-          payload: payload,
-        );
-      },
+      bytes: bytes,
     );
+    if (transfer != null) return transfer;
+    throw StateError('Attachment download storage is not configured.');
   }
 
   Future<Map<int, UserKeyTrust>> buildUserTrustMap() async {

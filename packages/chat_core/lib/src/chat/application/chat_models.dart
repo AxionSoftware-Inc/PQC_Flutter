@@ -45,61 +45,6 @@ class PendingAttachmentUpload {
   }
 }
 
-class AttachmentTransferRemoteSession {
-  const AttachmentTransferRemoteSession({
-    required this.sessionId,
-    required this.filename,
-    required this.mimeType,
-    required this.cipherVersion,
-    required this.plaintextSize,
-    required this.ciphertextSize,
-    required this.chunkSize,
-    required this.totalChunks,
-    required this.plaintextSha256,
-    required this.manifestSha256,
-    required this.fileKeyWrap,
-    required this.status,
-    required this.receivedChunks,
-    this.completedAttachmentId,
-  });
-
-  final String sessionId;
-  final String filename;
-  final String mimeType;
-  final String cipherVersion;
-  final int plaintextSize;
-  final int ciphertextSize;
-  final int chunkSize;
-  final int totalChunks;
-  final String plaintextSha256;
-  final String manifestSha256;
-  final String fileKeyWrap;
-  final String status;
-  final List<int> receivedChunks;
-  final int? completedAttachmentId;
-
-  factory AttachmentTransferRemoteSession.fromJson(Map<String, dynamic> json) {
-    return AttachmentTransferRemoteSession(
-      sessionId: json['session_id'] as String? ?? '',
-      filename: json['filename'] as String? ?? '',
-      mimeType: json['mime_type'] as String? ?? '',
-      cipherVersion: json['cipher_version'] as String? ?? 'attachment:v1',
-      plaintextSize: json['plaintext_size'] as int? ?? 0,
-      ciphertextSize: json['ciphertext_size'] as int? ?? 0,
-      chunkSize: json['chunk_size'] as int? ?? 0,
-      totalChunks: json['total_chunks'] as int? ?? 0,
-      plaintextSha256: json['plaintext_sha256'] as String? ?? '',
-      manifestSha256: json['manifest_sha256'] as String? ?? '',
-      fileKeyWrap: json['file_key_wrap'] as String? ?? '',
-      status: json['status'] as String? ?? 'pending',
-      receivedChunks: (json['received_chunks'] as List<dynamic>? ?? const [])
-          .whereType<int>()
-          .toList(),
-      completedAttachmentId: json['completed_attachment'] as int?,
-    );
-  }
-}
-
 class SendMessageCommand {
   const SendMessageCommand({
     required this.conversation,
@@ -135,10 +80,7 @@ class ConversationTrustState {
 }
 
 class ChatConversationState {
-  const ChatConversationState({
-    required this.messages,
-    this.trust,
-  });
+  const ChatConversationState({required this.messages, this.trust});
 
   final List<ChatMessage> messages;
   final ConversationTrustState? trust;

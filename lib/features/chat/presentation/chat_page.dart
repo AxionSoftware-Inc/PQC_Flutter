@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' as drift;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
 
 import '../../../app/design_system/app_design_system.dart';
 import '../../../core/database/app_database.dart';
@@ -54,6 +55,8 @@ class _ChatPageState extends State<ChatPage> {
   bool _keepDrafts = true;
   bool _showSecurityDetails = false;
   bool _showTransferDetails = false;
+  int _lastMessageCount = 0;
+  bool _hasRenderedMessages = false;
 
   @override
   void initState() {
@@ -85,6 +88,13 @@ class _ChatPageState extends State<ChatPage> {
     } catch (error) {
       if (error is UnauthorizedApiException) {
         await widget.onUnauthorized();
+        return;
+      }
+      // The controller keeps the existing/local history and exposes the
+      // failure in its status banner. Do not let the unawaited initialization
+      // escape as a framework error and cause the page to restart.
+      if (mounted) {
+        setState(() {});
       }
     }
   }
@@ -106,8 +116,21 @@ class _ChatPageState extends State<ChatPage> {
     if (!mounted) {
       return;
     }
+    final messageCount = _controller.messages.length;
+    final isNearBottom =
+        !_scrollController.hasClients ||
+        _scrollController.position.maxScrollExtent -
+                _scrollController.position.pixels <
+            96;
+    final shouldJump =
+        !_hasRenderedMessages ||
+        (messageCount > _lastMessageCount && isNearBottom);
+    _lastMessageCount = messageCount;
+    _hasRenderedMessages = true;
     setState(() {});
-    _jumpToBottom();
+    if (shouldJump) {
+      _jumpToBottom();
+    }
   }
 
   Future<void> _sendMessage() async {
@@ -752,9 +775,27 @@ class _ChatPageState extends State<ChatPage> {
                 if (!mounted) {
                   return;
                 }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Attachment downloaded to $path')),
-                );
+                if (kIsWeb) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Attachment downloaded to $path')),
+                  );
+                  return;
+                }
+                final result = await OpenFilex.open(path);
+                if (!mounted) {
+                  return;
+                }
+                if (result.type != ResultType.done) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        result.message.isEmpty
+                            ? 'Downloaded, but no app can open this file.'
+                            : result.message,
+                      ),
+                    ),
+                  );
+                }
               } catch (error) {
                 if (!mounted) {
                   return;

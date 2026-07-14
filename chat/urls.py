@@ -3,6 +3,7 @@ from django.urls import path
 from chat.views import (
     AttachmentDownloadChunkView,
     AttachmentDownloadDescriptorView,
+    AttachmentDownloadFileView,
     AttachmentSessionChunkView,
     AttachmentSessionCompleteView,
     AttachmentSessionCreateView,
@@ -53,6 +54,11 @@ urlpatterns = [
         'attachments/<int:attachment_id>/download',
         AttachmentDownloadDescriptorView.as_view(),
         name='attachment-download',
+    ),
+    path(
+        'attachments/<int:attachment_id>/file',
+        AttachmentDownloadFileView.as_view(),
+        name='attachment-download-file',
     ),
     path(
         'attachments/<int:attachment_id>/chunks/<int:chunk_index>',
