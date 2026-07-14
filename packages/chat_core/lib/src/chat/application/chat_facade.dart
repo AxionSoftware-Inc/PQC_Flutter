@@ -66,7 +66,8 @@ class ChatFacade {
            ChatRealtimeCoordinator(
              localStore: localStore,
              cryptoService: cryptoService,
-           ) {
+           ),
+       _realtimeService = realtimeService {
     realtimeService?.events.listen((event) {
       _realtimeEvents.add(event);
       unawaited(_handleRealtimeEvent(event));
@@ -78,6 +79,10 @@ class ChatFacade {
 
   Stream<ChatRealtimeEvent> get realtimeEvents => _realtimeEvents.stream;
 
+  void sendRealtimeEvent(String event, Map<String, dynamic> payload) {
+    _realtimeService?.sendEvent(event, payload);
+  }
+
   final ChatRemoteDataSource _remoteDataSource;
   final OutboxStore _outboxStore;
   final ChatLocalStore _localStore;
@@ -88,6 +93,7 @@ class ChatFacade {
   final OutgoingMessageService _outgoingMessageService;
   final AttachmentTransferFacade? _attachmentTransferFacade;
   final ChatRealtimeCoordinator _realtimeCoordinator;
+  final ChatRealtimeService? _realtimeService;
 
   final Map<int, AppUser> _usersById = {};
   final Map<int, Conversation> _conversationsById = {};
