@@ -13,6 +13,7 @@ import '../../../core/storage/session_storage.dart';
 import '../../chat/data/outbox_store.dart';
 import '../../../core/models/chat_message.dart';
 import '../../crypto/outbound_message_cache.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthRepository {
   static const _unsupportedPqcServerMessage =
@@ -43,6 +44,47 @@ class AuthRepository {
   final AppDatabase? appDatabase;
   final OutboundMessageCache? _outboundMessageCache;
   final OutboxStore? _outboxStore;
+  bool _googleInitialized = false;
+
+  Future<SessionUser> loginWithGoogle() async {
+    if (!_googleInitialized) {
+      await GoogleSignIn.instance.initialize(
+        serverClientId: ApiConfig.googleWebClientId,
+      );
+      _googleInitialized = true;
+    }
+    final account = await GoogleSignIn.instance.authenticate();
+    final idToken = account.authentication.idToken;
+    if (idToken == null || idToken.isEmpty) {
+      throw ApiException(
+        'Google did not return an ID token.',
+        code: 'google_token_missing',
+      );
+    }
+
+    final deviceState = await _prepareDeviceState();
+    final identity = deviceState.deviceIdentity;
+    final pqc = _buildPqcRegistrationPayloadFromState(deviceState);
+    final response = await apiClient.post('/auth/google', {
+      'id_token': idToken,
+      'device_id': identity.id,
+      'device_name': identity.deviceName,
+      'platform': identity.platform,
+      'identity_public_key': deviceState.identityKeyMaterial.publicKey,
+      'key_algorithm': deviceState.identityKeyMaterial.algorithm,
+      'pqc_public_key': pqc.publicKey,
+      'pqc_algorithm': pqc.algorithm,
+      'pqc_signing_public_key': deviceState.pqcSigningKeyMaterial.publicKey,
+      'pqc_signing_algorithm': deviceState.pqcSigningKeyMaterial.algorithm,
+    });
+    if (response is! Map<String, dynamic>) {
+      throw ApiException(
+        'Google login response is invalid.',
+        code: 'google_response_invalid',
+      );
+    }
+    return _sessionFromResponse(response, identity.id);
+  }
 
   Future<String> suggestedBootstrapName() async {
     final rememberedIdentity = await sessionStorage.readRememberedIdentity();
@@ -90,20 +132,9 @@ class AuthRepository {
       }
     }
 
-    final rememberedIdentity = await sessionStorage.readRememberedIdentity();
-    if (rememberedIdentity == null) {
-      return _tryLoginWithRememberedDevice();
-    }
-
-    try {
-      return await login(
-        rememberedIdentity.username.isEmpty
-            ? rememberedIdentity.displayName
-            : rememberedIdentity.username,
-      );
-    } catch (_) {
-      return _tryLoginWithRememberedDevice();
-    }
+    // A device name is not an identity. After logout/reinstall, require
+    // Google authentication instead of silently creating or selecting a user.
+    return null;
   }
 
   Future<SessionUser> login(String username) async {
@@ -171,6 +202,7 @@ class AuthRepository {
     return session;
   }
 
+  // ignore: unused_element
   Future<SessionUser?> _tryLoginWithRememberedDevice() async {
     try {
       final deviceState = await _prepareDeviceState();
@@ -238,6 +270,35 @@ class AuthRepository {
     }
   }
 
+  Future<SessionUser> _sessionFromResponse(
+    Map<String, dynamic> response,
+    String fallbackDeviceId,
+  ) async {
+    final user = response['user'] as Map<String, dynamic>;
+    final session = SessionUser(
+      id: user['id'] as int,
+      accountId: response['account_id'] as int? ?? user['id'] as int,
+      username: user['username'] as String,
+      displayName:
+          user['display_name'] as String? ?? user['username'] as String,
+      deviceId: response['device_id'] as String? ?? fallbackDeviceId,
+      deviceStatus: response['device_status'] as String? ?? 'active',
+      profileFingerprint: response['profile_fingerprint'] as String? ?? '',
+      activeWorkspaceId: response['active_workspace_id'] as int? ?? 0,
+      organizations: _parseOrganizations(response),
+      token: response['token'] as String,
+    );
+    apiClient.setToken(session.token);
+    apiClient.setDeviceId(session.deviceId);
+    apiClient.setWorkspaceId(
+      session.activeWorkspaceId <= 0 ? null : '${session.activeWorkspaceId}',
+    );
+    await _reconcileLocalHistoryOwner(session);
+    await sessionStorage.write(session);
+    await sessionStorage.writeApiBaseUrl(ApiConfig.baseUrl);
+    return session;
+  }
+
   Future<SessionUser> switchWorkspace(
     SessionUser session,
     int workspaceId,
@@ -287,9 +348,11 @@ class AuthRepository {
       expectedSigningPublicKey: pqcSigningKeyMaterial.publicKey,
     );
     await deviceStateManager.markDeviceProfileSynced(
-      serverProfileFingerprint: response['profile_fingerprint'] as String? ?? '',
+      serverProfileFingerprint:
+          response['profile_fingerprint'] as String? ?? '',
       installationStatus: DeviceInstallationStatus.values.firstWhere(
-        (item) => item.name == (response['device_status'] as String? ?? 'active'),
+        (item) =>
+            item.name == (response['device_status'] as String? ?? 'active'),
         orElse: () => DeviceInstallationStatus.active,
       ),
     );

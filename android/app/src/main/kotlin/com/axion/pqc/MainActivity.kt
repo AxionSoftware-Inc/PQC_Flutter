@@ -1,4 +1,4 @@
-package com.example.pqc_chat_app
+package com.axion.pqc
 
 import io.flutter.embedding.android.FlutterActivity
 

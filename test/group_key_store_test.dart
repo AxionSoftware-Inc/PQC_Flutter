@@ -144,7 +144,7 @@ void main() {
       );
 
       expect(remote.lastSyncConversationId, 1);
-      expect(remote.lastAlgorithm, 'group-ml-kem-768-aesgcm-v1');
+      expect(remote.lastAlgorithm, 'group-ml-kem-768-aesgcm-v2');
       expect(remote.lastEnvelopes.length, 2);
       expect(remote.lastEnvelopes.map((item) => item.targetDeviceId).toSet(), {
         'alice-device',
@@ -152,7 +152,7 @@ void main() {
       });
       expect(
         remote.lastEnvelopes.first.wrappedKey,
-        startsWith('group-wrap:pqc:v1:'),
+        startsWith('group-wrap:pqc:v2:'),
       );
     },
   );

@@ -87,6 +87,17 @@ class ApiClient {
     return _decode(response);
   }
 
+  Future<dynamic> put(String path, Map<String, dynamic> body) async {
+    final response = await _send(
+      () => _client.put(
+        _buildUri(path),
+        headers: _headers(),
+        body: jsonEncode(body),
+      ),
+    );
+    return _decode(response);
+  }
+
   Future<dynamic> multipartPost(
     String path, {
     required List<http.MultipartFile> files,
@@ -116,11 +127,7 @@ class ApiClient {
       ...?headers,
     };
     final response = await _send(
-      () => _client.put(
-        _buildUri(path),
-        headers: mergedHeaders,
-        body: bytes,
-      ),
+      () => _client.put(_buildUri(path), headers: mergedHeaders, body: bytes),
     );
     return _decode(response);
   }

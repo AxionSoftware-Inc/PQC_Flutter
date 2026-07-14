@@ -9,6 +9,7 @@ from chat.views import (
     AttachmentSessionDetailView,
     AttachmentUploadView,
     ConversationListView,
+    CryptoProtocolCapabilitiesView,
     ConversationKeyEnvelopeView,
     MessageListCreateView,
     PrivateConversationView,
@@ -16,6 +17,7 @@ from chat.views import (
 
 
 urlpatterns = [
+    path('crypto/protocols', CryptoProtocolCapabilitiesView.as_view(), name='crypto-protocols'),
     path('conversations', ConversationListView.as_view(), name='conversations'),
     path(
         'conversations/<int:conversation_id>/messages',

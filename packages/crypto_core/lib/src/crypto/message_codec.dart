@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:cryptography/cryptography.dart';
 
 import 'package:crypto_core/src/core/device/device_identity_service.dart';
@@ -10,10 +11,10 @@ import 'package:crypto_core/src/core/device/device_pqc_signing_key_service.dart'
 import 'package:crypto_core/src/models/app_user.dart';
 import 'package:crypto_core/src/models/conversation.dart';
 import 'package:crypto_core/src/support/conversation_device_policy.dart';
-import 'durability/crypto_durability_models.dart';
 import 'durability/key_material_registry.dart';
 import 'chat_crypto_exceptions.dart';
 import 'group_key_store.dart';
+import 'durability/v2_protocol_contract.dart';
 
 class PqcPrivateMessageCodec {
   PqcPrivateMessageCodec({
@@ -34,7 +35,9 @@ class PqcPrivateMessageCodec {
              devicePqcSigningKeyService: devicePqcSigningKeyService,
            );
 
-  static const prefix = 'pqc:v1';
+  /// PQCv2 is an immutable, explicit-keyset wire format.  PQCv1 deliberately
+  /// has no reader here: it was a beta protocol with no recovery guarantee.
+  static const prefix = PqcV2ProtocolContract.privatePrefix;
   static final _random = Random.secure();
 
   final DeviceIdentityService deviceIdentityService;
@@ -51,11 +54,6 @@ class PqcPrivateMessageCodec {
     required String plaintext,
     required Map<int, AppUser> usersById,
   }) async {
-    final peerDevice = _resolvePeerPqcDevice(
-      currentUserId: currentUserId,
-      conversation: conversation,
-      usersById: usersById,
-    );
     final localIdentity = await deviceIdentityService.getIdentity();
     final localPqcKeyMaterial = await devicePqcKeyService
         .getOrCreateKeyMaterial();
@@ -71,40 +69,54 @@ class PqcPrivateMessageCodec {
       secretKey: SecretKey(contentKeyBytes),
       nonce: contentNonce,
     );
-    final selfWrap = await _wrapContentKeyForDevice(
-      publicKeyBase64: localPqcKeyMaterial.publicKey,
-      senderDeviceId: localIdentity.id,
-      targetDeviceId: localIdentity.id,
+    final targetDevices = _resolvePrivateTargetDevices(
+      currentUserId: currentUserId,
       conversation: conversation,
-      contentKeyBytes: contentKeyBytes,
+      usersById: usersById,
+      localDeviceId: localIdentity.id,
+      localPqcPublicKey: localPqcKeyMaterial.publicKey,
     );
-    final peerWrap = await _wrapContentKeyForDevice(
-      publicKeyBase64: peerDevice.pqcPublicKey,
-      senderDeviceId: localIdentity.id,
-      targetDeviceId: peerDevice.deviceId,
-      conversation: conversation,
-      contentKeyBytes: contentKeyBytes,
-    );
-    final payloadParts = [
-      localIdentity.id,
-      localSigningKeyMaterial.publicKey,
-      peerDevice.deviceId,
-      selfWrap.kemCiphertext,
-      base64Encode(selfWrap.nonce),
-      base64Encode(selfWrap.cipherText),
-      base64Encode(selfWrap.macBytes),
-      peerWrap.kemCiphertext,
-      base64Encode(peerWrap.nonce),
-      base64Encode(peerWrap.cipherText),
-      base64Encode(peerWrap.macBytes),
-      base64Encode(contentBox.nonce),
-      base64Encode(contentBox.cipherText),
-      base64Encode(contentBox.mac.bytes),
-    ];
+    final wraps = <Map<String, String>>[];
+    for (final device in targetDevices) {
+      final wrap = await _wrapContentKeyForDevice(
+        publicKeyBase64: device.pqcPublicKey,
+        senderDeviceId: localIdentity.id,
+        targetDeviceId: device.deviceId,
+        conversation: conversation,
+        contentKeyBytes: contentKeyBytes,
+      );
+      wraps.add({
+        'target_device_id': device.deviceId,
+        'target_keyset_id': _keysetId(device.deviceId, device.pqcPublicKey),
+        'kem_ciphertext': wrap.kemCiphertext,
+        'nonce': base64Encode(wrap.nonce),
+        'ciphertext': base64Encode(wrap.cipherText),
+        'mac': base64Encode(wrap.macBytes),
+      });
+    }
+    final unsigned = <String, dynamic>{
+      'protocol_version': PqcV2ProtocolContract.protocolVersion,
+      'algorithm': PqcV2ProtocolContract.privateAlgorithm,
+      'conversation_id': conversation.id,
+      'conversation_type': conversation.type,
+      'sender_device_id': localIdentity.id,
+      'sender_keyset_id': _keysetId(
+        localIdentity.id,
+        localPqcKeyMaterial.publicKey,
+      ),
+      'signing_public_key': localSigningKeyMaterial.publicKey,
+      'content_nonce': base64Encode(contentBox.nonce),
+      'content_ciphertext': base64Encode(contentBox.cipherText),
+      'content_mac': base64Encode(contentBox.mac.bytes),
+      'wraps': wraps,
+    };
     final signature = await devicePqcSigningKeyService.sign(
-      Uint8List.fromList(([prefix, ...payloadParts]).join(':').codeUnits),
+      Uint8List.fromList(utf8.encode(jsonEncode(unsigned))),
     );
-    return [prefix, ...payloadParts, signature].join(':');
+    final encodedDocument = base64UrlEncode(
+      utf8.encode(jsonEncode({...unsigned, 'signature': signature})),
+    ).replaceAll('=', '');
+    return '$prefix:$encodedDocument';
   }
 
   Future<String> decrypt({
@@ -113,87 +125,86 @@ class PqcPrivateMessageCodec {
     required String payload,
     required Map<int, AppUser> usersById,
   }) async {
-    if (!payload.startsWith('$prefix:')) {
-      return payload;
-    }
-
     try {
-      final parts = payload.substring(prefix.length + 1).split(':');
-      if (parts.length != 15) {
+      if (!payload.startsWith('$prefix:')) return '[history-unavailable]';
+      final encoded = payload.substring(prefix.length + 1);
+      final padded = encoded.padRight(
+        encoded.length + ((4 - encoded.length % 4) % 4),
+        '=',
+      );
+      final document =
+          jsonDecode(utf8.decode(base64Url.decode(padded)))
+              as Map<String, dynamic>;
+      if (document['protocol_version'] !=
+              PqcV2ProtocolContract.protocolVersion ||
+          document['algorithm'] != PqcV2ProtocolContract.privateAlgorithm ||
+          document['conversation_id'] != conversation.id ||
+          document['conversation_type'] != conversation.type) {
         return '[decrypt-error]';
       }
-      final senderDeviceId = parts[0];
-      final signingPublicKey = parts[1];
-      final targetDeviceId = parts[2];
-      final signature = parts[14];
+      final signature = document.remove('signature') as String?;
+      final senderDeviceId = document['sender_device_id'] as String? ?? '';
+      final signingPublicKey = document['signing_public_key'] as String? ?? '';
       if (!_verifySenderSignature(
-        currentUserId: currentUserId,
         usersById: usersById,
         senderDeviceId: senderDeviceId,
         signingPublicKey: signingPublicKey,
-        payloadParts: parts.sublist(0, 14),
-        signature: signature,
+        unsignedDocument: document,
+        signature: signature ?? '',
       )) {
         return '[decrypt-error]';
       }
       final localIdentity = await deviceIdentityService.getIdentity();
-      final availableKeysets = await _keyMaterialRegistry.readHistoricalDecryptKeysets();
-      KeysetSnapshot? matchingHistoricalKeyset;
-      for (final keyset in availableKeysets) {
-        if (keyset.deviceId == senderDeviceId ||
-            keyset.deviceId == targetDeviceId) {
-          matchingHistoricalKeyset = keyset;
-          break;
+      final wraps = (document['wraps'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map((item) => item.map((key, value) => MapEntry('$key', '$value')))
+          .toList();
+      final current = await devicePqcKeyService.getOrCreateKeyMaterial();
+      Map<String, String>? selected = wraps
+          .where(
+            (item) =>
+                item['target_device_id'] == localIdentity.id &&
+                item['target_keyset_id'] ==
+                    _keysetId(localIdentity.id, current.publicKey),
+          )
+          .cast<Map<String, String>?>()
+          .firstWhere((item) => item != null, orElse: () => null);
+      String secretKey = current.secretKey;
+      String targetDeviceId = localIdentity.id;
+      if (selected == null) {
+        for (final candidate in wraps) {
+          final keyset = await _keyMaterialRegistry.readKeyset(
+            candidate['target_keyset_id'] ?? '',
+          );
+          if (keyset != null &&
+              keyset.isHistoricalReadEnabled &&
+              keyset.deviceId == candidate['target_device_id']) {
+            selected = candidate;
+            secretKey = keyset.pqcSecretKey;
+            targetDeviceId = keyset.deviceId;
+            break;
+          }
         }
       }
-      late final _WrappedContentKeyEnvelope wrap;
-      late final String unwrapTargetDeviceId;
-      late final String unwrapSecretKey;
-      if (localIdentity.id == senderDeviceId) {
-        wrap = _WrappedContentKeyEnvelope(
-          kemCiphertext: parts[3],
-          nonce: base64Decode(parts[4]),
-          cipherText: base64Decode(parts[5]),
-          macBytes: base64Decode(parts[6]),
-        );
-        unwrapTargetDeviceId = localIdentity.id;
-        unwrapSecretKey =
-            (await devicePqcKeyService.getOrCreateKeyMaterial()).secretKey;
-      } else if (localIdentity.id == targetDeviceId) {
-        wrap = _WrappedContentKeyEnvelope(
-          kemCiphertext: parts[7],
-          nonce: base64Decode(parts[8]),
-          cipherText: base64Decode(parts[9]),
-          macBytes: base64Decode(parts[10]),
-        );
-        unwrapTargetDeviceId = localIdentity.id;
-        unwrapSecretKey =
-            (await devicePqcKeyService.getOrCreateKeyMaterial()).secretKey;
-      } else if (matchingHistoricalKeyset != null) {
-        final isSelfWrap = matchingHistoricalKeyset.deviceId == senderDeviceId;
-        wrap = _WrappedContentKeyEnvelope(
-          kemCiphertext: isSelfWrap ? parts[3] : parts[7],
-          nonce: base64Decode(isSelfWrap ? parts[4] : parts[8]),
-          cipherText: base64Decode(isSelfWrap ? parts[5] : parts[9]),
-          macBytes: base64Decode(isSelfWrap ? parts[6] : parts[10]),
-        );
-        unwrapTargetDeviceId = matchingHistoricalKeyset.deviceId;
-        unwrapSecretKey = matchingHistoricalKeyset.pqcSecretKey;
-      } else {
-        return '[decrypt-error]';
-      }
+      if (selected == null) return '[history-recovery-pending]';
+      final wrap = _WrappedContentKeyEnvelope(
+        kemCiphertext: selected['kem_ciphertext']!,
+        nonce: base64Decode(selected['nonce']!),
+        cipherText: base64Decode(selected['ciphertext']!),
+        macBytes: base64Decode(selected['mac']!),
+      );
       final contentKeyBytes = await _unwrapContentKeyForCurrentDevice(
         senderDeviceId: senderDeviceId,
-        localDeviceId: unwrapTargetDeviceId,
+        localDeviceId: targetDeviceId,
         conversation: conversation,
         wrap: wrap,
-        secretKeyBase64: unwrapSecretKey,
+        secretKeyBase64: secretKey,
       );
       final clearBytes = await _cipher.decrypt(
         SecretBox(
-          base64Decode(parts[12]),
-          nonce: base64Decode(parts[11]),
-          mac: Mac(base64Decode(parts[13])),
+          base64Decode(document['content_ciphertext'] as String),
+          nonce: base64Decode(document['content_nonce'] as String),
+          mac: Mac(base64Decode(document['content_mac'] as String)),
         ),
         secretKey: SecretKey(contentKeyBytes),
       );
@@ -271,60 +282,89 @@ class PqcPrivateMessageCodec {
   }
 
   bool _verifySenderSignature({
-    required int currentUserId,
     required Map<int, AppUser> usersById,
     required String senderDeviceId,
     required String signingPublicKey,
-    required List<String> payloadParts,
+    required Map<String, dynamic> unsignedDocument,
     required String signature,
   }) {
     final senderDevice = _findPeerDeviceById(
-      currentUserId: currentUserId,
       usersById: usersById,
       deviceId: senderDeviceId,
     );
     if (senderDevice != null &&
         senderDevice.hasUsableMlDsaKey &&
         senderDevice.pqcSigningPublicKey != signingPublicKey) {
+      // A device id may have rotated keys. Historical public keys are kept
+      // alongside the active record and remain valid for old signatures.
       return false;
     }
     return devicePqcSigningKeyService.verify(
       publicKeyBase64: signingPublicKey,
       signatureBase64: signature,
-      message: Uint8List.fromList(
-        ([prefix, ...payloadParts]).join(':').codeUnits,
-      ),
+      message: Uint8List.fromList(utf8.encode(jsonEncode(unsignedDocument))),
     );
   }
 
-  AppUserDevice _resolvePeerPqcDevice({
+  List<AppUserDevice> _resolvePrivateTargetDevices({
     required int currentUserId,
     required Conversation conversation,
     required Map<int, AppUser> usersById,
+    required String localDeviceId,
+    required String localPqcPublicKey,
   }) {
-    final resolution = _devicePolicy.resolvePrivatePeerPqcDevice(
-      currentUserId: currentUserId,
-      conversation: conversation,
-      usersById: usersById,
-    );
-    if (!resolution.isReady || resolution.device == null) {
-      throw ChatEncryptionException(
-        'Peer PQC device key is not ready yet. Ask them to reopen the app.',
+    final devices = <AppUserDevice>[];
+    for (final participantId in conversation.participantIds) {
+      final user = usersById[participantId];
+      if (user == null) continue;
+      devices.addAll(
+        user.devices.where(
+          (device) => device.isActive && device.hasUsableMlKemKey,
+        ),
       );
     }
-    return resolution.device!;
+    if (!devices.any((item) => item.deviceId == localDeviceId)) {
+      devices.add(
+        AppUserDevice(
+          deviceId: localDeviceId,
+          deviceName: '',
+          platform: '',
+          identityPublicKey: '',
+          keyAlgorithm: '',
+          pqcPublicKey: localPqcPublicKey,
+          pqcAlgorithm: DevicePqcKeyService.algorithmName,
+          pqcSigningPublicKey: '',
+          pqcSigningAlgorithm: '',
+        ),
+      );
+    }
+    final unique = <String, AppUserDevice>{
+      for (final item in devices) item.deviceId: item,
+    };
+    if (unique.length < 2 && conversation.participantIds.length > 1) {
+      throw ChatEncryptionException(
+        'All active private-chat participant devices need ML-KEM keys.',
+      );
+    }
+    return unique.values.toList();
   }
 
   AppUserDevice? _findPeerDeviceById({
-    required int currentUserId,
     required Map<int, AppUser> usersById,
     required String deviceId,
   }) {
     return _devicePolicy.findDeviceById(
       usersById: usersById,
       deviceId: deviceId,
-      excludeUserId: currentUserId,
+      includeHistorical: true,
     );
+  }
+
+  String _keysetId(String deviceId, String pqcPublicKey) {
+    final bytes = crypto.sha256
+        .convert(utf8.encode('$deviceId|$pqcPublicKey'))
+        .bytes;
+    return base64UrlEncode(bytes).replaceAll('=', '');
   }
 }
 
@@ -332,7 +372,7 @@ class GroupCipherMessageCodec {
   GroupCipherMessageCodec({required this._groupKeyStore, AesGcm? cipher})
     : _cipher = cipher ?? AesGcm.with256bits();
 
-  static const prefix = 'group:v1';
+  static const prefix = PqcV2ProtocolContract.groupPrefix;
   static final _random = Random.secure();
 
   final GroupKeyProvider _groupKeyStore;
@@ -354,13 +394,20 @@ class GroupCipherMessageCodec {
       nonce: nonce,
     );
 
-    return [
-      prefix,
-      keyMaterial.keyId,
-      base64Encode(secretBox.nonce),
-      base64Encode(secretBox.cipherText),
-      base64Encode(secretBox.mac.bytes),
-    ].join(':');
+    final document = <String, dynamic>{
+      'protocol_version': PqcV2ProtocolContract.protocolVersion,
+      'algorithm': PqcV2ProtocolContract.groupAlgorithm,
+      'conversation_id': conversation.id,
+      'conversation_type': conversation.type,
+      'group_epoch_id': keyMaterial.keyId,
+      'nonce': base64Encode(secretBox.nonce),
+      'ciphertext': base64Encode(secretBox.cipherText),
+      'mac': base64Encode(secretBox.mac.bytes),
+    };
+    final encodedDocument = base64UrlEncode(
+      utf8.encode(jsonEncode(document)),
+    ).replaceAll('=', '');
+    return '$prefix:$encodedDocument';
   }
 
   Future<String> decrypt({
@@ -369,15 +416,27 @@ class GroupCipherMessageCodec {
     required Map<int, AppUser> usersById,
   }) async {
     try {
-      final parts = payload.substring(prefix.length + 1).split(':');
-      if (parts.length != 4) {
+      if (!payload.startsWith('$prefix:')) return '[history-unavailable]';
+      final encoded = payload.substring(prefix.length + 1);
+      final padded = encoded.padRight(
+        encoded.length + ((4 - encoded.length % 4) % 4),
+        '=',
+      );
+      final document =
+          jsonDecode(utf8.decode(base64Url.decode(padded)))
+              as Map<String, dynamic>;
+      if (document['protocol_version'] !=
+              PqcV2ProtocolContract.protocolVersion ||
+          document['algorithm'] != PqcV2ProtocolContract.groupAlgorithm ||
+          document['conversation_id'] != conversation.id ||
+          document['conversation_type'] != conversation.type) {
         return '[decrypt-error]';
       }
 
       final keyMaterial = await _groupKeyStore.getExistingKey(
         conversation: conversation,
         usersById: usersById,
-        requestedKeyId: parts[0],
+        requestedKeyId: document['group_epoch_id'] as String?,
       );
       if (keyMaterial == null) {
         return '[decrypt-error]';
@@ -385,9 +444,9 @@ class GroupCipherMessageCodec {
 
       final clearBytes = await _cipher.decrypt(
         SecretBox(
-          base64Decode(parts[2]),
-          nonce: base64Decode(parts[1]),
-          mac: Mac(base64Decode(parts[3])),
+          base64Decode(document['ciphertext'] as String),
+          nonce: base64Decode(document['nonce'] as String),
+          mac: Mac(base64Decode(document['mac'] as String)),
         ),
         secretKey: SecretKey(keyMaterial.secretKeyBytes),
       );

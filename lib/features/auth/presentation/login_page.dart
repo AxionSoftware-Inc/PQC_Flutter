@@ -13,50 +13,11 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final TextEditingController _usernameController = TextEditingController();
-  String? _suggestedName;
-
-  @override
-  void initState() {
-    super.initState();
-    _primeSuggestion();
-  }
-
-  @override
-  void dispose() {
-    _usernameController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _primeSuggestion() async {
-    final suggestedName = await widget.sessionController
-        .suggestedBootstrapName();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _suggestedName = suggestedName;
-      if (_usernameController.text.trim().isEmpty) {
-        _usernameController.text = suggestedName;
-      }
-    });
-  }
-
-  Future<void> _submit([String? username]) async {
-    final value = (username ?? _usernameController.text).trim();
-    if (value.isEmpty) {
-      return;
-    }
-
-    await widget.sessionController.login(value);
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = context.appColors;
     final spacing = context.appSpacing;
-    final suggestedName = _suggestedName ?? 'Loading...';
 
     return AppScaffold(
       body: Center(
@@ -73,48 +34,24 @@ class _LoginPageState extends State<LoginPage> {
                   const AppBrandMark(),
                   SizedBox(height: spacing.xl),
                   Text(
-                    'Set up this device',
+                    'Sign in to PQC Chat',
                     style: theme.textTheme.headlineSmall,
                   ),
                   SizedBox(height: spacing.sm),
                   Text(
-                    'Test build uchun kirish soddalashtirilgan. Bir marta ismingizni kiriting, keyin shu qurilma uchun eslab qolinadi.',
+                    'Google account bilan kiring. Shu account boshqa qurilmalarda ham ishlaydi; device nomi alohida account yaratmaydi.',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: colors.textMuted,
                     ),
                   ),
                   SizedBox(height: spacing.xl),
-                  AppStatusBanner(
-                    message: 'Device: $suggestedName',
-                    leading: Icon(
-                      Icons.memory_rounded,
-                      color: colors.info,
-                    ),
-                  ),
-                  SizedBox(height: spacing.lg),
-                  AppTextField(
-                    controller: _usernameController,
-                    labelText: 'Your name',
-                    onSubmitted: _submit,
-                  ),
-                  SizedBox(height: spacing.md),
-                  AppPrimaryButton(
-                    onPressed: widget.sessionController.isLoading ? null : () => _submit(),
-                    icon: widget.sessionController.isLoading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.rocket_launch_outlined),
-                    label: Text(
-                      widget.sessionController.isLoading
-                          ? 'Opening...'
-                          : 'Continue',
-                    ),
+                  SizedBox(height: spacing.xl),
+                  AppSecondaryButton(
+                    onPressed: widget.sessionController.isLoading
+                        ? null
+                        : () => widget.sessionController.loginWithGoogle(),
+                    icon: const Icon(Icons.account_circle_outlined),
+                    label: const Text('Continue with Google'),
                   ),
                   if (widget.sessionController.error != null) ...[
                     SizedBox(height: spacing.md),

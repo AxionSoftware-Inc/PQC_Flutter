@@ -7,6 +7,7 @@ import '../features/chat/application/chat_facade.dart';
 import '../features/auth/presentation/login_page.dart';
 import '../features/chat/presentation/chat_list_page.dart';
 import '../features/crypto/durability/crypto_core_facade.dart';
+import '../core/network/api_client.dart';
 
 class PqcChatApp extends StatelessWidget {
   const PqcChatApp({
@@ -16,6 +17,7 @@ class PqcChatApp extends StatelessWidget {
     required this.cryptoCoreFacade,
     required this.themeController,
     required this.skin,
+    required this.apiClient,
   });
 
   final SessionController sessionController;
@@ -23,6 +25,7 @@ class PqcChatApp extends StatelessWidget {
   final CryptoCoreFacade cryptoCoreFacade;
   final AppThemeController themeController;
   final AppSkin skin;
+  final ApiClient apiClient;
 
   @override
   Widget build(BuildContext context) {
@@ -36,10 +39,7 @@ class PqcChatApp extends StatelessWidget {
           title: skin.appTitle,
           debugShowCheckedModeBanner: false,
           themeMode: themeController.themeMode,
-          theme: AppThemeFactory.build(
-            skin: skin,
-            brand: brand,
-          ),
+          theme: AppThemeFactory.build(skin: skin, brand: brand),
           darkTheme: AppThemeFactory.build(
             skin: skin,
             brand: brand,
@@ -67,6 +67,7 @@ class PqcChatApp extends StatelessWidget {
                 chatFacade: chatFacade,
                 cryptoCoreFacade: cryptoCoreFacade,
                 themeController: themeController,
+                apiClient: apiClient,
               );
             },
           ),

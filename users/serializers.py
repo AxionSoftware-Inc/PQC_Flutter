@@ -189,30 +189,50 @@ class UserSerializer(serializers.ModelSerializer):
         return obj.first_name or obj.username
 
     def get_devices(self, obj):
+        device_rows = [
+            {
+                'device_id': device.device_id,
+                'device_name': device.device_name,
+                'platform': device.platform,
+                'identity_public_key': device.identity_public_key,
+                'key_algorithm': device.key_algorithm,
+                'pqc_public_key': device.pqc_public_key,
+                'pqc_algorithm': device.pqc_algorithm,
+                'pqc_signing_public_key': device.pqc_signing_public_key,
+                'pqc_signing_algorithm': device.pqc_signing_algorithm,
+                'status': device.status,
+                'profile_fingerprint': device.profile_fingerprint,
+                'revoked_reason': device.revoked_reason,
+                'created_at': device.created_at,
+                'updated_at': device.updated_at,
+                'first_seen_at': device.first_seen_at,
+                'last_seen_at': device.last_seen_at,
+            }
+            for device in obj.devices.all().order_by('id')
+        ]
+        device_rows.extend(
+            {
+                'device_id': item.device_id,
+                'device_name': 'Historical device',
+                'platform': 'historical',
+                'identity_public_key': item.identity_public_key,
+                'key_algorithm': item.key_algorithm,
+                'pqc_public_key': item.pqc_public_key,
+                'pqc_algorithm': item.pqc_algorithm,
+                'pqc_signing_public_key': item.pqc_signing_public_key,
+                'pqc_signing_algorithm': item.pqc_signing_algorithm,
+                'status': 'historical',
+                'profile_fingerprint': item.profile_fingerprint,
+                'revoked_reason': '',
+                'created_at': item.captured_at,
+                'updated_at': item.captured_at,
+                'first_seen_at': item.captured_at,
+                'last_seen_at': item.captured_at,
+            }
+            for item in obj.historical_device_keys.all().order_by('id')
+        )
         return DeviceSerializer(
-            [
-                {
-                    'device_id': device.device_id,
-                    'device_name': device.device_name,
-                    'platform': device.platform,
-                    'identity_public_key': device.identity_public_key,
-                    'key_algorithm': device.key_algorithm,
-                    'pqc_public_key': device.pqc_public_key,
-                    'pqc_algorithm': device.pqc_algorithm,
-                    'pqc_signing_public_key': device.pqc_signing_public_key,
-                    'pqc_signing_algorithm': device.pqc_signing_algorithm,
-                    'status': device.status,
-                    'profile_fingerprint': device.profile_fingerprint,
-                    'revoked_reason': device.revoked_reason,
-                    'created_at': device.created_at,
-                    'updated_at': device.updated_at,
-                    'first_seen_at': device.first_seen_at,
-                    'last_seen_at': device.last_seen_at,
-                }
-                for device in obj.devices.filter(
-                    status='active',
-                ).order_by('id')
-            ],
+            device_rows,
             many=True,
         ).data
 

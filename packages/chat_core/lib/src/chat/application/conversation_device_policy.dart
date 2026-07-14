@@ -54,13 +54,15 @@ class ConversationDevicePolicy {
     required Map<int, AppUser> usersById,
     required String deviceId,
     int? excludeUserId,
+    bool includeHistorical = false,
   }) {
     for (final user in usersById.values) {
       if (excludeUserId != null && user.id == excludeUserId) {
         continue;
       }
       for (final device in user.devices) {
-        if (device.deviceId == deviceId) {
+        if (device.deviceId == deviceId &&
+            (includeHistorical || device.isActive)) {
           return device;
         }
       }
@@ -83,7 +85,12 @@ class ConversationDevicePolicy {
       }
 
       final usableDevices = user.devices
-          .where((device) => device.hasUsableMlKemKey && device.hasUsableMlDsaKey)
+          .where(
+            (device) =>
+                device.isActive &&
+                device.hasUsableMlKemKey &&
+                device.hasUsableMlDsaKey,
+          )
           .toList();
       if (usableDevices.isEmpty) {
         missingParticipants.add(user.displayName);
@@ -120,14 +127,20 @@ class ConversationDevicePolicy {
         entries.add('$userId:missing');
         continue;
       }
-      final devices = user.devices
-          .where((item) => item.hasUsableMlKemKey && item.hasUsableMlDsaKey)
-          .map(
-            (item) =>
-                '${item.deviceId}:${item.pqcPublicKey}:${item.pqcSigningPublicKey}',
-          )
-          .toList()
-        ..sort();
+      final devices =
+          user.devices
+              .where(
+                (item) =>
+                    item.isActive &&
+                    item.hasUsableMlKemKey &&
+                    item.hasUsableMlDsaKey,
+              )
+              .map(
+                (item) =>
+                    '${item.deviceId}:${item.pqcPublicKey}:${item.pqcSigningPublicKey}',
+              )
+              .toList()
+            ..sort();
       if (devices.isEmpty) {
         entries.add('$userId:none');
         continue;

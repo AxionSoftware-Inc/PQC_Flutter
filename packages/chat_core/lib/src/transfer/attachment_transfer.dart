@@ -210,7 +210,9 @@ class TransferSessionStore {
       return existing;
     }
     final directory = await getApplicationDocumentsDirectory();
-    final file = File(p.join(directory.path, 'attachment_transfer_sessions.json'));
+    final file = File(
+      p.join(directory.path, 'attachment_transfer_sessions.json'),
+    );
     if (!await file.exists()) {
       await file.create(recursive: true);
       await file.writeAsString('[]');
@@ -227,7 +229,10 @@ class TransferSessionStore {
     }
     final decoded = jsonDecode(raw) as List<dynamic>;
     return decoded
-        .map((item) => _StoredTransferSession.fromJson(item as Map<String, dynamic>))
+        .map(
+          (item) =>
+              _StoredTransferSession.fromJson(item as Map<String, dynamic>),
+        )
         .toList();
   }
 
@@ -243,7 +248,9 @@ class TransferSessionStore {
 
   Future<void> _upsert(_StoredTransferSession session) async {
     final sessions = await _readAll();
-    final index = sessions.indexWhere((item) => item.localId == session.localId);
+    final index = sessions.indexWhere(
+      (item) => item.localId == session.localId,
+    );
     if (index >= 0) {
       sessions[index] = session;
     } else {
@@ -288,32 +295,55 @@ class AttachmentTransferFacade {
   final TransferSessionStore _sessionStore;
   final int _chunkSizeBytes;
   final int _maxAttachmentBytes;
-  final ValueNotifier<List<AttachmentTransferState>> transfers =
-      ValueNotifier(const []);
+  final ValueNotifier<List<AttachmentTransferState>> transfers = ValueNotifier(
+    const [],
+  );
 
   Future<ChatAttachment> uploadAttachment({
     required Conversation conversation,
     required PendingAttachmentUpload attachment,
     required Future<String> Function(String plaintext) encryptKeyEnvelope,
+    Future<AttachmentEncryptionDescriptor> Function(String attachmentId)?
+    deriveDescriptor,
   }) async {
     final sourceFile = await _resolveSourceFile(attachment);
-    await _validateUploadSize(
-      attachment: attachment,
-      sourceFile: sourceFile,
-    );
+    await _validateUploadSize(attachment: attachment, sourceFile: sourceFile);
     final localId = await _buildLocalId(
       conversationId: conversation.id,
       file: sourceFile,
       filename: attachment.filename,
     );
-    final existing = await _sessionStore._readByLocalId(localId);
-    final session = existing ??
+    var existing = await _sessionStore._readByLocalId(localId);
+    if (existing != null) {
+      try {
+        final remote = await _remoteDataSource.getAttachmentSession(
+          existing.remoteSessionId,
+        );
+        if (remote.filename != existing.filename ||
+            remote.plaintextSize != existing.plaintextSize ||
+            remote.ciphertextSize != existing.ciphertextSize ||
+            remote.manifestSha256 != existing.manifestSha256) {
+          await _sessionStore._remove(localId);
+          existing = null;
+        }
+      } on ApiException catch (error) {
+        if (error.statusCode == 404 || error.statusCode == 410) {
+          await _sessionStore._remove(localId);
+          existing = null;
+        } else {
+          rethrow;
+        }
+      }
+    }
+    final session =
+        existing ??
         await _createUploadSession(
           localId: localId,
           conversation: conversation,
           attachment: attachment,
           sourceFile: sourceFile,
           encryptKeyEnvelope: encryptKeyEnvelope,
+          deriveDescriptor: deriveDescriptor,
         );
     try {
       await _emitSession(
@@ -329,6 +359,16 @@ class AttachmentTransferFacade {
       await _refreshTransfers();
       return completed;
     } on ApiException catch (error) {
+      if (error.code == 'attachment_integrity_failed' ||
+          error.code == 'attachment_decrypt_failed') {
+        try {
+          await _remoteDataSource.reportCryptoMetric(
+            'attachment_decryption_error_total',
+          );
+        } catch (_) {
+          // Observability must never hide the original decrypt failure.
+        }
+      }
       await _sessionStore._upsert(
         session.copyWith(
           completedChunks: session.completedChunks,
@@ -349,7 +389,18 @@ class AttachmentTransferFacade {
     final localId = 'download-${attachment.id}';
     final descriptorAttachment = await _remoteDataSource
         .fetchAttachmentDownloadDescriptor(attachment.id);
-    final existing = await _sessionStore._readByLocalId(localId);
+    var existing = await _sessionStore._readByLocalId(localId);
+    // Attachment IDs can be reused after a server reset. Never decrypt a new
+    // attachment with a stale local session from the previous account/data set.
+    if (existing != null &&
+        (existing.filename != descriptorAttachment.filename ||
+            existing.plaintextSize != descriptorAttachment.plaintextSize ||
+            existing.ciphertextSize != descriptorAttachment.ciphertextSize ||
+            existing.plaintextSha256 != descriptorAttachment.plaintextSha256 ||
+            existing.fileKeyWrap != descriptorAttachment.fileKeyWrap)) {
+      await _sessionStore._remove(localId);
+      existing = null;
+    }
     final targetFile = await _resolveDownloadFile(descriptorAttachment);
     final session =
         existing ??
@@ -445,9 +496,9 @@ class AttachmentTransferFacade {
     await _sessionStore._upsert(resumed);
     await _refreshTransfers();
     return transfers.value.cast<AttachmentTransferState?>().firstWhere(
-          (item) => item?.localId == localId,
-          orElse: () => null,
-        );
+      (item) => item?.localId == localId,
+      orElse: () => null,
+    );
   }
 
   Future<void> cancelTransfer(String localId) async {
@@ -456,7 +507,8 @@ class AttachmentTransferFacade {
       return;
     }
     if (existing.direction == AttachmentTransferDirection.download.name) {
-      final targetPath = existing.downloadTargetPath ?? existing.localSourcePath;
+      final targetPath =
+          existing.downloadTargetPath ?? existing.localSourcePath;
       final file = File(targetPath);
       if (await file.exists()) {
         await file.delete();
@@ -510,8 +562,12 @@ class AttachmentTransferFacade {
     required PendingAttachmentUpload attachment,
     required File sourceFile,
     required Future<String> Function(String plaintext) encryptKeyEnvelope,
+    Future<AttachmentEncryptionDescriptor> Function(String attachmentId)?
+    deriveDescriptor,
   }) async {
-    final descriptor = _attachmentCryptoService.generateDescriptor();
+    final descriptor =
+        await deriveDescriptor?.call(localId) ??
+        _attachmentCryptoService.generateDescriptor();
     final analysis = await _attachmentCryptoService.analyzeFile(
       file: sourceFile,
       chunkSize: _chunkSizeBytes,
@@ -520,6 +576,8 @@ class AttachmentTransferFacade {
       fileKeyBase64: descriptor.fileKeyBase64,
       nonceSeedBase64: descriptor.nonceSeedBase64,
       cipherVersion: descriptor.cipherVersion,
+      conversationEpochId: descriptor.conversationEpochId,
+      recoveryManifestSequence: descriptor.manifestSequence,
     );
     final fileKeyWrap = await encryptKeyEnvelope(
       jsonEncode(keyEnvelope.toJson()),
@@ -535,6 +593,8 @@ class AttachmentTransferFacade {
       plaintextSha256: analysis.plaintextSha256,
       manifestSha256: '',
       fileKeyWrap: fileKeyWrap,
+      conversationEpochId: descriptor.conversationEpochId,
+      recoveryManifestSequence: descriptor.manifestSequence,
     );
     final manifestSha256 = await _attachmentCryptoService.buildManifestSha256(
       preliminaryManifest,
@@ -551,6 +611,8 @@ class AttachmentTransferFacade {
       plaintextSha256: analysis.plaintextSha256,
       manifestSha256: manifestSha256,
       fileKeyWrap: fileKeyWrap,
+      conversationEpochId: descriptor.conversationEpochId,
+      recoveryManifestSequence: descriptor.manifestSequence,
     );
     final encryptedDescriptor = await _localDataProtector.protect(
       jsonEncode(descriptor.toJson()),
@@ -638,7 +700,9 @@ class AttachmentTransferFacade {
     return crypto.sha256.convert(utf8.encode(fingerprint)).toString();
   }
 
-  Future<AttachmentEncryptionDescriptor> _readDescriptor(String protected) async {
+  Future<AttachmentEncryptionDescriptor> _readDescriptor(
+    String protected,
+  ) async {
     final raw = await _localDataProtector.unprotect(protected);
     return AttachmentEncryptionDescriptor.fromJson(
       jsonDecode(raw) as Map<String, dynamic>,
@@ -696,7 +760,9 @@ class AttachmentTransferFacade {
         chunkSize: current.chunkSize,
         chunkIndex: chunkIndex,
       );
-      final checksum = crypto.sha256.convert(encryptedChunk.ciphertext).toString();
+      final checksum = crypto.sha256
+          .convert(encryptedChunk.ciphertext)
+          .toString();
       await _remoteDataSource.uploadAttachmentChunk(
         current.remoteSessionId,
         chunkIndex: chunkIndex,
@@ -809,29 +875,33 @@ class AttachmentTransferFacade {
 
   Future<void> _refreshTransfers() async {
     final sessions = await _sessionStore._readAll();
-    transfers.value = sessions
-        .map(
-          (session) => AttachmentTransferState(
-            localId: session.localId,
-            conversationId: session.conversationId,
-            direction: session.direction == AttachmentTransferDirection.download.name
-                ? AttachmentTransferDirection.download
-                : AttachmentTransferDirection.upload,
-            status: AttachmentTransferStatus.values.firstWhere(
-              (item) => item.name == session.status,
-              orElse: () => AttachmentTransferStatus.queued,
-            ),
-            filename: session.filename,
-            progress: AttachmentTransferProgress(
-              completedChunks: session.completedChunks.length,
-              totalChunks: session.totalChunks,
-            ),
-            attachmentId: session.attachmentId,
-            error: session.lastError,
-            localPath: session.downloadTargetPath ?? session.localSourcePath,
-          ),
-        )
-        .toList()
-      ..sort((a, b) => a.filename.compareTo(b.filename));
+    transfers.value =
+        sessions
+            .map(
+              (session) => AttachmentTransferState(
+                localId: session.localId,
+                conversationId: session.conversationId,
+                direction:
+                    session.direction ==
+                        AttachmentTransferDirection.download.name
+                    ? AttachmentTransferDirection.download
+                    : AttachmentTransferDirection.upload,
+                status: AttachmentTransferStatus.values.firstWhere(
+                  (item) => item.name == session.status,
+                  orElse: () => AttachmentTransferStatus.queued,
+                ),
+                filename: session.filename,
+                progress: AttachmentTransferProgress(
+                  completedChunks: session.completedChunks.length,
+                  totalChunks: session.totalChunks,
+                ),
+                attachmentId: session.attachmentId,
+                error: session.lastError,
+                localPath:
+                    session.downloadTargetPath ?? session.localSourcePath,
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.filename.compareTo(b.filename));
   }
 }

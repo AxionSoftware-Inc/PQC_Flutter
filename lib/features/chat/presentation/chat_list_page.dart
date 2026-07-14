@@ -20,12 +20,14 @@ class ChatListPage extends StatefulWidget {
     required this.chatFacade,
     required this.cryptoCoreFacade,
     required this.themeController,
+    required this.apiClient,
   });
 
   final SessionController sessionController;
   final ChatFacade chatFacade;
   final CryptoCoreFacade cryptoCoreFacade;
   final AppThemeController themeController;
+  final ApiClient apiClient;
 
   @override
   State<ChatListPage> createState() => _ChatListPageState();
@@ -37,6 +39,7 @@ class _ChatListPageState extends State<ChatListPage> {
   final TextEditingController _contactsSearchController =
       TextEditingController();
   int _selectedTabIndex = 0;
+  bool _recoveryPromptShown = false;
 
   @override
   void initState() {
@@ -47,6 +50,7 @@ class _ChatListPageState extends State<ChatListPage> {
       cryptoCoreFacade: widget.cryptoCoreFacade,
       currentUserId: sessionUser.id,
       sessionUserProvider: () => widget.sessionController.sessionUser!,
+      apiClient: widget.apiClient,
     )..addListener(_onControllerChanged);
     _load();
   }
@@ -85,11 +89,126 @@ class _ChatListPageState extends State<ChatListPage> {
   Future<void> _load() async {
     try {
       await _controller.load();
+      await _syncServerRecovery();
     } catch (error) {
       if (error is UnauthorizedApiException) {
         await widget.sessionController.invalidateSession();
       }
     }
+  }
+
+  Future<void> _syncServerRecovery() async {
+    if (_recoveryPromptShown || !mounted) return;
+    _recoveryPromptShown = true;
+    await _controller.syncEnterpriseRecoveryManifest();
+    if (mounted) await _controller.refresh();
+  }
+
+  Future<void> _showPendingRecoveryApprovals() async {
+    final approvals = await _controller.pendingRecoveryApprovals();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(
+              title: Text('History recovery requests'),
+              subtitle: Text(
+                'Approve only a device you recognize. Approval expires automatically.',
+              ),
+            ),
+            if (approvals.isEmpty)
+              const ListTile(title: Text('No pending requests')),
+            for (final approval in approvals)
+              ListTile(
+                leading: const Icon(Icons.devices_other_outlined),
+                title: Text(
+                  approval['requesting_device_id'] as String? ?? 'New device',
+                ),
+                subtitle: Text('Requested ${approval['created_at'] ?? ''}'),
+                trailing: Wrap(
+                  children: [
+                    IconButton(
+                      tooltip: 'Deny',
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () async {
+                        await _controller.decideRecoveryApproval(
+                          approvalId: approval['id'] as int,
+                          approved: false,
+                        );
+                        if (sheetContext.mounted) Navigator.pop(sheetContext);
+                      },
+                    ),
+                    IconButton(
+                      tooltip: 'Approve',
+                      icon: const Icon(Icons.check_rounded),
+                      onPressed: () async {
+                        await _controller.decideRecoveryApproval(
+                          approvalId: approval['id'] as int,
+                          approved: true,
+                        );
+                        if (sheetContext.mounted) Navigator.pop(sheetContext);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ignore: unused_element
+  Future<String?> _showRecoveryPinDialog({required bool hasServerBackup}) {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          hasServerBackup ? 'Restore chat history' : 'Protect chat history',
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              hasServerBackup
+                  ? 'This account has an encrypted recovery backup. Enter your recovery PIN to open older messages on this device.'
+                  : 'Create a recovery PIN. It protects your chat keys and lets you restore history after reinstalling or changing devices.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 12,
+              decoration: const InputDecoration(labelText: 'Recovery PIN'),
+            ),
+          ],
+        ),
+        actions: [
+          if (hasServerBackup)
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Later'),
+            ),
+          FilledButton(
+            onPressed: () {
+              final pin = controller.text.trim();
+              if (pin.length < 6) return;
+              Navigator.of(dialogContext).pop(pin);
+            },
+            child: Text(hasServerBackup ? 'Restore' : 'Save backup'),
+          ),
+        ],
+      ),
+    ).whenComplete(controller.dispose);
   }
 
   Future<void> _refresh() async {
@@ -134,7 +253,10 @@ class _ChatListPageState extends State<ChatListPage> {
       if (!mounted) {
         return;
       }
-      await _openConversation(conversation: conversation, title: user.displayName);
+      await _openConversation(
+        conversation: conversation,
+        title: user.displayName,
+      );
     } catch (error) {
       if (error is UnauthorizedApiException) {
         await widget.sessionController.invalidateSession();
@@ -171,7 +293,9 @@ class _ChatListPageState extends State<ChatListPage> {
                 ),
                 ListTile(
                   leading: Icon(
-                    item.isArchived ? Icons.unarchive_outlined : Icons.archive_outlined,
+                    item.isArchived
+                        ? Icons.unarchive_outlined
+                        : Icons.archive_outlined,
                   ),
                   title: Text(
                     item.isArchived ? 'Unarchive chat' : 'Archive chat',
@@ -238,6 +362,7 @@ class _ChatListPageState extends State<ChatListPage> {
     await _load();
   }
 
+  // ignore: unused_element
   Future<void> _showExportBackupSheet() async {
     final controller = TextEditingController();
     await showModalBottomSheet<void>(
@@ -260,7 +385,8 @@ class _ChatListPageState extends State<ChatListPage> {
               children: [
                 const AppSectionHeader(
                   title: 'Export encrypted backup',
-                  subtitle: 'Recovery passphrase bilan historical decrypt backup yaratiladi.',
+                  subtitle:
+                      'Recovery passphrase bilan historical decrypt backup yaratiladi.',
                 ),
                 SizedBox(height: spacing.lg),
                 AppTextField(
@@ -280,7 +406,7 @@ class _ChatListPageState extends State<ChatListPage> {
                       return;
                     }
                     await _showBlobSheet(
-                      title: 'Encrypted backup blob',
+                      title: 'Serverga saqlandi: encrypted backup blob',
                       blob: blob,
                     );
                   },
@@ -295,6 +421,7 @@ class _ChatListPageState extends State<ChatListPage> {
     controller.dispose();
   }
 
+  // ignore: unused_element
   Future<void> _showImportBackupSheet() async {
     final passphraseController = TextEditingController();
     final blobController = TextEditingController();
@@ -317,7 +444,8 @@ class _ChatListPageState extends State<ChatListPage> {
               children: [
                 const AppSectionHeader(
                   title: 'Import encrypted backup',
-                  subtitle: 'Old historical decrypt capability qayta tiklanadi.',
+                  subtitle:
+                      'Old historical decrypt capability qayta tiklanadi.',
                 ),
                 SizedBox(height: spacing.lg),
                 AppTextField(
@@ -330,6 +458,24 @@ class _ChatListPageState extends State<ChatListPage> {
                   labelText: 'Encrypted backup blob',
                   maxLines: 8,
                   minLines: 6,
+                ),
+                SizedBox(height: spacing.md),
+                AppSecondaryButton(
+                  onPressed: () async {
+                    final blob = await _controller.downloadServerBackup();
+                    if (blob == null) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Serverda backup topilmadi.'),
+                          ),
+                        );
+                      }
+                      return;
+                    }
+                    blobController.text = blob;
+                  },
+                  label: const Text('Load backup from server'),
                 ),
                 SizedBox(height: spacing.lg),
                 AppPrimaryButton(
@@ -440,7 +586,7 @@ class _ChatListPageState extends State<ChatListPage> {
 
     return AppScaffold(
       appBar: AppBar(
-        toolbarHeight: 74,
+        toolbarHeight: 68,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.end,
@@ -498,7 +644,8 @@ class _ChatListPageState extends State<ChatListPage> {
       body: SafeArea(
         child: Column(
           children: [
-            if (_controller.isLoading) const LinearProgressIndicator(minHeight: 2),
+            if (_controller.isLoading)
+              const LinearProgressIndicator(minHeight: 2),
             if (_controller.error != null)
               Padding(
                 padding: EdgeInsets.fromLTRB(
@@ -534,21 +681,37 @@ class _ChatListPageState extends State<ChatListPage> {
           ],
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        destinations: [
-          for (final tab in tabs)
-            NavigationDestination(
-              icon: Icon(tab.icon),
-              selectedIcon: Icon(tab.icon),
-              label: tab.label,
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: context.appColors.surface,
+          border: Border(top: BorderSide(color: context.appColors.border)),
+        ),
+        child: NavigationBarTheme(
+          data: NavigationBarThemeData(
+            height: 66,
+            backgroundColor: context.appColors.surface,
+            indicatorColor: context.appColors.primarySoft,
+            labelTextStyle: WidgetStatePropertyAll(
+              theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
-        ],
-        selectedIndex: _selectedTabIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _selectedTabIndex = index;
-          });
-        },
+          ),
+          child: NavigationBar(
+            destinations: [
+              for (final tab in tabs)
+                NavigationDestination(
+                  icon: Icon(tab.icon),
+                  selectedIcon: Icon(tab.icon),
+                  label: tab.label,
+                ),
+            ],
+            selectedIndex: _selectedTabIndex,
+            onDestinationSelected: (index) {
+              setState(() {
+                _selectedTabIndex = index;
+              });
+            },
+          ),
+        ),
       ),
     );
   }
@@ -557,7 +720,12 @@ class _ChatListPageState extends State<ChatListPage> {
     final spacing = context.appSpacing;
     final items = state.items;
     return ListView(
-      padding: EdgeInsets.all(spacing.lg),
+      padding: EdgeInsets.fromLTRB(
+        spacing.lg,
+        spacing.sm,
+        spacing.lg,
+        spacing.lg,
+      ),
       children: [
         AppSearchField(
           controller: _chatSearchController,
@@ -567,111 +735,20 @@ class _ChatListPageState extends State<ChatListPage> {
         SizedBox(height: spacing.md),
         _buildChatFilterSelector(state.preferences.selectedFilter),
         SizedBox(height: spacing.lg),
-        if (_controller.isLoading && items.isEmpty) ..._buildChatSkeleton()
+        if (_controller.isLoading && items.isEmpty)
+          ..._buildChatSkeleton()
         else if (items.isEmpty)
-          _buildEmptyCard(_emptyMessageForChatState(state.preferences.selectedFilter))
+          _buildEmptyCard(
+            _emptyMessageForChatState(state.preferences.selectedFilter),
+          )
         else
           for (final item in items)
-            Padding(
-              padding: EdgeInsets.only(bottom: spacing.sm),
-              child: AppSurfaceCard(
-                onTap: () => _openConversationItem(item),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onLongPress: () => _showConversationActions(item),
-                  child: Row(
-                    children: [
-                      AppAvatar(
-                        label: item.title,
-                        icon: item.conversation.isGroup
-                            ? Icons.forum_outlined
-                            : Icons.chat_bubble_outline_rounded,
-                      ),
-                      SizedBox(width: spacing.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    item.title,
-                                    style: Theme.of(context).textTheme.titleMedium,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                SizedBox(width: spacing.sm),
-                                Text(
-                                  _formatRelativeTime(item.updatedAt),
-                                  style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(
-                                        color: context.appColors.textMuted,
-                                      ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: spacing.xs),
-                            Text(
-                              item.preview.isEmpty ? 'Open conversation' : item.preview,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: item.hasDraft
-                                    ? context.appColors.primary
-                                    : context.appColors.textMuted,
-                                fontWeight: item.hasDraft
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                              ),
-                            ),
-                            SizedBox(height: spacing.sm),
-                            Wrap(
-                              spacing: spacing.xs,
-                              runSpacing: spacing.xs,
-                              children: [
-                                if (item.isPinned)
-                                  const AppBadge(
-                                    label: 'Pinned',
-                                    tone: AppStatusTone.info,
-                                    icon: Icons.push_pin_rounded,
-                                  ),
-                                if (item.isUnread)
-                                  AppBadge(
-                                    label: item.unreadCount > 0
-                                        ? 'Unread ${item.unreadCount}'
-                                        : 'Unread',
-                                    tone: AppStatusTone.warning,
-                                    icon: Icons.mark_chat_unread_outlined,
-                                  ),
-                                if (item.trustBadge case final badge?)
-                                  AppBadge(
-                                    label: badge.label,
-                                    tone: _statusTone(badge.tone),
-                                  ),
-                                if (item.deliveryState case final delivery?)
-                                  AppBadge(
-                                    label: _deliveryLabel(delivery),
-                                    tone: _deliveryTone(delivery),
-                                    icon: _deliveryIcon(delivery),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(width: spacing.md),
-                      IconButton(
-                        onPressed: () => _showConversationActions(item),
-                        icon: Icon(
-                          Icons.more_horiz_rounded,
-                          color: context.appColors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            _ConversationListRow(
+              item: item,
+              onTap: () => _openConversationItem(item),
+              onLongPress: () => _showConversationActions(item),
+              onMorePressed: () => _showConversationActions(item),
+              relativeTime: _formatRelativeTime(item.updatedAt),
             ),
       ],
     );
@@ -680,7 +757,12 @@ class _ChatListPageState extends State<ChatListPage> {
   Widget _buildContactsTab(ContactsViewState state) {
     final spacing = context.appSpacing;
     return ListView(
-      padding: EdgeInsets.all(spacing.lg),
+      padding: EdgeInsets.fromLTRB(
+        spacing.lg,
+        spacing.sm,
+        spacing.lg,
+        spacing.lg,
+      ),
       children: [
         AppSearchField(
           controller: _contactsSearchController,
@@ -690,67 +772,18 @@ class _ChatListPageState extends State<ChatListPage> {
         SizedBox(height: spacing.md),
         _buildContactsFilterSelector(state.selectedFilter),
         SizedBox(height: spacing.lg),
-        if (_controller.isLoading && state.sections.isEmpty) ..._buildContactSkeleton()
+        if (_controller.isLoading && state.sections.isEmpty)
+          ..._buildContactSkeleton()
         else if (state.sections.isEmpty)
           _buildEmptyCard('No contacts match the current filter.')
         else
           for (final section in state.sections) ...[
             AppSectionHeader(title: section.label),
-            SizedBox(height: spacing.sm),
+            SizedBox(height: spacing.xs),
             for (final item in section.items)
-              Padding(
-                padding: EdgeInsets.only(bottom: spacing.sm),
-                child: AppSurfaceCard(
-                  onTap: () => _showContactDetails(item),
-                  child: Row(
-                    children: [
-                      AppAvatar(label: item.user.displayName),
-                      SizedBox(width: spacing.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item.title,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            SizedBox(height: spacing.xs),
-                            Text(
-                              item.deviceSummary,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: context.appColors.textMuted,
-                              ),
-                            ),
-                            SizedBox(height: spacing.sm),
-                            Wrap(
-                              spacing: spacing.xs,
-                              runSpacing: spacing.xs,
-                              children: [
-                                AppBadge(
-                                  label: item.badge.label,
-                                  tone: _statusTone(item.badge.tone),
-                                ),
-                                if (item.hasExistingConversation)
-                                  const AppBadge(
-                                    label: 'DM ready',
-                                    tone: AppStatusTone.info,
-                                    icon: Icons.chat_bubble_outline_rounded,
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(width: spacing.md),
-                      Icon(
-                        item.isCurrentUser
-                            ? Icons.person_outline_rounded
-                            : Icons.chevron_right_rounded,
-                        color: context.appColors.textMuted,
-                      ),
-                    ],
-                  ),
-                ),
+              _ContactListRow(
+                item: item,
+                onTap: () => _showContactDetails(item),
               ),
             SizedBox(height: spacing.md),
           ],
@@ -779,7 +812,10 @@ class _ChatListPageState extends State<ChatListPage> {
               SizedBox(height: spacing.md),
               _buildInfoRow('Display name', sessionUser.displayName),
               _buildInfoRow('Username', sessionUser.username),
-              _buildInfoRow('Workspace', state.currentWorkspace?.name ?? 'None'),
+              _buildInfoRow(
+                'Workspace',
+                state.currentWorkspace?.name ?? 'None',
+              ),
               _buildInfoRow('Workspace ID', '${sessionUser.activeWorkspaceId}'),
               _buildInfoRow('Device ID', sessionUser.deviceId),
               _buildInfoRow('Skin', state.appSkinId),
@@ -839,7 +875,7 @@ class _ChatListPageState extends State<ChatListPage> {
         SizedBox(height: spacing.lg),
         const AppSectionHeader(
           title: 'Backup & Recovery',
-          subtitle: 'Encrypted export/import for durable historical decrypt.',
+          subtitle: 'Automatic encrypted recovery linked to this account.',
         ),
         SizedBox(height: spacing.sm),
         if (state.backup.statusMessage != null) ...[
@@ -852,18 +888,35 @@ class _ChatListPageState extends State<ChatListPage> {
         AppSurfaceCard(
           child: Column(
             children: [
-              _buildActionRow(
-                icon: Icons.download_rounded,
-                title: 'Export encrypted backup',
-                subtitle: 'Recovery passphrase bilan backup yarating.',
-                onTap: _showExportBackupSheet,
-              ),
-              SizedBox(height: spacing.sm),
-              _buildActionRow(
-                icon: Icons.upload_rounded,
-                title: 'Import encrypted backup',
-                subtitle: 'Old history decrypt capability tiklanadi.',
-                onTap: _showImportBackupSheet,
+              ListTile(
+                leading: const Icon(Icons.admin_panel_settings_outlined),
+                title: const Text('Enterprise history recovery'),
+                subtitle: const Text(
+                  'AWS KMS escrow manifestini faqat siz Restore history tugmasini bosganingizda import qilamiz.',
+                ),
+                trailing: Wrap(
+                  children: [
+                    IconButton(
+                      tooltip: 'Recovery requests',
+                      icon: const Icon(Icons.verified_user_outlined),
+                      onPressed: _showPendingRecoveryApprovals,
+                    ),
+                    IconButton(
+                      tooltip: 'Restore history',
+                      icon: const Icon(Icons.restore_rounded),
+                      onPressed: () async {
+                        try {
+                          await _controller.restoreEnterpriseRecovery();
+                        } catch (error) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(error.toString())),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -906,11 +959,13 @@ class _ChatListPageState extends State<ChatListPage> {
                   ),
                 ),
                 AppBadge(
-                  label: state.currentDevice!.hasUsableMlKemKey &&
+                  label:
+                      state.currentDevice!.hasUsableMlKemKey &&
                           state.currentDevice!.hasUsableMlDsaKey
                       ? 'PQC ready'
                       : 'Needs setup',
-                  tone: state.currentDevice!.hasUsableMlKemKey &&
+                  tone:
+                      state.currentDevice!.hasUsableMlKemKey &&
                           state.currentDevice!.hasUsableMlDsaKey
                       ? AppStatusTone.success
                       : AppStatusTone.warning,
@@ -938,7 +993,9 @@ class _ChatListPageState extends State<ChatListPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          device.deviceName.isEmpty ? device.deviceId : device.deviceName,
+                          device.deviceName.isEmpty
+                              ? device.deviceId
+                              : device.deviceName,
                           style: theme.textTheme.titleMedium,
                         ),
                         SizedBox(height: spacing.xs),
@@ -985,7 +1042,9 @@ class _ChatListPageState extends State<ChatListPage> {
                 contentPadding: EdgeInsets.zero,
                 value: widget.themeController.themeMode == ThemeMode.dark,
                 title: const Text('Dark mode'),
-                subtitle: const Text('Light va dark ko‘rinish o‘rtasida almashish.'),
+                subtitle: const Text(
+                  'Light va dark ko‘rinish o‘rtasida almashish.',
+                ),
                 onChanged: (value) {
                   widget.themeController.setThemeMode(
                     value ? ThemeMode.dark : ThemeMode.light,
@@ -996,7 +1055,9 @@ class _ChatListPageState extends State<ChatListPage> {
                 contentPadding: EdgeInsets.zero,
                 value: state.appPreferences.showArchivedByDefault,
                 title: const Text('Show archived in main inbox'),
-                subtitle: const Text('Archived chats “All” ichida ham ko‘rinsin.'),
+                subtitle: const Text(
+                  'Archived chats “All” ichida ham ko‘rinsin.',
+                ),
                 onChanged: (value) {
                   _controller.updateAppPreferences(
                     state.appPreferences.copyWith(showArchivedByDefault: value),
@@ -1029,7 +1090,9 @@ class _ChatListPageState extends State<ChatListPage> {
                 contentPadding: EdgeInsets.zero,
                 value: state.appPreferences.preferManualRefreshHints,
                 title: const Text('Prefer manual refresh hints'),
-                subtitle: const Text('Auto refresh o‘rniga ko‘proq manual affordance.'),
+                subtitle: const Text(
+                  'Auto refresh o‘rniga ko‘proq manual affordance.',
+                ),
                 onChanged: (value) {
                   _controller.updateAppPreferences(
                     state.appPreferences.copyWith(
@@ -1082,41 +1145,31 @@ class _ChatListPageState extends State<ChatListPage> {
   }
 
   Widget _buildChatFilterSelector(ChatListFilter filter) {
-    return SegmentedButton<ChatListFilter>(
-      segments: const [
-        ButtonSegment(value: ChatListFilter.all, label: Text('All')),
-        ButtonSegment(value: ChatListFilter.unread, label: Text('Unread')),
-        ButtonSegment(value: ChatListFilter.pinned, label: Text('Pinned')),
-        ButtonSegment(value: ChatListFilter.archived, label: Text('Archived')),
+    return _FilterStrip<ChatListFilter>(
+      selected: filter,
+      options: const [
+        _FilterOption(value: ChatListFilter.all, label: 'All'),
+        _FilterOption(value: ChatListFilter.unread, label: 'Unread'),
+        _FilterOption(value: ChatListFilter.pinned, label: 'Pinned'),
+        _FilterOption(value: ChatListFilter.archived, label: 'Archived'),
       ],
-      selected: {filter},
-      onSelectionChanged: (selection) {
-        _controller.setChatFilter(selection.first);
-      },
+      onSelected: _controller.setChatFilter,
     );
   }
 
   Widget _buildContactsFilterSelector(ContactsTrustFilter filter) {
-    return SegmentedButton<ContactsTrustFilter>(
-      segments: const [
-        ButtonSegment(value: ContactsTrustFilter.all, label: Text('All')),
-        ButtonSegment(
-          value: ContactsTrustFilter.verified,
-          label: Text('Verified'),
-        ),
-        ButtonSegment(
+    return _FilterStrip<ContactsTrustFilter>(
+      selected: filter,
+      options: const [
+        _FilterOption(value: ContactsTrustFilter.all, label: 'All'),
+        _FilterOption(value: ContactsTrustFilter.verified, label: 'Verified'),
+        _FilterOption(
           value: ContactsTrustFilter.needsAttention,
-          label: Text('Attention'),
+          label: 'Attention',
         ),
-        ButtonSegment(
-          value: ContactsTrustFilter.notReady,
-          label: Text('Not ready'),
-        ),
+        _FilterOption(value: ContactsTrustFilter.notReady, label: 'Not ready'),
       ],
-      selected: {filter},
-      onSelectionChanged: (selection) {
-        _controller.setContactsFilter(selection.first);
-      },
+      onSelected: _controller.setContactsFilter,
     );
   }
 
@@ -1176,6 +1229,7 @@ class _ChatListPageState extends State<ChatListPage> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildActionRow({
     required IconData icon,
     required String title,
@@ -1219,10 +1273,7 @@ class _ChatListPageState extends State<ChatListPage> {
         children: [
           SizedBox(
             width: 120,
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
+            child: Text(label, style: Theme.of(context).textTheme.labelLarge),
           ),
           Expanded(child: Text(value)),
         ],
@@ -1265,45 +1316,6 @@ class _ChatListPageState extends State<ChatListPage> {
     return '${time.day}/${time.month}';
   }
 
-  String _deliveryLabel(MessageDeliveryState state) {
-    switch (state) {
-      case MessageDeliveryState.pending:
-        return 'Sending';
-      case MessageDeliveryState.failedRetryable:
-        return 'Failed';
-      case MessageDeliveryState.failedPermanent:
-        return 'Blocked';
-      case MessageDeliveryState.sent:
-        return 'Sent';
-    }
-  }
-
-  IconData _deliveryIcon(MessageDeliveryState state) {
-    switch (state) {
-      case MessageDeliveryState.pending:
-        return Icons.schedule_rounded;
-      case MessageDeliveryState.failedRetryable:
-        return Icons.refresh_rounded;
-      case MessageDeliveryState.failedPermanent:
-        return Icons.block_rounded;
-      case MessageDeliveryState.sent:
-        return Icons.check_rounded;
-    }
-  }
-
-  AppStatusTone _deliveryTone(MessageDeliveryState state) {
-    switch (state) {
-      case MessageDeliveryState.pending:
-        return AppStatusTone.info;
-      case MessageDeliveryState.failedRetryable:
-        return AppStatusTone.warning;
-      case MessageDeliveryState.failedPermanent:
-        return AppStatusTone.danger;
-      case MessageDeliveryState.sent:
-        return AppStatusTone.success;
-    }
-  }
-
   AppStatusTone _statusTone(UiStatusTone tone) {
     switch (tone) {
       case UiStatusTone.success:
@@ -1315,6 +1327,362 @@ class _ChatListPageState extends State<ChatListPage> {
       case UiStatusTone.info:
         return AppStatusTone.info;
     }
+  }
+}
+
+class _ConversationListRow extends StatelessWidget {
+  const _ConversationListRow({
+    required this.item,
+    required this.onTap,
+    required this.onLongPress,
+    required this.onMorePressed,
+    required this.relativeTime,
+  });
+
+  final ConversationListItemState item;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+  final VoidCallback onMorePressed;
+  final String relativeTime;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final spacing = context.appSpacing;
+    final isAttention =
+        item.trustBadge?.tone == UiStatusTone.warning ||
+        item.trustBadge?.tone == UiStatusTone.danger;
+    final preview = item.hasDraft
+        ? 'Draft: ${item.draftPreview!.trim()}'
+        : item.preview.isEmpty
+        ? 'Open conversation'
+        : item.preview;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        borderRadius: BorderRadius.circular(context.appRadii.md),
+        child: Container(
+          padding: EdgeInsets.symmetric(vertical: spacing.md),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: colors.border.withValues(alpha: 0.72)),
+            ),
+          ),
+          child: Row(
+            children: [
+              AppAvatar(
+                label: item.title,
+                icon: item.conversation.isGroup ? Icons.forum_outlined : null,
+                radius: 25,
+              ),
+              SizedBox(width: spacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  item.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(
+                                        fontWeight: item.isUnread
+                                            ? FontWeight.w700
+                                            : FontWeight.w600,
+                                      ),
+                                ),
+                              ),
+                              if (item.isPinned) ...[
+                                SizedBox(width: spacing.xs),
+                                Icon(
+                                  Icons.push_pin_rounded,
+                                  size: 14,
+                                  color: colors.textMuted,
+                                ),
+                              ],
+                              if (isAttention) ...[
+                                SizedBox(width: spacing.xs),
+                                Icon(
+                                  Icons.error_outline_rounded,
+                                  size: 15,
+                                  color: colors.warning,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: spacing.sm),
+                        Text(
+                          relativeTime,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: item.isUnread
+                                    ? colors.primary
+                                    : colors.textMuted,
+                                fontWeight: item.isUnread
+                                    ? FontWeight.w700
+                                    : FontWeight.w400,
+                              ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: spacing.xs),
+                    Row(
+                      children: [
+                        if (item.deliveryState != null) ...[
+                          Icon(
+                            _deliveryIcon(item.deliveryState!),
+                            size: 15,
+                            color: _deliveryColor(colors, item.deliveryState!),
+                          ),
+                          SizedBox(width: spacing.xs),
+                        ],
+                        Expanded(
+                          child: Text(
+                            preview,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: item.hasDraft
+                                      ? colors.primary
+                                      : colors.textMuted,
+                                  fontWeight: item.hasDraft
+                                      ? FontWeight.w600
+                                      : FontWeight.w400,
+                                ),
+                          ),
+                        ),
+                        if (item.isUnread) ...[
+                          SizedBox(width: spacing.sm),
+                          Container(
+                            constraints: const BoxConstraints(
+                              minWidth: 20,
+                              minHeight: 20,
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 5),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: colors.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              item.unreadCount > 0 ? '${item.unreadCount}' : '',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(width: spacing.xs),
+              IconButton(
+                onPressed: onMorePressed,
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.more_horiz_rounded, color: colors.textMuted),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  IconData _deliveryIcon(MessageDeliveryState state) {
+    switch (state) {
+      case MessageDeliveryState.pending:
+        return Icons.schedule_rounded;
+      case MessageDeliveryState.failedRetryable:
+        return Icons.error_outline_rounded;
+      case MessageDeliveryState.failedPermanent:
+        return Icons.block_rounded;
+      case MessageDeliveryState.sent:
+        return Icons.done_all_rounded;
+    }
+  }
+
+  Color _deliveryColor(AppColors colors, MessageDeliveryState state) {
+    switch (state) {
+      case MessageDeliveryState.pending:
+        return colors.textMuted;
+      case MessageDeliveryState.failedRetryable:
+      case MessageDeliveryState.failedPermanent:
+        return colors.danger;
+      case MessageDeliveryState.sent:
+        return colors.primary;
+    }
+  }
+}
+
+class _ContactListRow extends StatelessWidget {
+  const _ContactListRow({required this.item, required this.onTap});
+
+  final ContactListItemState item;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final spacing = context.appSpacing;
+    final toneColor = switch (item.badge.tone) {
+      UiStatusTone.success => colors.success,
+      UiStatusTone.warning => colors.warning,
+      UiStatusTone.danger => colors.danger,
+      UiStatusTone.info => colors.info,
+    };
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(context.appRadii.md),
+        child: Container(
+          padding: EdgeInsets.symmetric(vertical: spacing.md),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: colors.border.withValues(alpha: 0.72)),
+            ),
+          ),
+          child: Row(
+            children: [
+              AppAvatar(label: item.user.displayName, radius: 24),
+              SizedBox(width: spacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: spacing.xs),
+                    Text(
+                      item.subtitle.isEmpty
+                          ? item.deviceSummary
+                          : item.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: colors.textMuted),
+                    ),
+                    SizedBox(height: spacing.xs),
+                    Row(
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: toneColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        SizedBox(width: spacing.xs),
+                        Flexible(
+                          child: Text(
+                            item.badge.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: toneColor,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(width: spacing.sm),
+              Icon(
+                item.isCurrentUser
+                    ? Icons.person_outline_rounded
+                    : item.hasExistingConversation
+                    ? Icons.chat_bubble_outline_rounded
+                    : Icons.chevron_right_rounded,
+                size: item.hasExistingConversation ? 19 : 22,
+                color: colors.textMuted,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterOption<T> {
+  const _FilterOption({required this.value, required this.label});
+
+  final T value;
+  final String label;
+}
+
+class _FilterStrip<T> extends StatelessWidget {
+  const _FilterStrip({
+    required this.options,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<_FilterOption<T>> options;
+  final T selected;
+  final ValueChanged<T> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final spacing = context.appSpacing;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var index = 0; index < options.length; index++) ...[
+            ChoiceChip(
+              label: Text(options[index].label),
+              selected: options[index].value == selected,
+              onSelected: (_) => onSelected(options[index].value),
+              showCheckmark: false,
+              selectedColor: colors.primary,
+              backgroundColor: colors.surfaceMuted,
+              side: BorderSide(
+                color: options[index].value == selected
+                    ? colors.primary
+                    : colors.border,
+              ),
+              labelStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: options[index].value == selected
+                    ? Colors.white
+                    : colors.textMuted,
+                fontWeight: FontWeight.w700,
+              ),
+              padding: EdgeInsets.symmetric(horizontal: spacing.sm),
+            ),
+            if (index < options.length - 1) SizedBox(width: spacing.sm),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -1347,9 +1715,7 @@ class _ContactDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final spacing = context.appSpacing;
     return AppScaffold(
-      appBar: AppBar(
-        title: const Text('Contact details'),
-      ),
+      appBar: AppBar(title: const Text('Contact details')),
       body: ListView(
         padding: EdgeInsets.all(spacing.lg),
         children: [

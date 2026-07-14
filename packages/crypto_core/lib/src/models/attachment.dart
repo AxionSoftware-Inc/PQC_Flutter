@@ -13,6 +13,8 @@ class ChatAttachment {
     this.plaintextSha256 = '',
     this.manifestSha256 = '',
     this.fileKeyWrap = '',
+    this.conversationEpochId = '',
+    this.recoveryManifestSequence = 0,
     this.createdAt,
   });
 
@@ -29,6 +31,8 @@ class ChatAttachment {
   final String plaintextSha256;
   final String manifestSha256;
   final String fileKeyWrap;
+  final String conversationEpochId;
+  final int recoveryManifestSequence;
   final DateTime? createdAt;
 
   factory ChatAttachment.fromJson(Map<String, dynamic> json) {
@@ -46,6 +50,8 @@ class ChatAttachment {
       plaintextSha256: json['plaintext_sha256'] as String? ?? '',
       manifestSha256: json['manifest_sha256'] as String? ?? '',
       fileKeyWrap: json['file_key_wrap'] as String? ?? '',
+      conversationEpochId: json['conversation_epoch_id'] as String? ?? '',
+      recoveryManifestSequence: json['recovery_manifest_sequence'] as int? ?? 0,
       createdAt: json['created_at'] == null
           ? null
           : DateTime.tryParse(json['created_at'] as String),

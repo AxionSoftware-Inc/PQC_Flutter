@@ -297,6 +297,14 @@ class _FakeChatRemoteDataSource extends ChatRemoteDataSource {
   Future<List<AppUser>> fetchUsers() async => _users;
 
   @override
+  Future<CryptoProtocolCapabilities> fetchCryptoProtocolCapabilities() async =>
+      const CryptoProtocolCapabilities(
+        privateMessagePrefixes: ['pqc:v2:'],
+        groupMessagePrefixes: ['group:v2:'],
+        attachmentCipherVersions: ['attachment:v2'],
+      );
+
+  @override
   Future<ChatMessage> sendMessage(
     int conversationId,
     String body, {
@@ -421,6 +429,14 @@ class _RefreshingUsersChatRemoteDataSource extends ChatRemoteDataSource {
   _RefreshingUsersChatRemoteDataSource() : super(apiClient: ApiClient());
 
   int fetchUsersCallCount = 0;
+
+  @override
+  Future<CryptoProtocolCapabilities> fetchCryptoProtocolCapabilities() async =>
+      const CryptoProtocolCapabilities(
+        privateMessagePrefixes: ['pqc:v2:'],
+        groupMessagePrefixes: ['group:v2:'],
+        attachmentCipherVersions: ['attachment:v2'],
+      );
 
   @override
   Future<List<AppUser>> fetchUsers() async {

@@ -47,9 +47,7 @@ class KeyMaterialRegistry {
     final signing = await devicePqcSigningKeyService.getOrCreateKeyMaterial();
     final keysetId = await _deriveKeysetId(
       deviceId: deviceIdentity.id,
-      identityPublicKey: identity.publicKey,
       pqcPublicKey: pqc.publicKey,
-      signingPublicKey: signing.publicKey,
     );
     final existing = await readKeyset(keysetId);
     if (existing != null) {
@@ -130,14 +128,10 @@ class KeyMaterialRegistry {
 
   Future<String> _deriveKeysetId({
     required String deviceId,
-    required String identityPublicKey,
     required String pqcPublicKey,
-    required String signingPublicKey,
   }) async {
     final digest = await _hashAlgorithm.hash(
-      utf8.encode(
-        '$deviceId|$identityPublicKey|$pqcPublicKey|$signingPublicKey',
-      ),
+      utf8.encode('$deviceId|$pqcPublicKey'),
     );
     return base64UrlEncode(digest.bytes).replaceAll('=', '');
   }

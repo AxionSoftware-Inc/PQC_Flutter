@@ -24,6 +24,124 @@ class Organization(models.Model):
         return self.name
 
 
+class GoogleAccount(models.Model):
+    """Stable external identity; device keys remain owned by UserDevice."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='google_account',
+    )
+    google_subject = models.CharField(max_length=255, unique=True)
+    email = models.EmailField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f'{self.user_id}:{self.google_subject}'
+
+
+class UserCryptoBackup(models.Model):
+    """Encrypted client backup; the server must never decrypt this blob."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='crypto_backup',
+    )
+    version = models.PositiveIntegerField(default=1)
+    encrypted_blob = models.TextField()
+    blob_sha256 = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f'{self.user_id}:v{self.version}'
+
+
+class AccountRecoveryManifest(models.Model):
+    """Small append-only recovery index; material lives in immutable records."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='account_recovery_manifest',
+    )
+    schema_version = models.PositiveIntegerField(default=2)
+    encrypted_payload = models.TextField()
+    kms_key_id = models.CharField(max_length=512)
+    kms_key_version = models.CharField(max_length=512)
+    payload_sha256 = models.CharField(max_length=64)
+    sequence = models.PositiveBigIntegerField(default=1)
+    vector_clock = models.JSONField(default=dict, blank=True)
+    merkle_root = models.CharField(max_length=64, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f'{self.user_id}:recovery-v{self.schema_version}'
+
+
+class CryptoRecoveryAuditEvent(models.Model):
+    """Append-only audit record for escrow access and recovery lifecycle."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    event_type = models.CharField(max_length=64)
+    device_id = models.CharField(max_length=255, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    previous_hash = models.CharField(max_length=64, blank=True)
+    event_hash = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+
+
+class AccountKeysetEscrowRecord(models.Model):
+    """Immutable envelope-encrypted snapshot, never overwritten by another device."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    source_device_id = models.CharField(max_length=255)
+    keyset_id = models.CharField(max_length=255, blank=True)
+    epoch_id = models.CharField(max_length=255, blank=True)
+    record_type = models.CharField(max_length=64, default='device_snapshot')
+    encrypted_data_key = models.TextField()
+    ciphertext = models.TextField()
+    nonce = models.CharField(max_length=64)
+    kms_key_id = models.CharField(max_length=512)
+    encryption_context = models.JSONField(default=dict)
+    payload_sha256 = models.CharField(max_length=64)
+    state = models.CharField(max_length=32, default='active')
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=('user', 'source_device_id', 'payload_sha256'),
+                name='users_escrow_record_content_unique',
+            ),
+        ]
+
+
+class RecoveryDeviceApproval(models.Model):
+    """A recovery read on a new device must be approved by another device."""
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        APPROVED = 'approved', 'Approved'
+        DENIED = 'denied', 'Denied'
+        EXPIRED = 'expired', 'Expired'
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    requester_device_id = models.CharField(max_length=255)
+    approver_device_id = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    challenge = models.CharField(max_length=128, unique=True)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+
+
 class Workspace(models.Model):
     organization = models.ForeignKey(
         Organization,
@@ -214,3 +332,31 @@ class UserDevicePreKey(models.Model):
 
     def __str__(self) -> str:
         return f'{self.device.device_id}:{self.key_id}'
+
+
+class HistoricalDeviceKey(models.Model):
+    """Immutable public key history retained for old message verification."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='historical_device_keys',
+    )
+    device_id = models.CharField(max_length=255)
+    identity_public_key = models.TextField(blank=True)
+    key_algorithm = models.CharField(max_length=64, blank=True)
+    pqc_public_key = models.TextField(blank=True)
+    pqc_algorithm = models.CharField(max_length=64, blank=True)
+    pqc_signing_public_key = models.TextField(blank=True)
+    pqc_signing_algorithm = models.CharField(max_length=64, blank=True)
+    profile_fingerprint = models.CharField(max_length=128, blank=True)
+    captured_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'device_id', 'profile_fingerprint'],
+                name='users_historical_device_profile_unique',
+            ),
+        ]

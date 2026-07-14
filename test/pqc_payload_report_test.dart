@@ -86,28 +86,36 @@ void main() {
       plaintext: 'payload-inspection-message',
       usersById: usersById,
     );
-    final parts = payload
-        .substring(PqcPrivateMessageCodec.prefix.length + 1)
-        .split(':');
+    final encoded = payload.substring(PqcPrivateMessageCodec.prefix.length + 1);
+    final padded = encoded.padRight(
+      encoded.length + ((4 - encoded.length % 4) % 4),
+      '=',
+    );
+    final document =
+        jsonDecode(utf8.decode(base64Url.decode(padded)))
+            as Map<String, dynamic>;
+    final wraps = (document['wraps'] as List).cast<Map>();
 
     print('prefix=${PqcPrivateMessageCodec.prefix}');
     print('payload_chars=${payload.length}');
     print(
       'plaintext_visible=${payload.contains('payload-inspection-message')}',
     );
-    print('signing_public_key_bytes=${base64Decode(parts[1]).length}');
-    print('self_kem_ciphertext_bytes=${base64Decode(parts[3]).length}');
-    print('peer_kem_ciphertext_bytes=${base64Decode(parts[7]).length}');
+    print('recipient_envelope_count=${wraps.length}');
     print(
-      'wrapped_content_key_ciphertext_bytes=${base64Decode(parts[5]).length}',
+      'signing_public_key_bytes=${base64Decode(document['signing_public_key'] as String).length}',
     );
     print(
-      'peer_wrapped_content_key_ciphertext_bytes=${base64Decode(parts[9]).length}',
+      'first_kem_ciphertext_bytes=${base64Decode(wraps.first['kem_ciphertext'] as String).length}',
     );
-    print('content_ciphertext_bytes=${base64Decode(parts[12]).length}');
-    print('signature_bytes=${base64Decode(parts[14]).length}');
+    print(
+      'content_ciphertext_bytes=${base64Decode(document['content_ciphertext'] as String).length}',
+    );
+    print(
+      'signature_bytes=${base64Decode(document['signature'] as String).length}',
+    );
 
-    expect(payload, startsWith('pqc:v1:'));
+    expect(payload, startsWith('pqc:v2:'));
   });
 }
 

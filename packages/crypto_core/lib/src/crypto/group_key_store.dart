@@ -17,6 +17,7 @@ import 'package:crypto_core/src/core/storage/local_secret_store.dart';
 import 'package:crypto_core/src/support/conversation_device_policy.dart';
 import 'package:crypto_core/src/support/chat_models.dart';
 import 'chat_crypto_exceptions.dart';
+import 'durability/v2_protocol_contract.dart';
 
 class GroupKeyMaterial {
   const GroupKeyMaterial({required this.keyId, required this.secretKeyBytes});
@@ -74,7 +75,7 @@ class GroupKeyStore implements GroupKeyProvider {
 
   static const _localKeyPrefix = 'group_secret_key';
   static const _participantSignaturePrefix = 'group_participant_signature';
-  static const _wrapPrefix = 'group-wrap:pqc:v1';
+  static const _wrapPrefix = PqcV2ProtocolContract.groupWrapPrefix;
   static final _random = Random.secure();
 
   final DeviceIdentityService _deviceIdentityService;
@@ -140,7 +141,7 @@ class GroupKeyStore implements GroupKeyProvider {
     await _remoteDataSource.syncConversationKeyEnvelopes(
       conversationId: conversation.id,
       keyId: keyId,
-      algorithm: 'group-ml-kem-768-aesgcm-v1',
+      algorithm: PqcV2ProtocolContract.groupEnvelopeAlgorithm,
       envelopes: envelopes,
     );
     await _saveLocalKey(
@@ -233,6 +234,7 @@ class GroupKeyStore implements GroupKeyProvider {
     return _devicePolicy.findDeviceById(
       usersById: usersById,
       deviceId: deviceId,
+      includeHistorical: true,
     );
   }
 

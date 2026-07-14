@@ -17,6 +17,18 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
 
   final ApiClient apiClient;
 
+  Future<CryptoProtocolCapabilities> fetchCryptoProtocolCapabilities() async {
+    final response = await apiClient.get('/crypto/protocols');
+    if (response is! Map<String, dynamic>) {
+      throw ApiException(
+        'Server crypto protocol capability response is invalid.',
+        code: 'crypto_protocol_capabilities_invalid',
+        isRetryable: false,
+      );
+    }
+    return CryptoProtocolCapabilities.fromJson(response);
+  }
+
   Future<List<AppUser>> fetchUsers() async {
     final response = await apiClient.get('/users') as List<dynamic>;
     return response
@@ -149,30 +161,50 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
     required String plaintextSha256,
     required String manifestSha256,
     required String fileKeyWrap,
+    String conversationEpochId = '',
+    int recoveryManifestSequence = 0,
   }) async {
-    final decoded =
-        await apiClient.post('/conversations/$conversationId/attachment-sessions', {
-              'filename': filename,
-              'mime_type': mimeType,
-              'cipher_version': cipherVersion,
-              'plaintext_size': plaintextSize,
-              'ciphertext_size': ciphertextSize,
-              'chunk_size': chunkSize,
-              'total_chunks': totalChunks,
-              'plaintext_sha256': plaintextSha256,
-              'manifest_sha256': manifestSha256,
-              'file_key_wrap': fileKeyWrap,
-            })
-            as Map<String, dynamic>;
+    final decoded = await apiClient
+        .post('/conversations/$conversationId/attachment-sessions', {
+          'filename': filename,
+          'mime_type': mimeType,
+          'cipher_version': cipherVersion,
+          'plaintext_size': plaintextSize,
+          'ciphertext_size': ciphertextSize,
+          'chunk_size': chunkSize,
+          'total_chunks': totalChunks,
+          'plaintext_sha256': plaintextSha256,
+          'manifest_sha256': manifestSha256,
+          'file_key_wrap': fileKeyWrap,
+          'conversation_epoch_id': conversationEpochId,
+          'recovery_manifest_sequence': recoveryManifestSequence,
+        })
+        .then((value) {
+          if (value is Map<String, dynamic>) {
+            return value;
+          }
+          throw ApiException(
+            'Attachment session response is not a JSON object.',
+            code: 'attachment_session_response_invalid',
+          );
+        });
     return AttachmentTransferRemoteSession.fromJson(decoded);
+  }
+
+  Future<void> reportCryptoMetric(String metric) async {
+    await apiClient.post('/users/me/crypto-observability', {'metric': metric});
   }
 
   Future<AttachmentTransferRemoteSession> getAttachmentSession(
     String sessionId,
   ) async {
-    final decoded =
-        await apiClient.get('/attachment-sessions/$sessionId')
-            as Map<String, dynamic>;
+    final decoded = await apiClient.get('/attachment-sessions/$sessionId');
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException(
+        'Attachment session status response is not a JSON object.',
+        code: 'attachment_session_response_invalid',
+      );
+    }
     return AttachmentTransferRemoteSession.fromJson(decoded);
   }
 
@@ -196,15 +228,22 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
     String sessionId, {
     required String manifestSha256,
   }) async {
-    final decoded =
-        await apiClient.post('/attachment-sessions/$sessionId/complete', {
-              'manifest_sha256': manifestSha256,
-            })
-            as Map<String, dynamic>;
+    final decoded = await apiClient.post(
+      '/attachment-sessions/$sessionId/complete',
+      {'manifest_sha256': manifestSha256},
+    );
+    if (decoded is! Map<String, dynamic> || decoded['id'] is! int) {
+      throw ApiException(
+        'Attachment completion response is not valid JSON.',
+        code: 'attachment_completion_response_invalid',
+      );
+    }
     return ChatAttachment.fromJson(decoded);
   }
 
-  Future<ChatAttachment> fetchAttachmentDownloadDescriptor(int attachmentId) async {
+  Future<ChatAttachment> fetchAttachmentDownloadDescriptor(
+    int attachmentId,
+  ) async {
     final decoded =
         await apiClient.get('/attachments/$attachmentId/download')
             as Map<String, dynamic>;
@@ -248,5 +287,28 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
       'algorithm': algorithm,
       'envelopes': envelopes.map((item) => item.toJson()).toList(),
     });
+  }
+}
+
+class CryptoProtocolCapabilities {
+  const CryptoProtocolCapabilities({
+    required this.privateMessagePrefixes,
+    required this.groupMessagePrefixes,
+    required this.attachmentCipherVersions,
+  });
+
+  final List<String> privateMessagePrefixes;
+  final List<String> groupMessagePrefixes;
+  final List<String> attachmentCipherVersions;
+
+  factory CryptoProtocolCapabilities.fromJson(Map<String, dynamic> json) {
+    List<String> read(String name) => (json[name] as List<dynamic>? ?? const [])
+        .whereType<String>()
+        .toList(growable: false);
+    return CryptoProtocolCapabilities(
+      privateMessagePrefixes: read('private_message_prefixes'),
+      groupMessagePrefixes: read('group_message_prefixes'),
+      attachmentCipherVersions: read('attachment_cipher_versions'),
+    );
   }
 }

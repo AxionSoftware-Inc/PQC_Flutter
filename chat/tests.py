@@ -1,7 +1,7 @@
 import base64
 import hashlib
 
-from django.test import override_settings
+from django.test import SimpleTestCase, override_settings
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework.test import APITestCase
@@ -23,6 +23,18 @@ VALID_PQC_PUBLIC_KEY_1 = base64.b64encode(bytes(1184)).decode()
 VALID_PQC_PUBLIC_KEY_2 = base64.b64encode(bytes([1]) * 1184).decode()
 VALID_PQC_SIGNING_PUBLIC_KEY_1 = base64.b64encode(bytes(1952)).decode()
 VALID_PQC_SIGNING_PUBLIC_KEY_2 = base64.b64encode(bytes([1]) * 1952).decode()
+
+
+class CryptoProtocolContractTests(SimpleTestCase):
+    def test_capabilities_match_current_writers(self):
+        response = self.client.get('/api/crypto/protocols')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['private_message_prefixes'], ['pqc:v2:'])
+        self.assertEqual(response.data['group_message_prefixes'], ['group:v2:'])
+        self.assertEqual(response.data['protocol_version'], 2)
+        self.assertEqual(response.data['attachment_cipher_versions'], ['attachment:v2'])
+        self.assertEqual(response.data['backup_schema_revision'], 2)
 
 
 class ChatApiTests(APITestCase):
@@ -111,7 +123,7 @@ class ChatApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('group:v1', str(response.data))
+        self.assertIn('group:v2', str(response.data))
 
     def test_non_participant_cannot_post(self):
         self.client.post(
@@ -306,7 +318,7 @@ class ChatApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('pqc:v1', str(response.data))
+        self.assertIn('pqc:v2', str(response.data))
 
     def test_repeated_polling_reads_remain_stable_after_many_messages(self):
         for index in range(90):
@@ -396,15 +408,15 @@ class ChatApiTests(APITestCase):
             f'/api/conversations/{self.group.id}/keys',
             {
                 'key_id': 'group-key-1',
-                'algorithm': 'group-ml-kem-768-aesgcm-v1',
+                'algorithm': 'group-ml-kem-768-aesgcm-v2',
                 'envelopes': [
                     {
                         'target_device_id': 'device-1',
-                        'wrapped_key': 'group-wrap:pqc:v1:device-1:sign:kem:nonce:cipher:mac:signature',
+                        'wrapped_key': 'group-wrap:pqc:v2:device-1:sign:kem:nonce:cipher:mac:signature',
                     },
                     {
                         'target_device_id': 'device-2',
-                        'wrapped_key': 'group-wrap:pqc:v1:device-1:sign:kem2:nonce2:cipher2:mac2:signature2',
+                        'wrapped_key': 'group-wrap:pqc:v2:device-1:sign:kem2:nonce2:cipher2:mac2:signature2',
                     },
                 ],
             },
@@ -455,11 +467,11 @@ class ChatApiTests(APITestCase):
             f'/api/conversations/{self.group.id}/keys',
             {
                 'key_id': 'group-key-1',
-                'algorithm': 'group-ml-kem-768-aesgcm-v1',
+                'algorithm': 'group-ml-kem-768-aesgcm-v2',
                 'envelopes': [
                     {
                         'target_device_id': outsider_device.device_id,
-                        'wrapped_key': 'group-wrap:pqc:v1:device-1:sign:kem:nonce:cipher:mac:signature',
+                        'wrapped_key': 'group-wrap:pqc:v2:device-1:sign:kem:nonce:cipher:mac:signature',
                     },
                 ],
             },
@@ -489,11 +501,11 @@ class ChatApiTests(APITestCase):
             f'/api/conversations/{self.group.id}/keys',
             {
                 'key_id': 'group-key-1',
-                'algorithm': 'group-ml-kem-768-aesgcm-v1',
+                'algorithm': 'group-ml-kem-768-aesgcm-v2',
                 'envelopes': [
                     {
                         'target_device_id': 'device-1',
-                        'wrapped_key': 'group-wrap:pqc:v1:device-1:sign:kem:nonce:cipher:mac:signature',
+                        'wrapped_key': 'group-wrap:pqc:v2:device-1:sign:kem:nonce:cipher:mac:signature',
                     },
                 ],
             },
@@ -513,15 +525,15 @@ class ChatApiTests(APITestCase):
             f'/api/conversations/{self.group.id}/keys',
             {
                 'key_id': 'group-key-1',
-                'algorithm': 'group-ml-kem-768-aesgcm-v1',
+                'algorithm': 'group-ml-kem-768-aesgcm-v2',
                 'envelopes': [
                     {
                         'target_device_id': 'device-1',
-                        'wrapped_key': 'group-wrap:pqc:v1:device-1:sign:kem:nonce:cipher:mac:signature',
+                        'wrapped_key': 'group-wrap:pqc:v2:device-1:sign:kem:nonce:cipher:mac:signature',
                     },
                     {
                         'target_device_id': 'device-1',
-                        'wrapped_key': 'group-wrap:pqc:v1:device-1:sign:kem2:nonce2:cipher2:mac2:signature2',
+                        'wrapped_key': 'group-wrap:pqc:v2:device-1:sign:kem2:nonce2:cipher2:mac2:signature2',
                     },
                 ],
             },
@@ -544,7 +556,7 @@ class ChatApiTests(APITestCase):
                 'envelopes': [
                     {
                         'target_device_id': 'device-1',
-                        'wrapped_key': 'group-wrap:pqc:v1:device-1:sign:kem:nonce:cipher:mac:signature',
+                        'wrapped_key': 'group-wrap:pqc:v2:device-1:sign:kem:nonce:cipher:mac:signature',
                     },
                 ],
             },
@@ -553,7 +565,7 @@ class ChatApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('group-ml-kem-768-aesgcm-v1', str(response.data))
+        self.assertIn('group-ml-kem-768-aesgcm-v2', str(response.data))
 
     def test_attachment_session_upload_complete_and_chunk_download(self):
         create = self.client.post(
@@ -805,12 +817,12 @@ class ChatApiTests(APITestCase):
 
 
 def _group_payload(label):
-    return f'group:v1:key-{label}:nonce-{label}:cipher-{label}:mac-{label}'
+    return f'group:v2:key-{label}:nonce-{label}:cipher-{label}:mac-{label}'
 
 
 def _private_payload(label):
     return (
-        f'pqc:v1:sender:{label}-sign:target:{label}-selfkem:{label}-selfnonce:'
+        f'pqc:v2:sender:{label}-sign:target:{label}-selfkem:{label}-selfnonce:'
         f'{label}-selfcipher:{label}-selfmac:{label}-peerkem:{label}-peernonce:'
         f'{label}-peercipher:{label}-peermac:{label}-contentnonce:'
         f'{label}-contentcipher:{label}-contentmac:{label}-signature'

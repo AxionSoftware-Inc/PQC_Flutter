@@ -7,6 +7,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:cryptography/cryptography.dart';
 
 import '../models/attachment_transfer.dart';
+import 'durability/v2_protocol_contract.dart';
 
 class AttachmentChunkEncryptionResult {
   const AttachmentChunkEncryptionResult({
@@ -33,13 +34,11 @@ class AttachmentFileAnalysis {
 }
 
 class AttachmentCryptoService {
-  AttachmentCryptoService({
-    Cipher? cipher,
-    Random? random,
-  }) : _cipher = cipher ?? AesGcm.with256bits(),
-       _random = random ?? Random.secure();
+  AttachmentCryptoService({Cipher? cipher, Random? random})
+    : _cipher = cipher ?? AesGcm.with256bits(),
+      _random = random ?? Random.secure();
 
-  static const cipherVersion = 'attachment:v1';
+  static const cipherVersion = PqcV2ProtocolContract.attachmentCipherVersion;
 
   final Cipher _cipher;
   final Random _random;
@@ -55,6 +54,33 @@ class AttachmentCryptoService {
       cipherVersion: cipherVersion,
       fileKeyBase64: base64Encode(key),
       nonceSeedBase64: base64Encode(nonceSeed),
+    );
+  }
+
+  /// Deterministic attachment material bound to an immutable PQCv2 epoch.
+  /// Callers must provide a recovered conversation epoch secret, never a
+  /// device-local random key, when durable enterprise history is required.
+  Future<AttachmentEncryptionDescriptor> deriveEpochBoundDescriptor({
+    required List<int> conversationEpochSecret,
+    required String conversationEpochId,
+    required String attachmentId,
+    required int manifestSequence,
+  }) async {
+    final hkdf = Hkdf(hmac: Hmac.sha256(), outputLength: 48);
+    final derivedKey = await hkdf.deriveKey(
+      secretKey: SecretKey(conversationEpochSecret),
+      nonce: utf8.encode(conversationEpochId),
+      info: utf8.encode(
+        'pqc-chat-attachment-v2:$attachmentId:$manifestSequence',
+      ),
+    );
+    final material = await derivedKey.extractBytes();
+    return AttachmentEncryptionDescriptor(
+      cipherVersion: cipherVersion,
+      fileKeyBase64: base64Encode(material.sublist(0, 32)),
+      nonceSeedBase64: base64Encode(material.sublist(32)),
+      conversationEpochId: conversationEpochId,
+      manifestSequence: manifestSequence,
     );
   }
 
@@ -78,7 +104,9 @@ class AttachmentCryptoService {
     );
   }
 
-  Future<String> buildManifestSha256(EncryptedAttachmentManifest manifest) async {
+  Future<String> buildManifestSha256(
+    EncryptedAttachmentManifest manifest,
+  ) async {
     final canonical = jsonEncode({
       'filename': manifest.filename,
       'mime_type': manifest.mimeType,
@@ -89,6 +117,8 @@ class AttachmentCryptoService {
       'total_chunks': manifest.totalChunks,
       'plaintext_sha256': manifest.plaintextSha256,
       'file_key_wrap': manifest.fileKeyWrap,
+      'conversation_epoch_id': manifest.conversationEpochId,
+      'recovery_manifest_sequence': manifest.recoveryManifestSequence,
     });
     return crypto.sha256.convert(utf8.encode(canonical)).toString();
   }

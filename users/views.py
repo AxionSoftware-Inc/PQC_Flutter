@@ -1,5 +1,11 @@
 import hashlib
+import json
+import base64
+from datetime import timedelta
+from urllib.parse import urlencode
+from urllib.request import urlopen
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -11,15 +17,24 @@ from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from chat.models import Conversation, ConversationParticipant
+from chat.models import Conversation, ConversationCryptoEpoch, ConversationParticipant
 from users.models import (
     Invitation,
+    GoogleAccount,
     Organization,
     OrganizationMember,
     UserDevice,
     Workspace,
     WorkspaceMember,
+    UserCryptoBackup,
+    AccountRecoveryManifest,
+    AccountKeysetEscrowRecord,
+    RecoveryDeviceApproval,
+    CryptoRecoveryAuditEvent,
+    HistoricalDeviceKey,
 )
+from users.escrow import EscrowEnvelope, get_key_escrow_provider
+from users.audit import append_recovery_audit_event
 from users.serializers import (
     DeviceSerializer,
     DeviceSyncSerializer,
@@ -235,11 +250,23 @@ def upsert_user_device(
             )
 
         if device.profile_fingerprint and device.profile_fingerprint != profile_fingerprint:
+            HistoricalDeviceKey.objects.get_or_create(
+                user=device.user,
+                device_id=device.device_id,
+                profile_fingerprint=device.profile_fingerprint,
+                defaults={
+                    'identity_public_key': device.identity_public_key,
+                    'key_algorithm': device.key_algorithm,
+                    'pqc_public_key': device.pqc_public_key,
+                    'pqc_algorithm': device.pqc_algorithm,
+                    'pqc_signing_public_key': device.pqc_signing_public_key,
+                    'pqc_signing_algorithm': device.pqc_signing_algorithm,
+                },
+            )
             return None, Response(
                 {
-                    'detail': 'This device profile does not match the registered key material.',
+                    'detail': 'Device crypto profile changed; re-enrollment is required.',
                     'code': 'device_profile_mismatch',
-                    'device_status': device.status,
                     'profile_fingerprint': device.profile_fingerprint,
                 },
                 status=status.HTTP_409_CONFLICT,
@@ -422,6 +449,78 @@ class LoginView(APIView):
         )
 
 
+class GoogleLoginView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    @transaction.atomic
+    def post(self, request):
+        id_token = str(request.data.get('id_token', '')).strip()
+        if not id_token:
+            return Response({'detail': 'Google id_token is required.'}, status=400)
+        try:
+            query = urlencode({'id_token': id_token})
+            with urlopen(
+                f'https://oauth2.googleapis.com/tokeninfo?{query}', timeout=5
+            ) as response:
+                claims = json.loads(response.read().decode('utf-8'))
+        except Exception:
+            return Response({'detail': 'Google token is invalid.'}, status=401)
+        if claims.get('aud') != settings.GOOGLE_ANDROID_CLIENT_ID:
+            return Response({'detail': 'Google token audience is invalid.'}, status=401)
+        if claims.get('email_verified') not in {'true', True} or not claims.get('sub'):
+            return Response({'detail': 'Verified Google account is required.'}, status=401)
+
+        subject = str(claims['sub'])
+        email = str(claims.get('email', '')).strip().lower()
+        identity = GoogleAccount.objects.select_related('user').filter(
+            google_subject=subject,
+        ).first()
+        user = identity.user if identity else User.objects.filter(email__iexact=email).first()
+        if user is None:
+            user = create_account_for_display_name(
+                str(claims.get('name') or email.split('@')[0] or 'Google user')
+            )
+        if user.email != email:
+            user.email = email
+            user.save(update_fields=['email'])
+        GoogleAccount.objects.update_or_create(
+            user=user,
+            defaults={'google_subject': subject, 'email': email},
+        )
+        device, error_response = upsert_user_device(
+            user=user,
+            device_id=str(request.data.get('device_id', '')).strip(),
+            device_name=str(request.data.get('device_name', '')).strip(),
+            platform=str(request.data.get('platform', '')).strip(),
+            identity_public_key=str(request.data.get('identity_public_key', '')).strip(),
+            key_algorithm=str(request.data.get('key_algorithm', '')).strip(),
+            pqc_public_key=str(request.data.get('pqc_public_key', '')).strip(),
+            pqc_algorithm=str(request.data.get('pqc_algorithm', '')).strip(),
+            pqc_signing_public_key=str(request.data.get('pqc_signing_public_key', '')).strip(),
+            pqc_signing_algorithm=str(request.data.get('pqc_signing_algorithm', '')).strip(),
+        )
+        if error_response is not None:
+            return error_response
+        _, workspace = _ensure_default_workspace_membership(user)
+        group, _ = Conversation.objects.get_or_create(
+            type=Conversation.ConversationType.GROUP,
+            title='General Group',
+            workspace=workspace,
+        )
+        ConversationParticipant.objects.get_or_create(conversation=group, user=user)
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response({
+            'token': token.key,
+            'account_id': user.id,
+            'device_id': device.device_id,
+            'device_status': device.status,
+            'profile_fingerprint': device.profile_fingerprint,
+            'active_workspace_id': workspace.id,
+            'organizations': _serialize_org_context(user),
+            'user': UserSerializer(user).data,
+        })
+
+
 class MeView(APIView):
     def get(self, request):
         workspace, error_response = _get_request_active_workspace(request)
@@ -435,6 +534,289 @@ class MeView(APIView):
                 'organizations': _serialize_org_context(request.user),
                 'user': user_data,
             }
+        )
+
+
+class CryptoBackupView(APIView):
+    """Stores and returns only the user's client-encrypted recovery blob."""
+
+    MAX_BLOB_LENGTH = 5 * 1024 * 1024
+
+    def get(self, request):
+        backup = UserCryptoBackup.objects.filter(user=request.user).first()
+        if backup is None:
+            return Response({'available': False})
+        return Response({
+            'available': True,
+            'version': backup.version,
+            'encrypted_blob': backup.encrypted_blob,
+            'blob_sha256': backup.blob_sha256,
+            'updated_at': backup.updated_at,
+        })
+
+    @transaction.atomic
+    def put(self, request):
+        blob = str(request.data.get('encrypted_blob', '')).strip()
+        version = int(request.data.get('version', 0) or 0)
+        checksum = str(request.data.get('blob_sha256', '')).strip().lower()
+        if not blob or len(blob) > self.MAX_BLOB_LENGTH:
+            return Response({'detail': 'Encrypted backup size is invalid.'}, status=413)
+        if version <= 0 or len(checksum) != 64:
+            return Response({'detail': 'Backup metadata is invalid.'}, status=400)
+        expected = hashlib.sha256(blob.encode('utf-8')).hexdigest()
+        if checksum != expected:
+            return Response({'detail': 'Backup checksum is invalid.'}, status=400)
+        backup, _ = UserCryptoBackup.objects.update_or_create(
+            user=request.user,
+            defaults={
+                'version': version,
+                'encrypted_blob': blob,
+                'blob_sha256': checksum,
+            },
+        )
+        return Response({'available': True, 'version': backup.version, 'updated_at': backup.updated_at})
+
+
+class AccountRecoveryManifestView(APIView):
+    MAX_PAYLOAD_LENGTH = 10 * 1024 * 1024
+
+    def get(self, request):
+        if settings.CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL:
+            challenge = str(request.query_params.get('approval', '')).strip()
+            requester_device_id = str(request.headers.get('X-Device-Id', '')).strip()
+            approval = RecoveryDeviceApproval.objects.filter(
+                user=request.user,
+                challenge=challenge,
+                requester_device_id=requester_device_id,
+                status=RecoveryDeviceApproval.Status.APPROVED,
+                expires_at__gt=timezone.now(),
+            ).first()
+            if approval is None:
+                return Response(
+                    {'detail': 'Step-up MFA and approval from another active device are required.', 'code': 'recovery_approval_required'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        manifest = AccountRecoveryManifest.objects.filter(user=request.user).first()
+        if manifest is None:
+            return Response({'available': False})
+        records = []
+        provider = get_key_escrow_provider()
+        try:
+            for record in AccountKeysetEscrowRecord.objects.filter(user=request.user, state='active'):
+                records.append({
+                    'record_id': record.id,
+                    'source_device_id': record.source_device_id,
+                    'keyset_id': record.keyset_id,
+                    'epoch_id': record.epoch_id,
+                    'record_type': record.record_type,
+                    'payload': provider.decrypt(
+                        account_id=request.user.id,
+                        envelope=EscrowEnvelope(
+                            encrypted_data_key=record.encrypted_data_key,
+                            ciphertext=record.ciphertext,
+                            nonce=record.nonce,
+                            key_id=record.kms_key_id,
+                            encryption_context=record.encryption_context,
+                        ),
+                    ),
+                })
+        except (ValueError, PermissionError):
+            append_recovery_audit_event(
+                user=request.user,
+                event_type='kms_decrypt_failure',
+                device_id=str(request.headers.get('X-Device-Id', '')),
+            )
+            return Response({'detail': 'Recovery record is corrupted.'}, status=500)
+        append_recovery_audit_event(
+            user=request.user,
+            event_type='recovery_manifest_read',
+            device_id=str(request.headers.get('X-Device-Id', '')),
+            metadata={'sequence': manifest.sequence, 'record_count': len(records)},
+        )
+        return Response({
+            'available': True,
+            'schema_version': manifest.schema_version,
+            'sequence': manifest.sequence,
+            'vector_clock': manifest.vector_clock,
+            'merkle_root': manifest.merkle_root,
+            'records': records,
+            'updated_at': manifest.updated_at,
+        })
+
+    @transaction.atomic
+    def put(self, request):
+        return _write_recovery_manifest(request, self.MAX_PAYLOAD_LENGTH)
+
+
+class CryptoObservabilityView(APIView):
+    """Authenticated, tamper-evident operational counters for pilot rollout."""
+    _METRICS = {
+        'kms_decrypt_failure_count': 'kms_decrypt_failure',
+        'manifest_sync_conflict_count': 'manifest_sync_conflict',
+        'attachment_decryption_error_total': 'attachment_decryption_error',
+    }
+
+    def get(self, request):
+        return Response({
+            metric: CryptoRecoveryAuditEvent.objects.filter(
+                user=request.user,
+                event_type=event_type,
+            ).count()
+            for metric, event_type in self._METRICS.items()
+        })
+
+    def post(self, request):
+        metric = str(request.data.get('metric', '')).strip()
+        event_type = self._METRICS.get(metric)
+        if event_type is None:
+            return Response({'detail': 'Unknown crypto metric.'}, status=400)
+        append_recovery_audit_event(
+            user=request.user,
+            event_type=event_type,
+            device_id=str(request.headers.get('X-Device-Id', '')).strip(),
+            metadata={'reported_by': 'client'} if metric == 'attachment_decryption_error_total' else {},
+        )
+        return Response({metric: 1}, status=status.HTTP_202_ACCEPTED)
+
+
+def _write_recovery_manifest(request, max_payload_length):
+    payload = str(request.data.get('payload', '')).strip()
+    schema_version = int(request.data.get('schema_version', 2) or 2)
+    expected_sequence = int(request.data.get('expected_sequence', 0) or 0)
+    source_device_id = str(request.data.get('source_device_id', '')).strip() or str(request.headers.get('X-Device-Id', '')).strip()
+    if not payload or len(payload) > max_payload_length:
+        return Response({'detail': 'Account recovery payload is invalid.'}, status=413)
+    if not source_device_id:
+        return Response({'detail': 'source_device_id is required.'}, status=400)
+    checksum = hashlib.sha256(payload.encode('utf-8')).hexdigest()
+    manifest, _ = AccountRecoveryManifest.objects.select_for_update().get_or_create(
+        user=request.user,
+        defaults={
+            'schema_version': schema_version,
+            'encrypted_payload': '', 'kms_key_id': '', 'kms_key_version': '',
+            'payload_sha256': '', 'sequence': 0,
+        },
+    )
+    if expected_sequence != manifest.sequence:
+        append_recovery_audit_event(
+            user=request.user,
+            event_type='manifest_sync_conflict',
+            device_id=source_device_id,
+            metadata={
+                'expected_sequence': expected_sequence,
+                'actual_sequence': manifest.sequence,
+            },
+        )
+        return Response({
+            'detail': 'Recovery index changed; fetch, merge and retry.',
+            'code': 'recovery_manifest_conflict',
+            'sequence': manifest.sequence,
+            'vector_clock': manifest.vector_clock,
+        }, status=status.HTTP_412_PRECONDITION_FAILED)
+    envelope = get_key_escrow_provider().encrypt(account_id=request.user.id, plaintext=payload)
+    AccountKeysetEscrowRecord.objects.get_or_create(
+        user=request.user,
+        source_device_id=source_device_id,
+        payload_sha256=checksum,
+        defaults={
+            'encrypted_data_key': envelope.encrypted_data_key,
+            'ciphertext': envelope.ciphertext,
+            'nonce': envelope.nonce,
+            'kms_key_id': envelope.key_id,
+            'encryption_context': envelope.encryption_context,
+        },
+    )
+    clock = dict(manifest.vector_clock)
+    clock[source_device_id] = int(clock.get(source_device_id, 0)) + 1
+    hashes = AccountKeysetEscrowRecord.objects.filter(user=request.user).values_list('payload_sha256', flat=True)
+    manifest.schema_version = schema_version
+    manifest.sequence += 1
+    manifest.vector_clock = clock
+    manifest.merkle_root = hashlib.sha256('|'.join(sorted(hashes)).encode()).hexdigest()
+    manifest.save(update_fields=['schema_version', 'sequence', 'vector_clock', 'merkle_root', 'updated_at'])
+    append_recovery_audit_event(
+        user=request.user,
+        event_type='recovery_manifest_written',
+        device_id=source_device_id,
+        metadata={'sequence': manifest.sequence, 'merkle_root': manifest.merkle_root},
+    )
+    return Response({
+        'available': True,
+        'schema_version': manifest.schema_version,
+        'sequence': manifest.sequence,
+        'vector_clock': manifest.vector_clock,
+        'merkle_root': manifest.merkle_root,
+        'updated_at': manifest.updated_at,
+    })
+
+
+class RecoveryApprovalRequestView(APIView):
+    def get(self, request):
+        device_id = str(request.headers.get('X-Device-Id', '')).strip()
+        approvals = RecoveryDeviceApproval.objects.filter(
+            user=request.user,
+            status=RecoveryDeviceApproval.Status.PENDING,
+            expires_at__gt=timezone.now(),
+        ).exclude(requester_device_id=device_id).order_by('-id')
+        return Response({'approvals': [{
+            'id': item.id,
+            'requester_device_id': item.requester_device_id,
+            'expires_at': item.expires_at,
+        } for item in approvals]})
+
+    @transaction.atomic
+    def post(self, request):
+        requester_device_id = str(request.data.get('requester_device_id', '')).strip() or str(request.headers.get('X-Device-Id', '')).strip()
+        if not requester_device_id:
+            return Response({'detail': 'requester_device_id is required.'}, status=400)
+        RecoveryDeviceApproval.objects.filter(
+            user=request.user,
+            requester_device_id=requester_device_id,
+            status=RecoveryDeviceApproval.Status.PENDING,
+        ).update(status=RecoveryDeviceApproval.Status.EXPIRED)
+        approval = RecoveryDeviceApproval.objects.create(
+            user=request.user,
+            requester_device_id=requester_device_id,
+            challenge=uuid4().hex,
+            expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        append_recovery_audit_event(
+            user=request.user, event_type='recovery_approval_requested',
+            device_id=requester_device_id, metadata={'approval_id': approval.id},
+        )
+        return Response({'approval_id': approval.id, 'challenge': approval.challenge, 'expires_at': approval.expires_at})
+
+
+class RecoveryApprovalDecisionView(APIView):
+    @transaction.atomic
+    def post(self, request, approval_id):
+        approver_device_id = str(request.data.get('approver_device_id', '')).strip() or str(request.headers.get('X-Device-Id', '')).strip()
+        approval = RecoveryDeviceApproval.objects.select_for_update().filter(user=request.user, id=approval_id).first()
+        if approval is None:
+            return Response({'detail': 'Recovery approval not found.'}, status=404)
+        if approval.expires_at <= timezone.now():
+            approval.status = RecoveryDeviceApproval.Status.EXPIRED
+            approval.save(update_fields=['status'])
+            return Response({'detail': 'Recovery approval expired.'}, status=410)
+        if not approver_device_id or approver_device_id == approval.requester_device_id:
+            return Response({'detail': 'A different active device must approve recovery.'}, status=400)
+        if not UserDevice.objects.filter(user=request.user, device_id=approver_device_id, status=UserDevice.Status.ACTIVE).exists():
+            return Response({'detail': 'Approver device is not active.'}, status=403)
+        approved = bool(request.data.get('approved', False))
+        approval.status = RecoveryDeviceApproval.Status.APPROVED if approved else RecoveryDeviceApproval.Status.DENIED
+        approval.approver_device_id = approver_device_id
+        approval.approved_at = timezone.now() if approved else None
+        approval.save(update_fields=['status', 'approver_device_id', 'approved_at'])
+        append_recovery_audit_event(
+            user=request.user, event_type='recovery_approval_decided', device_id=approver_device_id,
+            metadata={'approval_id': approval.id, 'approved': approved},
+        )
+        return Response({'approval_id': approval.id, 'status': approval.status})
+
+    def put(self, request, approval_id):
+        return Response(
+            {'detail': 'Use POST to decide a recovery approval.'},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
         )
 
 
@@ -549,6 +931,23 @@ class DeviceRevokeView(APIView):
         device.revoked_reason = 'revoked_by_user'
         device.last_seen_at = timezone.now()
         device.save(update_fields=['status', 'revoked_reason', 'last_seen_at', 'updated_at'])
+        AccountKeysetEscrowRecord.objects.filter(
+            user=request.user, source_device_id=device.device_id, state='active',
+        ).update(state='revoked', revoked_at=timezone.now())
+        group_conversation_ids = ConversationParticipant.objects.filter(
+            user=request.user,
+            conversation__type=Conversation.ConversationType.GROUP,
+        ).values_list('conversation_id', flat=True)
+        for conversation_id in group_conversation_ids:
+            ConversationCryptoEpoch.objects.get_or_create(
+                conversation_id=conversation_id,
+                epoch_id=f'rekey-required-{uuid4().hex[:32]}',
+                defaults={'state': ConversationCryptoEpoch.State.PENDING, 'reason': 'device_revoked'},
+            )
+        append_recovery_audit_event(
+            user=request.user, event_type='device_revoked', device_id=device.device_id,
+            metadata={'rekey_required_conversation_ids': list(group_conversation_ids)},
+        )
         return Response(
             {
                 'device_id': device.device_id,

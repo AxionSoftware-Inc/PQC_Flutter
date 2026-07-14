@@ -28,6 +28,7 @@ class ChatFacade {
     ConversationSyncService? conversationSyncService,
     MessageSyncService? messageSyncService,
     OutgoingMessageService? outgoingMessageService,
+    Future<void> Function()? onCryptoStateChanged,
     AttachmentTransferFacade? attachmentTransferFacade,
     ChatRealtimeCoordinator? realtimeCoordinator,
   }) : _remoteDataSource = remoteDataSource,
@@ -55,6 +56,7 @@ class ChatFacade {
              localStore: localStore,
              outboxStore: outboxStore,
              attachmentTransferFacade: attachmentTransferFacade,
+             onCryptoStateChanged: onCryptoStateChanged,
            ),
        _attachmentTransferFacade = attachmentTransferFacade,
        _realtimeCoordinator =
@@ -122,7 +124,9 @@ class ChatFacade {
     for (final conversation in syncResult.conversations) {
       await _persistConversation(conversation);
     }
-    final rows = await _localStore.readVisibleConversationRows(_activeWorkspaceId);
+    final rows = await _localStore.readVisibleConversationRows(
+      _activeWorkspaceId,
+    );
     final conversations = <Conversation>[];
     for (final row in rows) {
       conversations.add(
@@ -132,7 +136,9 @@ class ChatFacade {
         ),
       );
     }
-    final trustByUserId = await _trustService.buildUserTrustMap(_usersById.values);
+    final trustByUserId = await _trustService.buildUserTrustMap(
+      _usersById.values,
+    );
     return ChatListState(
       users: users,
       conversations: conversations,
@@ -141,7 +147,9 @@ class ChatFacade {
   }
 
   Future<Conversation> openPrivateConversation(int otherUserId) async {
-    final conversation = await _remoteDataSource.openPrivateConversation(otherUserId);
+    final conversation = await _remoteDataSource.openPrivateConversation(
+      otherUserId,
+    );
     await _persistConversation(conversation);
     return conversation;
   }
@@ -255,7 +263,9 @@ class ChatFacade {
     if (_attachmentTransferFacade != null) {
       await _attachmentTransferFacade.resumePendingDownloads();
     }
-    final rows = await _localStore.readVisibleConversationRows(_activeWorkspaceId);
+    final rows = await _localStore.readVisibleConversationRows(
+      _activeWorkspaceId,
+    );
     for (final row in rows) {
       final conversation = await _localStore.mapConversationRow(
         row: row,
