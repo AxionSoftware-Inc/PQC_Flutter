@@ -44,6 +44,7 @@ class _ChatListPageState extends State<ChatListPage> {
   bool _readReceiptsEnabled = true;
   bool _accountSettingsHydrated = false;
   final Set<int> _selectedConversationIds = <int>{};
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
@@ -231,6 +232,51 @@ class _ChatListPageState extends State<ChatListPage> {
         await widget.sessionController.invalidateSession();
       }
     }
+  }
+
+  Future<void> _showGlobalSearch() async {
+    final controller = TextEditingController(text: _chatSearchController.text);
+    final query = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Search chats'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Search messages or contacts',
+          ),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Search'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (query == null || !mounted) return;
+    setState(() => _selectedTabIndex = 0);
+    await _controller.setChatSearchQuery(query);
+  }
+
+  Future<void> _openSettingsPage() async {
+    _scaffoldKey.currentState?.closeDrawer();
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _SettingsPage(
+          title: 'Settings',
+          child: _buildSettingsTab(_controller.settingsState),
+        ),
+      ),
+    );
   }
 
   Future<void> _openConversation({
@@ -604,14 +650,11 @@ class _ChatListPageState extends State<ChatListPage> {
         icon: Icons.people_alt_outlined,
         title: 'Contacts',
       ),
-      const _TabMeta(
-        label: 'Settings',
-        icon: Icons.settings_outlined,
-        title: 'Settings',
-      ),
     ];
 
     return AppScaffold(
+      scaffoldKey: _scaffoldKey,
+      drawer: _buildNavigationDrawer(settingsState),
       appBar: AppBar(
         toolbarHeight: 68,
         title: Column(
@@ -629,6 +672,16 @@ class _ChatListPageState extends State<ChatListPage> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Search',
+            onPressed: _showGlobalSearch,
+            icon: const Icon(Icons.search_rounded),
+          ),
+          IconButton(
+            tooltip: 'Menu',
+            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+            icon: const Icon(Icons.menu_rounded),
+          ),
           if (sessionUser.organizations.isNotEmpty)
             PopupMenuButton<int>(
               tooltip: 'Switch workspace',
@@ -697,10 +750,6 @@ class _ChatListPageState extends State<ChatListPage> {
                   RefreshIndicator(
                     onRefresh: _refresh,
                     child: _buildContactsTab(contactsState),
-                  ),
-                  RefreshIndicator(
-                    onRefresh: _refresh,
-                    child: _buildSettingsTab(settingsState),
                   ),
                 ],
               ),
@@ -1302,6 +1351,67 @@ class _ChatListPageState extends State<ChatListPage> {
     );
   }
 
+  Widget _buildNavigationDrawer(SettingsViewState state) {
+    final session = state.sessionUser;
+    return Drawer(
+      child: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(color: context.appColors.primarySoft),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AppAvatar(label: session.displayName, radius: 28),
+                  const Spacer(),
+                  Text(
+                    session.displayName,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  Text(
+                    session.username,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.chat_bubble_outline_rounded),
+              title: const Text('Chats'),
+              onTap: () {
+                _scaffoldKey.currentState?.closeDrawer();
+                setState(() => _selectedTabIndex = 0);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.people_alt_outlined),
+              title: const Text('Contacts'),
+              onTap: () {
+                _scaffoldKey.currentState?.closeDrawer();
+                setState(() => _selectedTabIndex = 1);
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('Settings'),
+              onTap: _openSettingsPage,
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded),
+              title: const Text('Log out'),
+              onTap: () async {
+                _scaffoldKey.currentState?.closeDrawer();
+                await _logout(forgetDevice: false);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _editProfile() async {
     final controller = TextEditingController(
       text: widget.sessionController.sessionUser?.displayName ?? '',
@@ -1895,6 +2005,21 @@ class _FilterStrip<T> extends StatelessWidget {
   }
 }
 
+class _SettingsPage extends StatelessWidget {
+  const _SettingsPage({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppScaffold(
+      appBar: AppBar(title: Text(title)),
+      body: child,
+    );
+  }
+}
+
 class _TabMeta {
   const _TabMeta({
     required this.label,
@@ -1990,55 +2115,6 @@ class _ContactDetailPage extends StatelessWidget {
             message: detail.badge.details ?? detail.deviceSummary,
             tone: _mapTone(detail.badge.tone),
           ),
-          SizedBox(height: spacing.lg),
-          const AppSectionHeader(
-            title: 'Devices',
-            subtitle: 'Current visible multi-device roster.',
-          ),
-          SizedBox(height: spacing.sm),
-          if (detail.devices.isEmpty)
-            const AppEmptyState(
-              message: 'No visible devices for this contact.',
-              icon: Icons.devices_outlined,
-            )
-          else
-            for (final device in detail.devices)
-              Padding(
-                padding: EdgeInsets.only(bottom: spacing.sm),
-                child: AppSurfaceCard(
-                  child: Row(
-                    children: [
-                      const AppAvatar(
-                        label: 'D',
-                        icon: Icons.devices_outlined,
-                        radius: 18,
-                      ),
-                      SizedBox(width: spacing.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              device.deviceName.isEmpty
-                                  ? device.deviceId
-                                  : device.deviceName,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            SizedBox(height: spacing.xs),
-                            Text(
-                              '${device.platform.isEmpty ? 'unknown' : device.platform} • ${device.isActive ? 'active' : device.status} • ${device.hasUsableMlKemKey && device.hasUsableMlDsaKey ? 'ready' : 'not ready'}',
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(
-                                    color: context.appColors.textMuted,
-                                  ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
           SizedBox(height: spacing.lg),
           Row(
             children: [
