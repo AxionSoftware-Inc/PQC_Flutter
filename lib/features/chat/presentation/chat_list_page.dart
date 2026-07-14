@@ -40,6 +40,8 @@ class _ChatListPageState extends State<ChatListPage> {
       TextEditingController();
   int _selectedTabIndex = 0;
   bool _recoveryPromptShown = false;
+  bool _notificationsEnabled = true;
+  bool _readReceiptsEnabled = true;
   final Set<int> _selectedConversationIds = <int>{};
 
   @override
@@ -352,6 +354,13 @@ class _ChatListPageState extends State<ChatListPage> {
                   );
                 }
               : null,
+          onBlock: item.isCurrentUser
+              ? null
+              : () => _controller.blockUser(item.user.id),
+          onReport: item.isCurrentUser
+              ? null
+              : (reason) =>
+                    _controller.reportUser(item.user.id, reason: reason),
         ),
       ),
     );
@@ -1148,6 +1157,30 @@ class _ChatListPageState extends State<ChatListPage> {
             children: [
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
+                value: _notificationsEnabled,
+                title: const Text('Notifications'),
+                subtitle: const Text('Account notification delivery.'),
+                onChanged: (value) {
+                  setState(() => _notificationsEnabled = value);
+                  _controller.updateAccountSettings({
+                    'notifications_enabled': value,
+                  });
+                },
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _readReceiptsEnabled,
+                title: const Text('Read receipts'),
+                subtitle: const Text('Allow read status for your messages.'),
+                onChanged: (value) {
+                  setState(() => _readReceiptsEnabled = value);
+                  _controller.updateAccountSettings({
+                    'read_receipts_enabled': value,
+                  });
+                },
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
                 value: widget.themeController.themeMode == ThemeMode.dark,
                 title: const Text('Dark mode'),
                 subtitle: const Text(
@@ -1863,12 +1896,16 @@ class _ContactDetailPage extends StatelessWidget {
     required this.detail,
     required this.onStartChat,
     required this.onVerify,
+    required this.onBlock,
+    required this.onReport,
   });
 
   final ContactListItemState item;
   final ContactDetailState detail;
   final Future<void> Function()? onStartChat;
   final Future<void> Function()? onVerify;
+  final Future<void> Function()? onBlock;
+  final Future<void> Function(String reason)? onReport;
 
   @override
   Widget build(BuildContext context) {
@@ -1903,6 +1940,28 @@ class _ContactDetailPage extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+          SizedBox(height: spacing.lg),
+          Wrap(
+            spacing: spacing.sm,
+            children: [
+              if (onBlock != null)
+                AppSecondaryButton(
+                  onPressed: () async {
+                    await onBlock!.call();
+                    if (context.mounted) Navigator.of(context).pop();
+                  },
+                  label: const Text('Block'),
+                ),
+              if (onReport != null)
+                AppSecondaryButton(
+                  onPressed: () async {
+                    await onReport!.call('user_report');
+                    if (context.mounted) Navigator.of(context).pop();
+                  },
+                  label: const Text('Report'),
+                ),
+            ],
           ),
           SizedBox(height: spacing.lg),
           AppBadge(
