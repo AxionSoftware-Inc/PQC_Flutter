@@ -371,6 +371,7 @@ class MessageSyncService {
     var messages = await remoteDataSource.fetchMessages(
       conversation.id,
       afterId: deltaAfterId,
+      limit: 50,
     );
     if (messages.isEmpty && existingRows.isEmpty && deltaAfterId != null) {
       messages = await remoteDataSource.fetchMessages(conversation.id);
@@ -419,6 +420,66 @@ class MessageSyncService {
     return MessageSyncResult(
       messages: mergedRemote,
       lastMessageId: messages.isNotEmpty ? messages.last.id : null,
+    );
+  }
+
+  /// Loads an older page without touching the sync cursor used for new data.
+  /// Key material remains in the durability registry; only the requested
+  /// ciphertexts are fetched and decrypted.
+  Future<MessageSyncResult> syncOlderMessages({
+    required Conversation conversation,
+    required int currentUserId,
+    required Map<int, AppUser> usersById,
+    required Future<void> Function() refreshUsers,
+  }) async {
+    final existingRows = await localStore.readMessageRows(conversation.id);
+    final oldestId = existingRows
+        .map((row) => row.id)
+        .where((id) => id > 0)
+        .fold<int?>(
+          null,
+          (oldest, id) => oldest == null || id < oldest ? id : oldest,
+        );
+    if (oldestId == null) {
+      return const MessageSyncResult(messages: []);
+    }
+    final messages = await remoteDataSource.fetchMessages(
+      conversation.id,
+      beforeId: oldestId,
+      limit: 50,
+    );
+    if (messages.isEmpty) {
+      return MessageSyncResult(
+        messages: await localStore.readMessages(conversation.id),
+      );
+    }
+    final rows = <MessagesTableData>[];
+    for (final row in existingRows) {
+      rows.add(await localStore.unprotectMessageRow(row));
+    }
+    final existingById = {for (final row in rows) row.id: row};
+    final existingByClientId = {
+      for (final row in rows)
+        if (row.clientMessageId.isNotEmpty) row.clientMessageId: row,
+    };
+    for (final message in messages) {
+      final plaintext = await _resolveMessagePlaintext(
+        conversation: conversation,
+        currentUserId: currentUserId,
+        usersById: usersById,
+        message: message,
+        existingById: existingById,
+        existingByClientId: existingByClientId,
+        refreshUsers: refreshUsers,
+      );
+      await localStore.persistMessage(
+        decoded: message.copyWith(body: plaintext),
+        encryptedBody: message.body,
+      );
+    }
+    return MessageSyncResult(
+      messages: await localStore.readMessages(conversation.id),
+      lastMessageId: messages.last.id,
     );
   }
 

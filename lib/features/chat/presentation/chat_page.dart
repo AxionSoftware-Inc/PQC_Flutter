@@ -68,6 +68,7 @@ class _ChatPageState extends State<ChatPage> {
   final Map<int, String> _localReactions = <int, String>{};
   int _lastMessageCount = 0;
   bool _hasRenderedMessages = false;
+  bool _olderLoadInFlight = false;
   final Map<int, String> _downloadedAttachmentPaths = {};
 
   @override
@@ -78,6 +79,7 @@ class _ChatPageState extends State<ChatPage> {
       currentUserId: widget.currentUserId,
       conversation: widget.conversation,
     )..addListener(_onControllerChanged);
+    _scrollController.addListener(_handleScrollForOlderMessages);
     _messageController.addListener(_queueDraftSave);
     unawaited(_initialize());
   }
@@ -87,6 +89,7 @@ class _ChatPageState extends State<ChatPage> {
     _controller
       ..removeListener(_onControllerChanged)
       ..dispose();
+    _scrollController.removeListener(_handleScrollForOlderMessages);
     _draftDebounce?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
@@ -150,6 +153,35 @@ class _ChatPageState extends State<ChatPage> {
     _controller.markMessagesRead();
     if (shouldJump) {
       _jumpToBottom();
+    }
+  }
+
+  void _handleScrollForOlderMessages() {
+    if (!_scrollController.hasClients ||
+        _scrollController.position.pixels > 120 ||
+        _olderLoadInFlight ||
+        !_controller.hasOlderMessages) {
+      return;
+    }
+    unawaited(_loadOlderMessages());
+  }
+
+  Future<void> _loadOlderMessages() async {
+    if (_olderLoadInFlight || !_scrollController.hasClients) return;
+    _olderLoadInFlight = true;
+    final oldExtent = _scrollController.position.maxScrollExtent;
+    try {
+      await _controller.loadOlderMessages();
+      if (!mounted || !_scrollController.hasClients) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_scrollController.hasClients) return;
+        final delta = _scrollController.position.maxScrollExtent - oldExtent;
+        if (delta > 0) {
+          _scrollController.jumpTo(_scrollController.position.pixels + delta);
+        }
+      });
+    } finally {
+      _olderLoadInFlight = false;
     }
   }
 
