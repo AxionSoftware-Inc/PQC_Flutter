@@ -28,6 +28,7 @@ class V3CodecContext {
     required this.localDeviceId,
     required this.localKeysetId,
     this.recipients = const [],
+    this.groupEpochKey,
   });
 
   final int conversationId;
@@ -39,6 +40,7 @@ class V3CodecContext {
   final String localDeviceId;
   final String localKeysetId;
   final List<V3DeviceRecipient> recipients;
+  final List<int>? groupEpochKey;
 }
 
 class V3MessageCodec {
@@ -65,7 +67,12 @@ class V3MessageCodec {
     if (context.recipients.isEmpty) {
       throw StateError('V3 message needs at least one recipient device.');
     }
-    final contentKey = List<int>.generate(32, (_) => _random.nextInt(256));
+    final contentKey = isGroup && context.groupEpochKey != null
+        ? List<int>.of(context.groupEpochKey!)
+        : List<int>.generate(32, (_) => _random.nextInt(256));
+    if (contentKey.length != 32) {
+      throw ArgumentError('V3 content key must be exactly 32 bytes.');
+    }
     final ad = PqcV3AssociatedData.forMessage(context);
     final encrypted = await crypto.encrypt(
       plaintext: utf8.encode(plaintext),
