@@ -3,6 +3,7 @@ from urllib.parse import parse_qs
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
+from django.utils import timezone
 from rest_framework.authtoken.models import Token
 
 from users.models import WorkspaceMember
@@ -28,21 +29,44 @@ class ChatEventsConsumer(AsyncWebsocketConsumer):
         self.workspace_group = f'workspace_{self.workspace_id}'
         await self.channel_layer.group_add(self.workspace_group, self.channel_name)
         await self.accept()
-        await self.send_json(
+        await self._touch_device('online')
+        await self._broadcast_presence('online')
+
+    async def _broadcast_presence(self, state):
+        await self.channel_layer.group_send(
+            self.workspace_group,
             {
+                'type': 'chat.event',
                 'event': 'presence.changed',
                 'payload': {
                     'workspace_id': self.workspace_id,
                     'user_id': self.user.id,
-                    'state': 'online',
+                    'state': state,
                     'device_id': self.device_id,
+                    'last_seen_at': timezone.now().isoformat(),
                 },
-            }
+            },
         )
 
     async def disconnect(self, close_code):
         if hasattr(self, 'workspace_group'):
+            await self._touch_device('offline')
+            await self._broadcast_presence('offline')
             await self.channel_layer.group_discard(self.workspace_group, self.channel_name)
+
+    @database_sync_to_async
+    def _touch_device(self, state):
+        if not getattr(self, 'device_id', ''):
+            return
+        from users.models import UserDevice
+
+        UserDevice.objects.filter(
+            user=self.user,
+            device_id=self.device_id,
+        ).update(
+            status=UserDevice.Status.ACTIVE,
+            last_seen_at=timezone.now(),
+        )
 
     async def receive(self, text_data=None, bytes_data=None):
         if not text_data:
