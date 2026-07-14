@@ -223,6 +223,22 @@ class ChatFacade {
     );
   }
 
+  Future<ChatMessage> editMessage(int messageId, String body) {
+    return _remoteDataSource.editMessage(messageId, body);
+  }
+
+  Future<void> deleteMessage(int messageId) {
+    return _remoteDataSource.deleteMessage(messageId);
+  }
+
+  Future<Map<String, dynamic>> setReaction(int messageId, String emoji) {
+    return _remoteDataSource.setReaction(messageId, emoji);
+  }
+
+  Future<void> removeReaction(int messageId) {
+    return _remoteDataSource.removeReaction(messageId);
+  }
+
   Future<void> retryMessage({
     required Conversation conversation,
     required int currentUserId,
