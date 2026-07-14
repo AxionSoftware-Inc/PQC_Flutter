@@ -386,16 +386,24 @@ class MessageSyncService {
         if (row.clientMessageId.isNotEmpty) row.clientMessageId: row,
     };
 
-    for (final message in messages) {
-      final plaintext = await _resolveMessagePlaintext(
-        conversation: conversation,
-        currentUserId: currentUserId,
-        usersById: usersById,
-        message: message,
-        existingById: existingById,
-        existingByClientId: existingByClientId,
-        refreshUsers: refreshUsers,
-      );
+    // Message decryption is CPU-heavy for PQC payloads. Resolve the batch in
+    // parallel so opening a history does not wait for every message serially.
+    final plaintexts = await Future.wait(
+      messages.map(
+        (message) => _resolveMessagePlaintext(
+          conversation: conversation,
+          currentUserId: currentUserId,
+          usersById: usersById,
+          message: message,
+          existingById: existingById,
+          existingByClientId: existingByClientId,
+          refreshUsers: refreshUsers,
+        ),
+      ),
+    );
+    for (var index = 0; index < messages.length; index++) {
+      final message = messages[index];
+      final plaintext = plaintexts[index];
       await localStore.persistMessage(
         decoded: message.copyWith(body: plaintext),
         encryptedBody: message.body,
