@@ -4,7 +4,7 @@ import '../durability/crypto_durability_models.dart';
 /// transport and policy are supplied by adapters; the manager never imports
 /// HTTP, Flutter, database or device APIs.
 abstract interface class V3Encoder {
-  String encode({
+  Future<String> encode({
     required String plaintext,
     required Map<String, dynamic> context,
   });
