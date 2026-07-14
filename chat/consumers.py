@@ -78,6 +78,8 @@ class ChatEventsConsumer(AsyncWebsocketConsumer):
         event = decoded.get('event', '')
         payload = decoded.get('payload', {})
         if event in {'typing.started', 'typing.stopped', 'receipt.delivered', 'receipt.read'}:
+            if event.startswith('receipt.'):
+                await self._save_receipt(event, payload)
             await self.channel_layer.group_send(
                 self.workspace_group,
                 {
@@ -91,6 +93,32 @@ class ChatEventsConsumer(AsyncWebsocketConsumer):
                     },
                 },
             )
+
+    @database_sync_to_async
+    def _save_receipt(self, event, payload):
+        from chat.models import Message, MessageReceipt
+
+        message_id = payload.get('message_id')
+        if not isinstance(message_id, int):
+            return
+        message = Message.objects.filter(
+            id=message_id,
+            conversation__workspace_id=self.workspace_id,
+            conversation__participants=self.user,
+        ).first()
+        if message is None or message.sender_id == self.user.id:
+            return
+        receipt, _ = MessageReceipt.objects.get_or_create(
+            message=message,
+            user=self.user,
+        )
+        now = timezone.now()
+        if event == 'receipt.read':
+            receipt.delivered_at = receipt.delivered_at or now
+            receipt.read_at = now
+        else:
+            receipt.delivered_at = receipt.delivered_at or now
+        receipt.save(update_fields=['delivered_at', 'read_at', 'updated_at'])
 
     async def chat_event(self, event):
         await self.send_json(

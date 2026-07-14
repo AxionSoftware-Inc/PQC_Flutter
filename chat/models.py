@@ -79,6 +79,32 @@ class Message(models.Model):
         return f'{self.sender_id}:{self.body[:30]}'
 
 
+class MessageReceipt(models.Model):
+    """Per-recipient delivery/read watermark for realtime and offline clients."""
+
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name='receipts',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='message_receipts',
+    )
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['message', 'user'],
+                name='chat_message_receipt_unique_recipient',
+            ),
+        ]
+
+
 class MessageAttachment(models.Model):
     message = models.ForeignKey(
         Message,
