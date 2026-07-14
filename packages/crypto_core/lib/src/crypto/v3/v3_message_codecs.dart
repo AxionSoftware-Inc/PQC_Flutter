@@ -133,9 +133,23 @@ class V3MessageCodec {
     required String payload,
   }) async {
     final envelope = V3Envelope.decode(payload);
-    if (envelope.conversationId != context.conversationId ||
-        envelope.conversationType != context.conversationType ||
-        envelope.messageId != context.messageId ||
+    final effectiveContext = V3CodecContext(
+      conversationId: context.conversationId,
+      conversationType: context.conversationType,
+      messageId: context.messageId.isEmpty
+          ? envelope.messageId
+          : context.messageId,
+      senderDeviceId: context.senderDeviceId,
+      senderKeysetId: context.senderKeysetId,
+      signingPublicKey: context.signingPublicKey,
+      localDeviceId: context.localDeviceId,
+      localKeysetId: context.localKeysetId,
+      recipients: context.recipients,
+      groupEpochKey: context.groupEpochKey,
+    );
+    if (envelope.conversationId != effectiveContext.conversationId ||
+        envelope.conversationType != effectiveContext.conversationType ||
+        envelope.messageId != effectiveContext.messageId ||
         envelope.signingPublicKey == null ||
         envelope.signature == null) {
       throw const FormatException('V3 envelope context mismatch.');
@@ -162,13 +176,13 @@ class V3MessageCodec {
     final contentKey = await crypto.decrypt(
       ciphertext: base64Decode(wrap.wrappedKey),
       associatedData: utf8.encode(
-        '${context.messageId}:${context.localDeviceId}',
+        '${effectiveContext.messageId}:${effectiveContext.localDeviceId}',
       ),
       context: {'content_key': shared},
     );
     final plaintext = await crypto.decrypt(
       ciphertext: base64Decode(envelope.ciphertext),
-      associatedData: PqcV3AssociatedData.forMessage(context),
+      associatedData: PqcV3AssociatedData.forMessage(effectiveContext),
       context: {'content_key': contentKey},
     );
     return utf8.decode(plaintext);

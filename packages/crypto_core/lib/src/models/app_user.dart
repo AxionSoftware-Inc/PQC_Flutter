@@ -3,6 +3,7 @@ import 'dart:convert';
 class AppUserDevice {
   const AppUserDevice({
     required this.deviceId,
+    this.keysetId = '',
     required this.deviceName,
     required this.platform,
     required this.identityPublicKey,
@@ -21,6 +22,7 @@ class AppUserDevice {
   });
 
   final String deviceId;
+  final String keysetId;
   final String deviceName;
   final String platform;
   final String identityPublicKey;
@@ -88,6 +90,7 @@ class AppUserDevice {
   factory AppUserDevice.fromJson(Map<String, dynamic> json) {
     return AppUserDevice(
       deviceId: json['device_id'] as String? ?? '',
+      keysetId: json['keyset_id'] as String? ?? '',
       deviceName: json['device_name'] as String? ?? '',
       platform: json['platform'] as String? ?? '',
       identityPublicKey: json['identity_public_key'] as String? ?? '',
@@ -108,6 +111,7 @@ class AppUserDevice {
 
   AppUserDevice copyWith({
     String? deviceId,
+    String? keysetId,
     String? deviceName,
     String? platform,
     String? identityPublicKey,
@@ -126,6 +130,7 @@ class AppUserDevice {
   }) {
     return AppUserDevice(
       deviceId: deviceId ?? this.deviceId,
+      keysetId: keysetId ?? this.keysetId,
       deviceName: deviceName ?? this.deviceName,
       platform: platform ?? this.platform,
       identityPublicKey: identityPublicKey ?? this.identityPublicKey,

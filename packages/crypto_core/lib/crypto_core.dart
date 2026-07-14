@@ -31,6 +31,7 @@ export 'src/crypto/v3/v3_message_codecs.dart';
 export 'src/crypto/v3/v3_attachment_codec.dart';
 export 'src/crypto/v3/v2_compatibility_decoder.dart';
 export 'src/crypto/v3/v3_codec_adapters.dart';
+export 'src/crypto/v3/v3_chat_cipher_algorithm.dart';
 export 'src/crypto/group_key_store.dart';
 export 'src/crypto/message_codec.dart';
 export 'src/crypto/outbound_message_cache.dart';

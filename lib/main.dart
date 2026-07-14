@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:crypto_core/crypto_core.dart'
-    show GroupCipherMessageCodec, PqcPrivateMessageCodec;
+    show GroupCipherMessageCodec, PqcPrivateMessageCodec, V3ChatCipherAlgorithm;
 
 import 'app/app.dart';
 import 'app/design_system/app_design_system.dart';
@@ -94,25 +94,34 @@ Future<void> main() async {
     outboxStore: outboxStore,
   );
   final chatRealtimeService = ChatRealtimeService(apiClient: apiClient);
-  final chatCipherService = RoutedChatCipherService(
-    algorithms: [
-      GroupChatCipherAlgorithm(
-        groupKeyStore: groupKeyStore,
-        codec: GroupCipherMessageCodec(groupKeyStore: groupKeyStore),
+  const enableV3Writer = bool.fromEnvironment('V3_WRITER', defaultValue: false);
+  final cipherAlgorithms = <ChatCipherAlgorithm>[
+    if (enableV3Writer)
+      V3ChatCipherAlgorithm(
+        identityService: deviceIdentityService,
+        pqcKeyService: devicePqcKeyService,
+        signingKeyService: devicePqcSigningKeyService,
+        keyMaterialRegistry: keyMaterialRegistry,
       ),
-      PqcPrivateChatAlgorithm(
+    GroupChatCipherAlgorithm(
+      groupKeyStore: groupKeyStore,
+      codec: GroupCipherMessageCodec(groupKeyStore: groupKeyStore),
+    ),
+    PqcPrivateChatAlgorithm(
+      deviceIdentityService: deviceIdentityService,
+      devicePqcKeyService: devicePqcKeyService,
+      devicePqcSigningKeyService: devicePqcSigningKeyService,
+      keyMaterialRegistry: keyMaterialRegistry,
+      codec: PqcPrivateMessageCodec(
         deviceIdentityService: deviceIdentityService,
         devicePqcKeyService: devicePqcKeyService,
         devicePqcSigningKeyService: devicePqcSigningKeyService,
         keyMaterialRegistry: keyMaterialRegistry,
-        codec: PqcPrivateMessageCodec(
-          deviceIdentityService: deviceIdentityService,
-          devicePqcKeyService: devicePqcKeyService,
-          devicePqcSigningKeyService: devicePqcSigningKeyService,
-          keyMaterialRegistry: keyMaterialRegistry,
-        ),
       ),
-    ],
+    ),
+  ];
+  final chatCipherService = RoutedChatCipherService(
+    algorithms: cipherAlgorithms,
     outboundMessageCache: outboundMessageCache,
   );
   final cryptoCoreFacade = CryptoCoreFacade(
