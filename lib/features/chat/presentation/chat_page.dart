@@ -138,6 +138,7 @@ class _ChatPageState extends State<ChatPage> {
     _lastMessageCount = messageCount;
     _hasRenderedMessages = true;
     setState(() {});
+    _controller.markMessagesRead();
     if (shouldJump) {
       _jumpToBottom();
     }
@@ -726,9 +727,7 @@ class _ChatPageState extends State<ChatPage> {
       case 'react':
         await _chooseReaction(message);
       case 'forward':
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Forward target selection is next.')),
-        );
+        await _forwardMessage(message);
       case 'edit':
         await _editMessage(message);
       case 'delete':
@@ -799,6 +798,59 @@ class _ChatPageState extends State<ChatPage> {
     if (next == null || next.isEmpty || !mounted) return;
     try {
       await _controller.editMessage(message.id, next);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
+  }
+
+  Future<void> _forwardMessage(ChatMessage message) async {
+    try {
+      final state = await widget.chatFacade.loadChatList(
+        currentUserId: widget.currentUserId,
+      );
+      final targets = state.conversations
+          .where((item) => item.id != widget.conversation.id)
+          .toList();
+      if (!mounted) return;
+      final target = await showModalBottomSheet<Conversation>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: targets.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('No other conversations available.'),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: targets.length,
+                  itemBuilder: (context, index) {
+                    final item = targets[index];
+                    return ListTile(
+                      leading: const Icon(Icons.forum_outlined),
+                      title: Text(
+                        item.title.isEmpty
+                            ? 'Conversation ${item.id}'
+                            : item.title,
+                      ),
+                      onTap: () => Navigator.pop(sheetContext, item),
+                    );
+                  },
+                ),
+        ),
+      );
+      if (target != null && mounted) {
+        await _controller.forwardMessage(message.id, target.id);
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Message forwarded.')));
+        }
+      }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(

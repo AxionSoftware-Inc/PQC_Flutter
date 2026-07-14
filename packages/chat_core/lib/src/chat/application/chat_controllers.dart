@@ -186,6 +186,16 @@ class ChatConversationController extends ChangeNotifier {
     return chatFacade.forwardMessage(messageId, conversationId);
   }
 
+  void markMessagesRead() {
+    for (final message in _messages) {
+      if (message.id <= 0 || message.senderId == currentUserId) continue;
+      chatFacade.sendRealtimeEvent('receipt.read', {
+        'conversation_id': conversation.id,
+        'message_id': message.id,
+      });
+    }
+  }
+
   Future<void> setReaction(int messageId, String emoji) async {
     await chatFacade.setReaction(messageId, emoji);
     await refresh(showLoader: false);
