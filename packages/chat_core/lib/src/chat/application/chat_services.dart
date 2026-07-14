@@ -320,9 +320,23 @@ class ConversationSyncService {
       ),
       payload: payload,
     );
-    if (conversation.isGroup ||
-        !cryptoService.isDecryptFailureMarker(plaintext)) {
+    if (!cryptoService.isDecryptFailureMarker(plaintext)) {
       return plaintext;
+    }
+    if (conversation.isGroup) {
+      // A sender publishes the group envelope immediately before the message.
+      // On a fresh device the message can arrive before that envelope is
+      // visible through the API. Retry the key lookup once without exposing a
+      // permanent decrypt-error bubble to the user.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      return cryptoService.decrypt(
+        request: ChatCryptoRequest(
+          currentUserId: currentUserId,
+          conversation: conversation,
+          usersById: usersById,
+        ),
+        payload: payload,
+      );
     }
     await refreshUsers();
     return cryptoService.decrypt(
@@ -443,9 +457,19 @@ class MessageSyncService {
       ),
       payload: payload,
     );
-    if (conversation.isGroup ||
-        !cryptoService.isDecryptFailureMarker(plaintext)) {
+    if (!cryptoService.isDecryptFailureMarker(plaintext)) {
       return plaintext;
+    }
+    if (conversation.isGroup) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      return cryptoService.decrypt(
+        request: ChatCryptoRequest(
+          currentUserId: currentUserId,
+          conversation: conversation,
+          usersById: usersById,
+        ),
+        payload: payload,
+      );
     }
     await refreshUsers();
     return cryptoService.decrypt(
