@@ -455,21 +455,25 @@ class ChatMessageBubble extends StatelessWidget {
     required this.message,
     required this.isMine,
     this.isGrouped = false,
+    this.reaction,
     required this.maxWidth,
     required this.attachmentBuilder,
     required this.statusLabel,
     required this.formatTime,
     this.onRetry,
+    this.onLongPress,
   });
 
   final ChatMessage message;
   final bool isMine;
   final bool isGrouped;
+  final String? reaction;
   final double maxWidth;
   final Widget Function(ChatAttachment attachment) attachmentBuilder;
   final String Function(ChatMessage message) statusLabel;
   final String Function(DateTime value) formatTime;
   final VoidCallback? onRetry;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -483,129 +487,142 @@ class ChatMessageBubble extends StatelessWidget {
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: EdgeInsets.only(
-          left: spacing.xs,
-          right: spacing.xs,
-          top: isGrouped ? 1 : spacing.xs,
-          bottom: spacing.xs,
-        ),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxWidth),
-          child: IntrinsicWidth(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: isMine
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: spacing.md,
-                    vertical: spacing.sm,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isMine ? colors.chatMine : colors.chatPeer,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(context.appRadii.md),
-                      topRight: Radius.circular(context.appRadii.md),
-                      bottomLeft: Radius.circular(
-                        isMine ? context.appRadii.md : context.appRadii.sm,
-                      ),
-                      bottomRight: Radius.circular(
-                        isMine ? context.appRadii.sm : context.appRadii.md,
-                      ),
+      child: GestureDetector(
+        onLongPress: onLongPress,
+        child: Container(
+          margin: EdgeInsets.only(
+            left: spacing.xs,
+            right: spacing.xs,
+            top: isGrouped ? 1 : spacing.xs,
+            bottom: spacing.xs,
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: IntrinsicWidth(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: isMine
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: spacing.md,
+                      vertical: spacing.sm,
                     ),
-                    border: Border.all(
-                      color: isMine
-                          ? colors.primary.withValues(alpha: 0.16)
-                          : colors.border,
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (!isMine && !isGrouped) ...[
-                        Text(
-                          message.senderName,
-                          style: Theme.of(context).textTheme.labelMedium
-                              ?.copyWith(
-                                color: colors.textMuted,
-                                fontWeight: FontWeight.w700,
-                              ),
+                    decoration: BoxDecoration(
+                      color: isMine ? colors.chatMine : colors.chatPeer,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(context.appRadii.md),
+                        topRight: Radius.circular(context.appRadii.md),
+                        bottomLeft: Radius.circular(
+                          isMine ? context.appRadii.md : context.appRadii.sm,
                         ),
+                        bottomRight: Radius.circular(
+                          isMine ? context.appRadii.sm : context.appRadii.md,
+                        ),
+                      ),
+                      border: Border.all(
+                        color: isMine
+                            ? colors.primary.withValues(alpha: 0.16)
+                            : colors.border,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (!isMine && !isGrouped) ...[
+                          Text(
+                            message.senderName,
+                            style: Theme.of(context).textTheme.labelMedium
+                                ?.copyWith(
+                                  color: colors.textMuted,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                          SizedBox(height: spacing.xs),
+                        ],
+                        if (message.attachments.isNotEmpty) ...[
+                          Wrap(
+                            spacing: spacing.xs,
+                            runSpacing: spacing.xs,
+                            children: message.attachments
+                                .map(attachmentBuilder)
+                                .toList(),
+                          ),
+                          if (message.body.trim().isNotEmpty)
+                            SizedBox(height: spacing.sm),
+                        ],
+                        if (isDecryptNeedsRestore)
+                          _MessageBody(
+                            text:
+                                'Historical decrypt unavailable on this device. Restore backup to read this message.',
+                            color: bodyColor,
+                          )
+                        else if (isDecryptError)
+                          _MessageBody(
+                            text: 'Unable to decrypt this message.',
+                            color: bodyColor,
+                          )
+                        else if (message.body.trim().isNotEmpty)
+                          _MessageBody(text: message.body, color: bodyColor),
                         SizedBox(height: spacing.xs),
-                      ],
-                      if (message.attachments.isNotEmpty) ...[
-                        Wrap(
-                          spacing: spacing.xs,
-                          runSpacing: spacing.xs,
-                          children: message.attachments
-                              .map(attachmentBuilder)
-                              .toList(),
-                        ),
-                        if (message.body.trim().isNotEmpty)
-                          SizedBox(height: spacing.sm),
-                      ],
-                      if (isDecryptNeedsRestore)
-                        _MessageBody(
-                          text:
-                              'Historical decrypt unavailable on this device. Restore backup to read this message.',
-                          color: bodyColor,
-                        )
-                      else if (isDecryptError)
-                        _MessageBody(
-                          text: 'Unable to decrypt this message.',
-                          color: bodyColor,
-                        )
-                      else if (message.body.trim().isNotEmpty)
-                        _MessageBody(text: message.body, color: bodyColor),
-                      SizedBox(height: spacing.xs),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Wrap(
-                          spacing: spacing.xs,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            if (message.deliveryState !=
-                                MessageDeliveryState.sent)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Wrap(
+                            spacing: spacing.xs,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              if (message.deliveryState !=
+                                  MessageDeliveryState.sent)
+                                Text(
+                                  statusLabel(message),
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: isMine
+                                            ? Colors.white.withValues(
+                                                alpha: 0.72,
+                                              )
+                                            : colors.textMuted,
+                                      ),
+                                ),
                               Text(
-                                statusLabel(message),
+                                formatTime(message.createdAt),
                                 style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(
                                       color: isMine
-                                          ? Colors.white.withValues(alpha: 0.72)
+                                          ? Colors.white.withValues(alpha: 0.68)
                                           : colors.textMuted,
                                     ),
                               ),
-                            Text(
-                              formatTime(message.createdAt),
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: isMine
-                                        ? Colors.white.withValues(alpha: 0.68)
-                                        : colors.textMuted,
-                                  ),
-                            ),
-                            if (isMine)
-                              Icon(
-                                message.deliveryState ==
-                                        MessageDeliveryState.sent
-                                    ? Icons.done_all_rounded
-                                    : Icons.schedule_rounded,
-                                size: 14,
-                                color: Colors.white.withValues(alpha: 0.75),
-                              ),
-                          ],
+                              if (isMine)
+                                Icon(
+                                  message.deliveryState ==
+                                          MessageDeliveryState.sent
+                                      ? Icons.done_all_rounded
+                                      : Icons.schedule_rounded,
+                                  size: 14,
+                                  color: Colors.white.withValues(alpha: 0.75),
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                        if (reaction != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              reaction!,
+                              style: const TextStyle(fontSize: 15),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-                if (message.canRetry)
-                  TextButton(onPressed: onRetry, child: const Text('Retry')),
-              ],
+                  if (message.canRetry)
+                    TextButton(onPressed: onRetry, child: const Text('Retry')),
+                ],
+              ),
             ),
           ),
         ),

@@ -55,6 +55,8 @@ class _ChatPageState extends State<ChatPage> {
   bool _keepDrafts = true;
   bool _showSecurityDetails = false;
   bool _showTransferDetails = false;
+  ChatMessage? _replyingTo;
+  final Map<int, String> _localReactions = <int, String>{};
   int _lastMessageCount = 0;
   bool _hasRenderedMessages = false;
   final Map<int, String> _downloadedAttachmentPaths = {};
@@ -457,6 +459,7 @@ class _ChatPageState extends State<ChatPage> {
                     _buildSelectedAttachmentTray(),
                   if (_selectedAttachments.isNotEmpty)
                     SizedBox(height: spacing.xs),
+                  if (_replyingTo != null) _buildReplyPreview(),
                   AppSurfaceCard(
                     padding: EdgeInsets.symmetric(
                       horizontal: spacing.xs,
@@ -628,12 +631,136 @@ class _ChatPageState extends State<ChatPage> {
       message: message,
       isMine: isMine,
       isGrouped: isGrouped,
+      reaction: _localReactions[message.id],
       maxWidth: MediaQuery.sizeOf(context).width * 0.78,
       attachmentBuilder: _buildAttachmentCard,
       statusLabel: _statusLabel,
       formatTime: _formatMessageTime,
       onRetry: () => _retryMessage(message),
+      onLongPress: () => _showMessageActions(message),
     );
+  }
+
+  Widget _buildReplyPreview() {
+    final message = _replyingTo!;
+    return Padding(
+      padding: EdgeInsets.only(bottom: context.appSpacing.xs),
+      child: AppSurfaceCard(
+        backgroundColor: context.appColors.primarySoft,
+        padding: EdgeInsets.symmetric(
+          horizontal: context.appSpacing.sm,
+          vertical: context.appSpacing.xs,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.reply_rounded,
+              size: 18,
+              color: context.appColors.primary,
+            ),
+            SizedBox(width: context.appSpacing.xs),
+            Expanded(
+              child: Text(
+                'Replying to ${message.senderName}: ${message.body.isEmpty ? 'Attachment' : message.body}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: () => setState(() => _replyingTo = null),
+              icon: const Icon(Icons.close_rounded, size: 18),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showMessageActions(ChatMessage message) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.reply_rounded),
+              title: const Text('Reply'),
+              onTap: () => Navigator.pop(sheetContext, 'reply'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.add_reaction_outlined),
+              title: const Text('React'),
+              onTap: () => Navigator.pop(sheetContext, 'react'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.forward_rounded),
+              title: const Text('Forward'),
+              onTap: () => Navigator.pop(sheetContext, 'forward'),
+            ),
+            if (message.senderId == widget.currentUserId) ...[
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Edit'),
+                onTap: () => Navigator.pop(sheetContext, 'edit'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded),
+                title: const Text('Delete'),
+                onTap: () => Navigator.pop(sheetContext, 'delete'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'reply':
+        setState(() => _replyingTo = message);
+      case 'react':
+        await _chooseReaction(message);
+      case 'forward':
+      case 'edit':
+      case 'delete':
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$action will be connected to the server contract.'),
+          ),
+        );
+    }
+  }
+
+  Future<void> _chooseReaction(ChatMessage message) async {
+    final reaction = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          context.appSpacing.lg,
+          context.appSpacing.sm,
+          context.appSpacing.lg,
+          context.appSpacing.lg,
+        ),
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          spacing: context.appSpacing.md,
+          children: ['👍', '❤️', '😂', '😮', '😢', '👏']
+              .map(
+                (emoji) => IconButton(
+                  iconSize: 30,
+                  onPressed: () => Navigator.pop(sheetContext, emoji),
+                  icon: Text(emoji),
+                ),
+              )
+              .toList(),
+        ),
+      ),
+    );
+    if (reaction != null && mounted) {
+      setState(() => _localReactions[message.id] = reaction);
+    }
   }
 
   Widget _buildDateSeparator(DateTime value) {
