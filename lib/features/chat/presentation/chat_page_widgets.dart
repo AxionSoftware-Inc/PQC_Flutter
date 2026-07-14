@@ -400,6 +400,7 @@ class ChatAttachmentCard extends StatelessWidget {
   }
 
   Widget _buildFilePreview(BuildContext context) {
+    final isAudio = attachment.mimeType.startsWith('audio/');
     final extension = attachment.filename.contains('.')
         ? attachment.filename.split('.').last.toUpperCase()
         : 'FILE';
@@ -411,7 +412,7 @@ class ChatAttachmentCard extends StatelessWidget {
       child: Row(
         children: [
           Icon(
-            Icons.insert_drive_file_rounded,
+            isAudio ? Icons.mic_rounded : Icons.insert_drive_file_rounded,
             size: 36,
             color: context.appColors.primary,
           ),
@@ -567,6 +568,8 @@ class ChatMessageBubble extends StatelessWidget {
                           )
                         else if (message.body.trim().isNotEmpty)
                           _MessageBody(text: message.body, color: bodyColor),
+                        if (_extractUrl(message.body) != null)
+                          _LinkPreviewCard(url: _extractUrl(message.body)!),
                         SizedBox(height: spacing.xs),
                         Align(
                           alignment: Alignment.centerRight,
@@ -626,6 +629,62 @@ class ChatMessageBubble extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+String? _extractUrl(String text) {
+  final match = RegExp(
+    r'(https?://[^\s]+)',
+    caseSensitive: false,
+  ).firstMatch(text);
+  return match?.group(1);
+}
+
+class _LinkPreviewCard extends StatelessWidget {
+  const _LinkPreviewCard({required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    final uri = Uri.tryParse(url);
+    final host = uri?.host.isNotEmpty == true ? uri!.host : url;
+    return Container(
+      margin: EdgeInsets.only(top: context.appSpacing.xs),
+      padding: EdgeInsets.all(context.appSpacing.sm),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(context.appRadii.sm),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.link_rounded, size: 20, color: context.appColors.primary),
+          SizedBox(width: context.appSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  host,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                Text(
+                  url,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: context.appColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
