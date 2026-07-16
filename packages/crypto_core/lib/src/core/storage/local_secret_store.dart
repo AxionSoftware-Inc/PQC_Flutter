@@ -16,8 +16,12 @@ class LocalSecretStore {
   LocalSecretStore({FlutterSecureStorage? secureStorage, AesGcm? cipher})
     : _secureStorage =
           secureStorage ??
+          // Never wipe the keystore automatically after a transient platform
+          // error. A reset here destroys historical chat keys and makes old
+          // ciphertext fail authentication after relogin. Recovery must be
+          // explicit and account-scoped instead.
           const FlutterSecureStorage(
-            aOptions: AndroidOptions(resetOnError: true),
+            aOptions: AndroidOptions(resetOnError: false),
           ),
       _cipher = cipher ?? AesGcm.with256bits();
 
@@ -41,7 +45,10 @@ class LocalSecretStore {
   }
 
   Future<void> write({required String key, required String value}) async {
-    final wroteToSecureStorage = await _writeSecureValue(key: key, value: value);
+    final wroteToSecureStorage = await _writeSecureValue(
+      key: key,
+      value: value,
+    );
     await _registerManagedKey(key);
 
     if (_shouldMigrateLegacyAndroidSharedPrefs && wroteToSecureStorage) {
