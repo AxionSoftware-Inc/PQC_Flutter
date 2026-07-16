@@ -45,6 +45,35 @@ class PendingAttachmentUpload {
   }
 }
 
+enum SendPipelineStage {
+  localQueue,
+  capabilityCheck,
+  keyHealth,
+  encryption,
+  recoveryVault,
+  serverDelivery,
+  localPersistence,
+  completed,
+}
+
+enum SendPipelineStepStatus { waiting, running, succeeded, failed, skipped }
+
+class SendPipelineUpdate {
+  const SendPipelineUpdate({
+    required this.clientMessageId,
+    required this.stage,
+    required this.status,
+    this.detail,
+  });
+
+  final String clientMessageId;
+  final SendPipelineStage stage;
+  final SendPipelineStepStatus status;
+  final String? detail;
+}
+
+typedef SendPipelineProgress = void Function(SendPipelineUpdate update);
+
 class SendMessageCommand {
   const SendMessageCommand({
     required this.conversation,
@@ -52,6 +81,7 @@ class SendMessageCommand {
     required this.text,
     this.messageType = 'text',
     this.attachments = const [],
+    this.onProgress,
   });
 
   final Conversation conversation;
@@ -59,6 +89,7 @@ class SendMessageCommand {
   final String text;
   final String messageType;
   final List<PendingAttachmentUpload> attachments;
+  final SendPipelineProgress? onProgress;
 }
 
 class ChatListState {

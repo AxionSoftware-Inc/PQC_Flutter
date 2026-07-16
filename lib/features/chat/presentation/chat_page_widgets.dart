@@ -517,6 +517,7 @@ class ChatMessageBubble extends StatelessWidget {
     required this.statusLabel,
     required this.formatTime,
     this.onRetry,
+    this.onTap,
     this.onLongPress,
   });
 
@@ -529,6 +530,7 @@ class ChatMessageBubble extends StatelessWidget {
   final String Function(ChatMessage message) statusLabel;
   final String Function(DateTime value) formatTime;
   final VoidCallback? onRetry;
+  final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
   @override
@@ -544,6 +546,7 @@ class ChatMessageBubble extends StatelessWidget {
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
+        onTap: onTap,
         onLongPress: onLongPress,
         child: Container(
           margin: EdgeInsets.only(
