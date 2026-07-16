@@ -53,19 +53,22 @@ class ChatCryptoService {
   final ChatCipherService cipherService;
   final CryptoCoreFacade? cryptoCoreFacade;
 
+  Future<void> assertLocalKeyHealth() async {
+    final facade = cryptoCoreFacade;
+    if (facade == null) return;
+    final health = await facade.healthCheck();
+    if (!health.healthy) {
+      throw ChatEncryptionException(
+        health.error ?? 'Local encryption keys are not healthy.',
+      );
+    }
+  }
+
   Future<String> encrypt({
     required ChatCryptoRequest request,
     required String plaintext,
   }) async {
-    final facade = cryptoCoreFacade;
-    if (facade != null) {
-      final health = await facade.healthCheck();
-      if (!health.healthy) {
-        throw ChatEncryptionException(
-          health.error ?? 'Local encryption keys are not healthy.',
-        );
-      }
-    }
+    await assertLocalKeyHealth();
     return cipherService.encrypt(
       context: ChatCryptoContext(
         currentUserId: request.currentUserId,
@@ -644,7 +647,28 @@ class OutgoingMessageService {
       createdAt: now,
       deliveryState: MessageDeliveryState.pending,
     );
+    void emit(
+      SendPipelineStage stage,
+      SendPipelineStepStatus status, [
+      String? detail,
+    ]) {
+      command.onProgress?.call(
+        SendPipelineUpdate(
+          clientMessageId: clientMessageId,
+          stage: stage,
+          status: status,
+          detail: detail,
+        ),
+      );
+    }
+
+    emit(SendPipelineStage.localQueue, SendPipelineStepStatus.running);
     await outboxStore.upsert(queued);
+    emit(
+      SendPipelineStage.localQueue,
+      SendPipelineStepStatus.succeeded,
+      'Message stored safely in the local outbox.',
+    );
 
     try {
       final sent = await _sendQueuedMessage(
@@ -654,6 +678,7 @@ class OutgoingMessageService {
         usersById: usersById,
         refreshUsers: refreshUsers,
         persistConversation: persistConversation,
+        onProgress: command.onProgress,
       );
       await outboxStore.remove(clientMessageId);
       return sent;
@@ -675,6 +700,20 @@ class OutgoingMessageService {
       );
       return queued
           .copyWith(deliveryState: state, failureReason: error.message)
+          .toChatMessage();
+    } catch (error) {
+      final reason = error.toString();
+      await outboxStore.upsert(
+        queued.copyWith(
+          deliveryState: MessageDeliveryState.failedPermanent,
+          failureReason: reason,
+        ),
+      );
+      return queued
+          .copyWith(
+            deliveryState: MessageDeliveryState.failedPermanent,
+            failureReason: reason,
+          )
           .toChatMessage();
     }
   }
@@ -773,9 +812,44 @@ class OutgoingMessageService {
     required Future<void> Function() refreshUsers,
     required Future<void> Function(Conversation conversation)
     persistConversation,
+    SendPipelineProgress? onProgress,
   }) async {
-    final capabilities = await remoteDataSource
-        .fetchCryptoProtocolCapabilities();
+    void emit(
+      SendPipelineStage stage,
+      SendPipelineStepStatus status, [
+      String? detail,
+    ]) {
+      onProgress?.call(
+        SendPipelineUpdate(
+          clientMessageId: queued.clientMessageId,
+          stage: stage,
+          status: status,
+          detail: detail,
+        ),
+      );
+    }
+
+    Future<T> runStage<T>(
+      SendPipelineStage stage,
+      Future<T> Function() action, {
+      String? successDetail,
+    }) async {
+      emit(stage, SendPipelineStepStatus.running);
+      try {
+        final result = await action();
+        emit(stage, SendPipelineStepStatus.succeeded, successDetail);
+        return result;
+      } catch (error) {
+        emit(stage, SendPipelineStepStatus.failed, error.toString());
+        rethrow;
+      }
+    }
+
+    final capabilities = await runStage(
+      SendPipelineStage.capabilityCheck,
+      remoteDataSource.fetchCryptoProtocolCapabilities,
+      successDetail: 'Server accepts the selected crypto protocol.',
+    );
     try {
       await cryptoService.assertRemoteCanSend(
         isGroup: conversation.isGroup,
@@ -814,23 +888,43 @@ class OutgoingMessageService {
       );
       attachmentIds.add(uploaded.id);
     }
+    await runStage(
+      SendPipelineStage.keyHealth,
+      cryptoService.assertLocalKeyHealth,
+      successDetail: 'Local key registry passed integrity checks.',
+    );
     final payload = queued.encryptedPayload.isNotEmpty
         ? queued.encryptedPayload
-        : await _encryptPayloadWithUserRefresh(
-            conversation: conversation,
-            currentUserId: currentUserId,
-            usersById: usersById,
-            plaintext: queued.plaintext,
-            messageId: queued.clientMessageId,
-            refreshUsers: refreshUsers,
+        : await runStage(
+            SendPipelineStage.encryption,
+            () => _encryptPayloadWithUserRefresh(
+              conversation: conversation,
+              currentUserId: currentUserId,
+              usersById: usersById,
+              plaintext: queued.plaintext,
+              messageId: queued.clientMessageId,
+              refreshUsers: refreshUsers,
+            ),
+            successDetail: 'Payload encrypted and bound to this message ID.',
           );
+    if (queued.encryptedPayload.isNotEmpty) {
+      emit(
+        SendPipelineStage.encryption,
+        SendPipelineStepStatus.succeeded,
+        'Previously encrypted outbox payload reused.',
+      );
+    }
     if (queued.encryptedPayload.isEmpty) {
       await outboxStore.upsert(queued.copyWith(encryptedPayload: payload));
     }
     final ensureDurable = onCryptoStateChanged;
     if (ensureDurable != null) {
       try {
-        await ensureDurable();
+        await runStage(
+          SendPipelineStage.recoveryVault,
+          ensureDurable,
+          successDetail: 'Key snapshot confirmed in the recovery vault.',
+        );
       } catch (_) {
         throw ApiException(
           'Encryption keys are not backed up yet. Retry when the connection is stable.',
@@ -838,13 +932,23 @@ class OutgoingMessageService {
           isRetryable: true,
         );
       }
+    } else {
+      emit(
+        SendPipelineStage.recoveryVault,
+        SendPipelineStepStatus.skipped,
+        'Recovery vault is not configured.',
+      );
     }
-    final message = await remoteDataSource.sendMessage(
-      conversation.id,
-      payload,
-      clientMessageId: queued.clientMessageId,
-      messageType: attachmentIds.isEmpty ? 'text' : queued.messageType,
-      attachmentIds: attachmentIds,
+    final message = await runStage(
+      SendPipelineStage.serverDelivery,
+      () => remoteDataSource.sendMessage(
+        conversation.id,
+        payload,
+        clientMessageId: queued.clientMessageId,
+        messageType: attachmentIds.isEmpty ? 'text' : queued.messageType,
+        attachmentIds: attachmentIds,
+      ),
+      successDetail: 'Server accepted and stored the encrypted message.',
     );
     final decoded = ChatMessage(
       id: message.id,
@@ -867,17 +971,29 @@ class OutgoingMessageService {
       clientMessageId: message.clientMessageId,
       deliveryState: MessageDeliveryState.sent,
     );
-    await localStore.persistMessage(
-      decoded: decoded,
-      encryptedBody: message.body,
+    await runStage(
+      SendPipelineStage.localPersistence,
+      () async {
+        await localStore.persistMessage(
+          decoded: decoded,
+          encryptedBody: message.body,
+        );
+        await persistConversation(
+          conversation.copyWith(
+            lastMessagePreview: decoded.body.length > 80
+                ? decoded.body.substring(0, 80)
+                : decoded.body,
+            updatedAt: decoded.createdAt,
+          ),
+        );
+      },
+      successDetail:
+          'Encrypted payload and protected plaintext cached locally.',
     );
-    await persistConversation(
-      conversation.copyWith(
-        lastMessagePreview: decoded.body.length > 80
-            ? decoded.body.substring(0, 80)
-            : decoded.body,
-        updatedAt: decoded.createdAt,
-      ),
+    emit(
+      SendPipelineStage.completed,
+      SendPipelineStepStatus.succeeded,
+      'All send checks completed successfully.',
     );
     return decoded;
   }

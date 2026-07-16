@@ -70,6 +70,9 @@ class _ChatPageState extends State<ChatPage> {
   bool _hasRenderedMessages = false;
   bool _olderLoadInFlight = false;
   final Map<int, String> _downloadedAttachmentPaths = {};
+  final Map<String, Map<SendPipelineStage, SendPipelineUpdate>>
+  _sendPipelineHistory = {};
+  String? _visibleSendPipelineId;
 
   @override
   void initState() {
@@ -214,6 +217,7 @@ class _ChatPageState extends State<ChatPage> {
                 ),
               )
               .toList(),
+          onProgress: _handleSendPipelineUpdate,
         ),
       );
       _messageController.clear();
@@ -242,6 +246,18 @@ class _ChatPageState extends State<ChatPage> {
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
     }
+  }
+
+  void _handleSendPipelineUpdate(SendPipelineUpdate update) {
+    if (!mounted) return;
+    setState(() {
+      final steps = _sendPipelineHistory.putIfAbsent(
+        update.clientMessageId,
+        () => <SendPipelineStage, SendPipelineUpdate>{},
+      );
+      steps[update.stage] = update;
+      _visibleSendPipelineId = update.clientMessageId;
+    });
   }
 
   Future<void> _pickAttachments() async {
@@ -405,213 +421,221 @@ class _ChatPageState extends State<ChatPage> {
     );
     return AppScaffold(
       appBar: AppBar(toolbarHeight: 0),
-      body: Column(
+      body: Stack(
         children: [
-          ChatConversationHeader(
-            title: widget.title,
-            conversation: widget.conversation,
-            trust: conversationTrust,
-            brandLabel: brand?.label,
-            onBack: () => Navigator.of(context).maybePop(),
-            onVerify:
-                !widget.conversation.isGroup &&
-                    conversationTrust?.isAvailable == true
-                ? _verifyCurrentKey
-                : null,
-            transferCount: _controller.attachmentTransfers.length,
-            isPeerOnline: _controller.peerOnline,
-            isPeerTyping: _controller.isPeerTyping,
-            peerLastSeenAt: _controller.peerLastSeenAt,
-            onOpenContactDetails: widget.onOpenContactDetails,
-          ),
-          if (_controller.isLoading) const LinearProgressIndicator(),
-          if (_controller.error != null)
-            Padding(
-              padding: EdgeInsets.all(spacing.sm),
-              child: AppStatusBanner(
-                message: _controller.error!,
-                tone: AppStatusTone.danger,
+          Column(
+            children: [
+              ChatConversationHeader(
+                title: widget.title,
+                conversation: widget.conversation,
+                trust: conversationTrust,
+                brandLabel: brand?.label,
+                onBack: () => Navigator.of(context).maybePop(),
+                onVerify:
+                    !widget.conversation.isGroup &&
+                        conversationTrust?.isAvailable == true
+                    ? _verifyCurrentKey
+                    : null,
+                transferCount: _controller.attachmentTransfers.length,
+                isPeerOnline: _controller.peerOnline,
+                isPeerTyping: _controller.isPeerTyping,
+                peerLastSeenAt: _controller.peerLastSeenAt,
+                onOpenContactDetails: widget.onOpenContactDetails,
               ),
-            ),
-          if (!widget.conversation.isGroup && conversationTrust != null)
-            Column(
-              children: [
-                ChatSecurityBanner(
-                  trust: conversationTrust,
-                  onVerify: _verifyCurrentKey,
-                  isExpanded: _showSecurityDetails,
-                  onToggleExpanded: () {
-                    setState(() {
-                      _showSecurityDetails = !_showSecurityDetails;
-                    });
-                  },
-                ),
-                if (_showSecurityDetails)
-                  ChatSecurityDetailCard(trust: conversationTrust),
-              ],
-            ),
-          if (needsBackupRestore)
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                spacing.sm,
-                spacing.sm,
-                spacing.sm,
-                0,
-              ),
-              child: const AppStatusBanner(
-                message:
-                    'Ba’zi eski xabarlar uchun backup restore kerak bo‘lishi mumkin. Settings > Backup & Recovery bo‘limidan tiklash mumkin.',
-                tone: AppStatusTone.warning,
-              ),
-            ),
-          Expanded(
-            child: _controller.isLoading && _controller.messages.isEmpty
-                ? _buildLoadingState()
-                : _controller.messages.isEmpty
-                ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: AppEmptyState(
-                        message:
-                            'Conversation hali bo‘sh. Birinchi xabarni yuboring.',
-                        icon: Icons.chat_bubble_outline_rounded,
-                      ),
-                    ),
-                  )
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: EdgeInsets.fromLTRB(
-                      spacing.sm,
-                      spacing.sm,
-                      spacing.sm,
-                      spacing.xs,
-                    ),
-                    itemCount: _controller.messages.length,
-                    itemBuilder: (context, index) {
-                      final message = _controller.messages[index];
-                      final isMine = message.senderId == widget.currentUserId;
-                      final previous = index == 0
-                          ? null
-                          : _controller.messages[index - 1];
-                      final showDate =
-                          previous == null ||
-                          !_isSameCalendarDay(
-                            previous.createdAt,
-                            message.createdAt,
-                          );
-                      final grouped =
-                          previous != null &&
-                          previous.senderId == message.senderId &&
-                          _isSameCalendarDay(
-                            previous.createdAt,
-                            message.createdAt,
-                          ) &&
-                          message.createdAt
-                                  .difference(previous.createdAt)
-                                  .inMinutes <=
-                              5;
-                      return Column(
-                        children: [
-                          if (showDate) _buildDateSeparator(message.createdAt),
-                          _buildMessageItem(
-                            message: message,
-                            isMine: isMine,
-                            isGrouped: grouped,
-                          ),
-                        ],
-                      );
-                    },
+              if (_controller.isLoading) const LinearProgressIndicator(),
+              if (_controller.error != null)
+                Padding(
+                  padding: EdgeInsets.all(spacing.sm),
+                  child: AppStatusBanner(
+                    message: _controller.error!,
+                    tone: AppStatusTone.danger,
                   ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                spacing.sm,
-                spacing.xs,
-                spacing.sm,
-                spacing.sm,
-              ),
-              child: Column(
-                children: [
-                  if (_controller.attachmentTransfers.isNotEmpty)
-                    _buildTransferSection(
-                      expanded: _showTransferDetails,
+                ),
+              if (!widget.conversation.isGroup && conversationTrust != null)
+                Column(
+                  children: [
+                    ChatSecurityBanner(
+                      trust: conversationTrust,
+                      onVerify: _verifyCurrentKey,
+                      isExpanded: _showSecurityDetails,
                       onToggleExpanded: () {
                         setState(() {
-                          _showTransferDetails = !_showTransferDetails;
+                          _showSecurityDetails = !_showSecurityDetails;
                         });
                       },
                     ),
-                  if (_controller.attachmentTransfers.isNotEmpty)
-                    SizedBox(height: spacing.sm),
-                  if (_selectedAttachments.isNotEmpty)
-                    _buildSelectedAttachmentTray(),
-                  if (_selectedAttachments.isNotEmpty)
-                    SizedBox(height: spacing.xs),
-                  if (_replyingTo != null) _buildReplyPreview(),
-                  AppSurfaceCard(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: spacing.xs,
-                      vertical: spacing.xs,
-                    ),
-                    backgroundColor: colors.surface.withValues(alpha: 0.96),
-                    child: Row(
-                      children: [
-                        ChatComposerActionButton(
-                          icon: Icons.add_rounded,
-                          onPressed: _controller.isSending
-                              ? null
-                              : _pickAttachments,
-                        ),
-                        ChatComposerActionButton(
-                          icon: _isRecordingVoice
-                              ? Icons.stop_rounded
-                              : Icons.mic_none_rounded,
-                          onPressed: _controller.isSending
-                              ? null
-                              : _toggleVoiceRecording,
-                        ),
-                        Expanded(
-                          child: Theme(
-                            data: Theme.of(context).copyWith(
-                              inputDecorationTheme: Theme.of(context)
-                                  .inputDecorationTheme
-                                  .copyWith(
-                                    filled: false,
-                                    fillColor: Colors.transparent,
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: spacing.sm,
-                                      vertical: spacing.xs,
-                                    ),
-                                    enabledBorder: InputBorder.none,
-                                    focusedBorder: InputBorder.none,
-                                    border: InputBorder.none,
-                                  ),
-                            ),
-                            child: AppTextField(
-                              controller: _messageController,
-                              hintText: 'Message',
-                              maxLines: 4,
-                              minLines: 1,
-                              onSubmitted: (_) => _sendMessage(),
-                            ),
+                    if (_showSecurityDetails)
+                      ChatSecurityDetailCard(trust: conversationTrust),
+                  ],
+                ),
+              if (needsBackupRestore)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    spacing.sm,
+                    spacing.sm,
+                    spacing.sm,
+                    0,
+                  ),
+                  child: const AppStatusBanner(
+                    message:
+                        'Ba’zi eski xabarlar uchun backup restore kerak bo‘lishi mumkin. Settings > Backup & Recovery bo‘limidan tiklash mumkin.',
+                    tone: AppStatusTone.warning,
+                  ),
+                ),
+              Expanded(
+                child: _controller.isLoading && _controller.messages.isEmpty
+                    ? _buildLoadingState()
+                    : _controller.messages.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: AppEmptyState(
+                            message:
+                                'Conversation hali bo‘sh. Birinchi xabarni yuboring.',
+                            icon: Icons.chat_bubble_outline_rounded,
                           ),
                         ),
-                        SizedBox(width: spacing.xs),
-                        ChatComposerSendButton(
-                          isSending: _controller.isSending,
-                          onPressed: _controller.isSending
-                              ? null
-                              : _sendMessage,
+                      )
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: EdgeInsets.fromLTRB(
+                          spacing.sm,
+                          spacing.sm,
+                          spacing.sm,
+                          spacing.xs,
                         ),
-                      ],
-                    ),
-                  ),
-                ],
+                        itemCount: _controller.messages.length,
+                        itemBuilder: (context, index) {
+                          final message = _controller.messages[index];
+                          final isMine =
+                              message.senderId == widget.currentUserId;
+                          final previous = index == 0
+                              ? null
+                              : _controller.messages[index - 1];
+                          final showDate =
+                              previous == null ||
+                              !_isSameCalendarDay(
+                                previous.createdAt,
+                                message.createdAt,
+                              );
+                          final grouped =
+                              previous != null &&
+                              previous.senderId == message.senderId &&
+                              _isSameCalendarDay(
+                                previous.createdAt,
+                                message.createdAt,
+                              ) &&
+                              message.createdAt
+                                      .difference(previous.createdAt)
+                                      .inMinutes <=
+                                  5;
+                          return Column(
+                            children: [
+                              if (showDate)
+                                _buildDateSeparator(message.createdAt),
+                              _buildMessageItem(
+                                message: message,
+                                isMine: isMine,
+                                isGrouped: grouped,
+                              ),
+                            ],
+                          );
+                        },
+                      ),
               ),
-            ),
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    spacing.sm,
+                    spacing.xs,
+                    spacing.sm,
+                    spacing.sm,
+                  ),
+                  child: Column(
+                    children: [
+                      if (_controller.attachmentTransfers.isNotEmpty)
+                        _buildTransferSection(
+                          expanded: _showTransferDetails,
+                          onToggleExpanded: () {
+                            setState(() {
+                              _showTransferDetails = !_showTransferDetails;
+                            });
+                          },
+                        ),
+                      if (_controller.attachmentTransfers.isNotEmpty)
+                        SizedBox(height: spacing.sm),
+                      if (_selectedAttachments.isNotEmpty)
+                        _buildSelectedAttachmentTray(),
+                      if (_selectedAttachments.isNotEmpty)
+                        SizedBox(height: spacing.xs),
+                      if (_replyingTo != null) _buildReplyPreview(),
+                      AppSurfaceCard(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: spacing.xs,
+                          vertical: spacing.xs,
+                        ),
+                        backgroundColor: colors.surface.withValues(alpha: 0.96),
+                        child: Row(
+                          children: [
+                            ChatComposerActionButton(
+                              icon: Icons.add_rounded,
+                              onPressed: _controller.isSending
+                                  ? null
+                                  : _pickAttachments,
+                            ),
+                            ChatComposerActionButton(
+                              icon: _isRecordingVoice
+                                  ? Icons.stop_rounded
+                                  : Icons.mic_none_rounded,
+                              onPressed: _controller.isSending
+                                  ? null
+                                  : _toggleVoiceRecording,
+                            ),
+                            Expanded(
+                              child: Theme(
+                                data: Theme.of(context).copyWith(
+                                  inputDecorationTheme: Theme.of(context)
+                                      .inputDecorationTheme
+                                      .copyWith(
+                                        filled: false,
+                                        fillColor: Colors.transparent,
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: spacing.sm,
+                                          vertical: spacing.xs,
+                                        ),
+                                        enabledBorder: InputBorder.none,
+                                        focusedBorder: InputBorder.none,
+                                        border: InputBorder.none,
+                                      ),
+                                ),
+                                child: AppTextField(
+                                  controller: _messageController,
+                                  hintText: 'Message',
+                                  maxLines: 4,
+                                  minLines: 1,
+                                  onSubmitted: (_) => _sendMessage(),
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: spacing.xs),
+                            ChatComposerSendButton(
+                              isSending: _controller.isSending,
+                              onPressed: _controller.isSending
+                                  ? null
+                                  : _sendMessage,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
+          if (_visibleSendPipelineId != null)
+            _buildSendPipelineOverlay(_visibleSendPipelineId!),
         ],
       ),
     );
@@ -735,8 +759,182 @@ class _ChatPageState extends State<ChatPage> {
       statusLabel: _statusLabel,
       formatTime: _formatMessageTime,
       onRetry: () => _retryMessage(message),
+      onTap:
+          message.clientMessageId.isNotEmpty &&
+              _sendPipelineHistory.containsKey(message.clientMessageId)
+          ? () =>
+                setState(() => _visibleSendPipelineId = message.clientMessageId)
+          : null,
       onLongPress: () => _showMessageActions(message),
     );
+  }
+
+  Widget _buildSendPipelineOverlay(String clientMessageId) {
+    final updates = _sendPipelineHistory[clientMessageId] ?? const {};
+    final stages = SendPipelineStage.values;
+    final hasFailure = updates.values.any(
+      (item) => item.status == SendPipelineStepStatus.failed,
+    );
+    final completed =
+        updates[SendPipelineStage.completed]?.status ==
+        SendPipelineStepStatus.succeeded;
+    final colors = context.appColors;
+    final spacing = context.appSpacing;
+    return Positioned.fill(
+      child: ColoredBox(
+        color: Colors.black.withValues(alpha: 0.42),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Padding(
+              padding: EdgeInsets.all(spacing.lg),
+              child: SingleChildScrollView(
+                child: AppSurfaceCard(
+                  padding: EdgeInsets.all(spacing.lg),
+                  backgroundColor: colors.surface.withValues(alpha: 0.97),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 250),
+                            child: Icon(
+                              hasFailure
+                                  ? Icons.error_rounded
+                                  : completed
+                                  ? Icons.verified_rounded
+                                  : Icons.lock_clock_rounded,
+                              key: ValueKey('$hasFailure-$completed'),
+                              color: hasFailure
+                                  ? colors.danger
+                                  : completed
+                                  ? Colors.green
+                                  : colors.primary,
+                            ),
+                          ),
+                          SizedBox(width: spacing.sm),
+                          Expanded(
+                            child: Text(
+                              hasFailure
+                                  ? 'Secure send failed'
+                                  : completed
+                                  ? 'Secure send verified'
+                                  : 'Securing message…',
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: completed || hasFailure
+                                ? () => setState(
+                                    () => _visibleSendPipelineId = null,
+                                  )
+                                : null,
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: spacing.md),
+                      ...stages.map((stage) {
+                        final update = updates[stage];
+                        final status =
+                            update?.status ?? SendPipelineStepStatus.waiting;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          padding: EdgeInsets.symmetric(vertical: spacing.xs),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: 28,
+                                height: 28,
+                                child: _buildPipelineStatusIcon(status),
+                              ),
+                              SizedBox(width: spacing.sm),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _pipelineStageLabel(stage),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                    if (update?.detail?.isNotEmpty == true)
+                                      Text(
+                                        update!.detail!,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(color: colors.textMuted),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPipelineStatusIcon(SendPipelineStepStatus status) {
+    switch (status) {
+      case SendPipelineStepStatus.running:
+        return const Padding(
+          padding: EdgeInsets.all(5),
+          child: CircularProgressIndicator(strokeWidth: 2.4),
+        );
+      case SendPipelineStepStatus.succeeded:
+        return const Icon(Icons.check_circle_rounded, color: Colors.green);
+      case SendPipelineStepStatus.failed:
+        return Icon(Icons.cancel_rounded, color: context.appColors.danger);
+      case SendPipelineStepStatus.skipped:
+        return Icon(
+          Icons.skip_next_rounded,
+          color: context.appColors.textMuted,
+        );
+      case SendPipelineStepStatus.waiting:
+        return Icon(
+          Icons.radio_button_unchecked_rounded,
+          color: context.appColors.border,
+        );
+    }
+  }
+
+  String _pipelineStageLabel(SendPipelineStage stage) {
+    switch (stage) {
+      case SendPipelineStage.localQueue:
+        return 'Local outbox';
+      case SendPipelineStage.capabilityCheck:
+        return 'Server protocol check';
+      case SendPipelineStage.keyHealth:
+        return 'Key integrity';
+      case SendPipelineStage.encryption:
+        return 'PQC encryption';
+      case SendPipelineStage.recoveryVault:
+        return 'Recovery vault';
+      case SendPipelineStage.serverDelivery:
+        return 'Server delivery';
+      case SendPipelineStage.localPersistence:
+        return 'Protected local cache';
+      case SendPipelineStage.completed:
+        return 'Final verification';
+    }
   }
 
   Widget _buildReplyPreview() {
