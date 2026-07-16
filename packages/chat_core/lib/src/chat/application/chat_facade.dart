@@ -207,6 +207,13 @@ class ChatFacade {
     return ChatConversationState(messages: mergedMessages, trust: trust);
   }
 
+  /// Returns the encrypted-at-rest local window without waiting for users,
+  /// trust, or network synchronization. The controller uses this for instant
+  /// first paint and replaces it with the authoritative sync result later.
+  Future<List<ChatMessage>> readCachedConversationMessages(int conversationId) {
+    return _localStore.readMessages(conversationId, limit: 50);
+  }
+
   Future<ChatConversationState> loadOlderConversationMessages({
     required Conversation conversation,
     required int currentUserId,
