@@ -78,6 +78,7 @@ class ChatConversationController extends ChangeNotifier {
   String? _error;
   ConversationTrustState? _trust;
   Timer? _pollingTimer;
+  bool _refreshInFlight = false;
   List<AttachmentTransferState> _attachmentTransfers = const [];
   StreamSubscription<ChatRealtimeEvent>? _realtimeSubscription;
   bool _peerOnline = false;
@@ -125,6 +126,8 @@ class ChatConversationController extends ChangeNotifier {
   }
 
   Future<void> refresh({bool showLoader = true}) async {
+    if (_refreshInFlight) return;
+    _refreshInFlight = true;
     if (showLoader) {
       _isLoading = true;
       notifyListeners();
@@ -149,6 +152,7 @@ class ChatConversationController extends ChangeNotifier {
       _error = error.toString();
       rethrow;
     } finally {
+      _refreshInFlight = false;
       if (showLoader) {
         _isLoading = false;
       }
