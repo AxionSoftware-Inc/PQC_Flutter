@@ -367,7 +367,12 @@ class MessageSyncService {
     required int? previousLastMessageId,
     required Future<void> Function() refreshUsers,
   }) async {
-    final existingRows = await localStore.readMessageRows(conversation.id);
+    // Only the visible recent window is needed during polling. Older rows are
+    // loaded explicitly by syncOlderMessages and must not block every refresh.
+    final existingRows = await localStore.readMessageRows(
+      conversation.id,
+      limit: 50,
+    );
     final syncState = await localStore.readSyncState(conversation.id);
     final deltaAfterId = existingRows.isEmpty
         ? null
@@ -414,13 +419,12 @@ class MessageSyncService {
         lastMessageId: messages.last.id,
       );
     }
-    await _retryStoredDecryptErrors(
-      conversation: conversation,
-      currentUserId: currentUserId,
-      usersById: usersById,
-      refreshUsers: refreshUsers,
+    // Avoid scanning every historical row on each polling refresh. Recovery
+    // retries happen when a keyset is restored or an older page is requested.
+    final mergedRemote = await localStore.readMessages(
+      conversation.id,
+      limit: 50,
     );
-    final mergedRemote = await localStore.readMessages(conversation.id);
     return MessageSyncResult(
       messages: mergedRemote,
       lastMessageId: messages.isNotEmpty ? messages.last.id : null,
@@ -436,7 +440,10 @@ class MessageSyncService {
     required Map<int, AppUser> usersById,
     required Future<void> Function() refreshUsers,
   }) async {
-    final existingRows = await localStore.readMessageRows(conversation.id);
+    final existingRows = await localStore.readMessageRows(
+      conversation.id,
+      limit: null,
+    );
     final oldestId = existingRows
         .map((row) => row.id)
         .where((id) => id > 0)
@@ -454,7 +461,7 @@ class MessageSyncService {
     );
     if (messages.isEmpty) {
       return MessageSyncResult(
-        messages: await localStore.readMessages(conversation.id),
+        messages: await localStore.readMessages(conversation.id, limit: null),
       );
     }
     final rows = <MessagesTableData>[];
@@ -482,7 +489,7 @@ class MessageSyncService {
       );
     }
     return MessageSyncResult(
-      messages: await localStore.readMessages(conversation.id),
+      messages: await localStore.readMessages(conversation.id, limit: null),
       lastMessageId: messages.last.id,
     );
   }
@@ -559,36 +566,6 @@ class MessageSyncService {
       }
     }
     return plaintext;
-  }
-
-  Future<void> _retryStoredDecryptErrors({
-    required Conversation conversation,
-    required int currentUserId,
-    required Map<int, AppUser> usersById,
-    required Future<void> Function() refreshUsers,
-  }) async {
-    final rows = await localStore.readMessageRows(conversation.id);
-    for (final row in rows) {
-      final unprotectedRow = await localStore.unprotectMessageRow(row);
-      if (!cryptoService.isDecryptFailureMarker(unprotectedRow.plaintextBody) ||
-          unprotectedRow.encryptedBody.isEmpty) {
-        continue;
-      }
-      final plaintext = await _decryptPayloadWithUserRefresh(
-        conversation: conversation,
-        currentUserId: currentUserId,
-        usersById: usersById,
-        payload: unprotectedRow.encryptedBody,
-        refreshUsers: refreshUsers,
-      );
-      if (cryptoService.isDecryptFailureMarker(plaintext)) {
-        continue;
-      }
-      await localStore.repairPlaintext(
-        row: unprotectedRow,
-        plaintext: plaintext,
-      );
-    }
   }
 }
 

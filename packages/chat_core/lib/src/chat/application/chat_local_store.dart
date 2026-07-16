@@ -11,10 +11,7 @@ import 'package:crypto_core/src/models/conversation.dart';
 import 'package:crypto_core/src/core/storage/local_data_protector.dart';
 
 class ChatLocalStore {
-  ChatLocalStore({
-    required this._database,
-    required this._localDataProtector,
-  });
+  ChatLocalStore({required this._database, required this._localDataProtector});
 
   final AppDatabase _database;
   final LocalDataProtector _localDataProtector;
@@ -77,8 +74,11 @@ class ChatLocalStore {
     );
   }
 
-  Future<List<MessagesTableData>> readMessageRows(int conversationId) {
-    return _database.readMessagesForConversation(conversationId);
+  Future<List<MessagesTableData>> readMessageRows(
+    int conversationId, {
+    int? limit = 50,
+  }) {
+    return _database.readMessagesForConversation(conversationId, limit: limit);
   }
 
   Future<MessagesTableData> unprotectMessageRow(MessagesTableData row) async {
@@ -105,7 +105,9 @@ class ChatLocalStore {
         messageType: drift.Value(decoded.messageType),
         attachmentCount: drift.Value(decoded.attachmentCount),
         clientMessageId: drift.Value(decoded.clientMessageId),
-        deliveryState: drift.Value(_deliveryStateToStored(decoded.deliveryState)),
+        deliveryState: drift.Value(
+          _deliveryStateToStored(decoded.deliveryState),
+        ),
         failureReason: drift.Value(decoded.failureReason),
         isPending: const drift.Value(false),
         createdAt: drift.Value(decoded.createdAt),
@@ -139,8 +141,14 @@ class ChatLocalStore {
     );
   }
 
-  Future<List<ChatMessage>> readMessages(int conversationId) async {
-    final rows = await _database.readMessagesForConversation(conversationId);
+  Future<List<ChatMessage>> readMessages(
+    int conversationId, {
+    int? limit = 50,
+  }) async {
+    final rows = await _database.readMessagesForConversation(
+      conversationId,
+      limit: limit,
+    );
     final mapped = <ChatMessage>[];
     for (final row in rows) {
       mapped.add(await mapMessageRow(row));
