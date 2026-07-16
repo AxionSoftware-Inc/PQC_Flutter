@@ -419,6 +419,24 @@ class MessageSyncService {
         lastMessageId: messages.last.id,
       );
     }
+    // A key restored after reinstall should repair visible decrypt failures
+    // automatically, without rescanning the entire conversation history.
+    for (final row in unprotectedExistingRows) {
+      if (!cryptoService.isDecryptFailureMarker(row.plaintextBody) ||
+          row.encryptedBody.isEmpty) {
+        continue;
+      }
+      final repaired = await _decryptPayloadWithUserRefresh(
+        conversation: conversation,
+        currentUserId: currentUserId,
+        usersById: usersById,
+        payload: row.encryptedBody,
+        refreshUsers: refreshUsers,
+      );
+      if (!cryptoService.isDecryptFailureMarker(repaired)) {
+        await localStore.repairPlaintext(row: row, plaintext: repaired);
+      }
+    }
     // Avoid scanning every historical row on each polling refresh. Recovery
     // retries happen when a keyset is restored or an older page is requested.
     final mergedRemote = await localStore.readMessages(
