@@ -96,6 +96,7 @@ class ChatFacade {
   final ChatRealtimeService? _realtimeService;
 
   final Map<int, AppUser> _usersById = {};
+  final Map<int, DateTime> _privateUsersRefreshAt = {};
   final Map<int, Conversation> _conversationsById = {};
   final Map<int, int> _lastMessageIdByConversation = {};
   DateTime? _lastConversationSyncAt;
@@ -413,6 +414,11 @@ class ChatFacade {
     if (conversation.isGroup) {
       return;
     }
+    final lastRefresh = _privateUsersRefreshAt[conversation.id];
+    if (lastRefresh != null &&
+        DateTime.now().difference(lastRefresh) < const Duration(seconds: 15)) {
+      return;
+    }
     final resolution = _devicePolicy.resolvePrivatePeerPqcDevice(
       currentUserId: currentUserId,
       conversation: conversation,
@@ -422,6 +428,7 @@ class ChatFacade {
       return;
     }
     await fetchUsers();
+    _privateUsersRefreshAt[conversation.id] = DateTime.now();
   }
 
   Future<void> _persistConversation(Conversation conversation) async {
