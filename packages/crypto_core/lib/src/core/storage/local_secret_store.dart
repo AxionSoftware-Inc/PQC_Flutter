@@ -17,7 +17,9 @@ class LocalSecretStore {
     : _secureStorage =
           secureStorage ??
           const FlutterSecureStorage(
-            aOptions: AndroidOptions(resetOnError: true),
+            // Do not wipe chat keys after a transient keystore error. Recovery
+            // must be explicit and account-scoped.
+            aOptions: AndroidOptions(resetOnError: false),
           ),
       _cipher = cipher ?? AesGcm.with256bits();
 
