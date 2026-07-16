@@ -186,6 +186,11 @@ class ChatFacade {
     return ChatConversationState(messages: mergedMessages, trust: trust);
   }
 
+  /// Local encrypted cache for instant first paint while network sync runs.
+  Future<List<ChatMessage>> readCachedConversationMessages(int conversationId) {
+    return _localStore.readMessages(conversationId);
+  }
+
   Future<ChatMessage> sendMessage(SendMessageCommand command) async {
     _activeCurrentUserId = command.currentUserId;
     await _ensureUsersLoaded();

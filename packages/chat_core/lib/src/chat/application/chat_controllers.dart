@@ -95,7 +95,19 @@ class ChatConversationController extends ChangeNotifier {
       // must not block conversation history from loading.
       _attachmentTransfers = const [];
     }
-    await refresh();
+    try {
+      final cached = await chatFacade.readCachedConversationMessages(
+        conversation.id,
+      );
+      if (cached.isNotEmpty) {
+        _messages = cached;
+        _isLoading = false;
+        notifyListeners();
+      }
+    } catch (_) {
+      // Cache is an optimization; authoritative sync still runs.
+    }
+    await refresh(showLoader: _messages.isEmpty);
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       // Polling is best-effort. A transient network/API failure must not
       // become an unhandled async exception that restarts the screen or
