@@ -36,6 +36,7 @@ class KeysetSnapshot {
     required this.status,
     required this.createdAt,
     this.restoredAt,
+    this.integrityHash,
   });
 
   final String keysetId;
@@ -52,6 +53,7 @@ class KeysetSnapshot {
   final String status;
   final DateTime createdAt;
   final DateTime? restoredAt;
+  final String? integrityHash;
 
   bool get isHistoricalReadEnabled =>
       status == 'active' || status == 'historical' || status == 'restored';
@@ -72,6 +74,7 @@ class KeysetSnapshot {
       'status': status,
       'created_at': createdAt.toIso8601String(),
       'restored_at': restoredAt?.toIso8601String(),
+      'integrity_hash': integrityHash,
     };
   }
 
@@ -93,10 +96,15 @@ class KeysetSnapshot {
       restoredAt: json['restored_at'] == null
           ? null
           : DateTime.tryParse(json['restored_at'] as String),
+      integrityHash: json['integrity_hash'] as String?,
     );
   }
 
-  KeysetSnapshot copyWith({String? status, DateTime? restoredAt}) {
+  KeysetSnapshot copyWith({
+    String? status,
+    DateTime? restoredAt,
+    String? integrityHash,
+  }) {
     return KeysetSnapshot(
       keysetId: keysetId,
       deviceId: deviceId,
@@ -112,6 +120,9 @@ class KeysetSnapshot {
       status: status ?? this.status,
       createdAt: createdAt,
       restoredAt: restoredAt ?? this.restoredAt,
+      // Any structural/status change invalidates the old seal. The registry
+      // reseals the snapshot before persisting it.
+      integrityHash: integrityHash,
     );
   }
 }

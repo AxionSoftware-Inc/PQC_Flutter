@@ -8,6 +8,8 @@ import 'crypto_backup_service.dart';
 import 'conversation_epoch_key_store.dart';
 import 'crypto_durability_models.dart';
 import 'key_material_registry.dart';
+import 'key_continuity_guard.dart';
+import 'crypto_health_monitor.dart';
 import 'payload_format_registry.dart';
 import 'protocol_version_manager.dart';
 import '../v3/v3_envelope.dart';
@@ -39,6 +41,13 @@ class CryptoCoreFacade {
   final PayloadFormatRegistry _payloadFormatRegistry;
   final ProtocolVersionManager protocolVersionManager;
 
+  late final KeyContinuityGuard keyContinuityGuard = KeyContinuityGuard(
+    registry: keyMaterialRegistry,
+  );
+  late final CryptoHealthMonitor healthMonitor = CryptoHealthMonitor(
+    registry: keyMaterialRegistry,
+  );
+
   List<PayloadFormatDescriptor> get supportedFormats =>
       _payloadFormatRegistry.descriptors;
 
@@ -67,8 +76,10 @@ class CryptoCoreFacade {
   }
 
   Future<void> initialize() {
-    return keyMaterialRegistry.ensureCurrentKeysetRegistered();
+    return keyContinuityGuard.ensureCurrentPreservingHistory().then((_) {});
   }
+
+  Future<CryptoHealthSnapshot> healthCheck() => healthMonitor.check();
 
   /// Account identity is injected by the app; the core is independent of its
   /// OIDC/Google provider. A different account cannot reuse local recovery
@@ -84,6 +95,7 @@ class CryptoCoreFacade {
         previous != accountNamespace) {
       for (final key in await _secretStore.listManagedKeys()) {
         if (key == 'crypto_keyset_registry_v1' ||
+            key == 'crypto_keyset_registry_pending_v1' ||
             key.startsWith('crypto_keyset_entry_v1') ||
             key.startsWith('group_secret_key_') ||
             key.startsWith('group_participant_signature_') ||

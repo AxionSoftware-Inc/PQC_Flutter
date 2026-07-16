@@ -1,6 +1,7 @@
 import '../../../core/device/device_identity_service.dart';
 import '../../../core/network/api_client.dart';
 import 'crypto_core_facade.dart';
+import 'package:crypto_core/crypto_core.dart' show RecoveryManifestIntegrity;
 
 /// Publishes an immutable recovery snapshot after every successful encrypted
 /// send. Failures are deliberately retained for the next lifecycle retry and
@@ -28,6 +29,16 @@ class EnterpriseRecoverySyncService {
       final response = await apiClient.get('/users/me/crypto-recovery');
       if (response is! Map || response['available'] != true) return false;
       final records = response['records'] as List<dynamic>? ?? const [];
+      final payloads = records
+          .whereType<Map>()
+          .map((record) => record['payload'])
+          .whereType<String>()
+          .where((payload) => payload.isNotEmpty)
+          .toList(growable: false);
+      await RecoveryManifestIntegrity.verify(
+        payloads: payloads,
+        expectedMerkleRoot: response['merkle_root'] as String? ?? '',
+      );
       var imported = false;
       for (final record in records) {
         if (record is! Map) continue;
