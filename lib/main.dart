@@ -178,10 +178,14 @@ Future<void> main() async {
       await cryptoCoreFacade.activateAccount('${sessionUser.accountId}');
       await cryptoCoreFacade.initialize();
       await enterpriseRecoverySyncService.restoreIfAvailable();
-      // Keep the account recovery snapshot current before a second device or
-      // reinstall needs to restore historical keys. Failures are retried by
-      // the next lifecycle/send and must not block login.
-      unawaited(enterpriseRecoverySyncService.publishInBackground());
+      // Finish the account recovery snapshot before the app becomes usable.
+      // This closes the uninstall/reinstall race where a newly-created keyset
+      // had not reached the server yet.
+      try {
+        await enterpriseRecoverySyncService.publishInBackground();
+      } catch (_) {
+        // Login remains usable; the next lifecycle/send retries publication.
+      }
       await chatRealtimeService.connect(
         token: sessionUser.token,
         workspaceId: '${sessionUser.activeWorkspaceId}',

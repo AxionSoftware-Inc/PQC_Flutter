@@ -96,6 +96,7 @@ class ChatFacade {
   final ChatRealtimeService? _realtimeService;
 
   final Map<int, AppUser> _usersById = {};
+  DateTime? _lastSecureSendUsersRefreshAt;
   final Map<int, DateTime> _privateUsersRefreshAt = {};
   final Map<int, Conversation> _conversationsById = {};
   final Map<int, int> _lastMessageIdByConversation = {};
@@ -405,8 +406,15 @@ class ChatFacade {
   }
 
   Future<void> _refreshUsersForSecureSend() async {
+    final last = _lastSecureSendUsersRefreshAt;
+    if (_usersById.isNotEmpty &&
+        last != null &&
+        DateTime.now().difference(last) < const Duration(seconds: 15)) {
+      return;
+    }
     try {
       await fetchUsers();
+      _lastSecureSendUsersRefreshAt = DateTime.now();
     } on ApiException catch (error) {
       if (!error.isRetryable) {
         rethrow;
