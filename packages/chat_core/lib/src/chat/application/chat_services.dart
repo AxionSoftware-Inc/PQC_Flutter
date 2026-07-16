@@ -56,7 +56,16 @@ class ChatCryptoService {
   Future<String> encrypt({
     required ChatCryptoRequest request,
     required String plaintext,
-  }) {
+  }) async {
+    final facade = cryptoCoreFacade;
+    if (facade != null) {
+      final health = await facade.healthCheck();
+      if (!health.healthy) {
+        throw ChatEncryptionException(
+          health.error ?? 'Local encryption keys are not healthy.',
+        );
+      }
+    }
     return cipherService.encrypt(
       context: ChatCryptoContext(
         currentUserId: request.currentUserId,
@@ -646,10 +655,6 @@ class OutgoingMessageService {
         refreshUsers: refreshUsers,
         persistConversation: persistConversation,
       );
-      final cryptoStateChanged = onCryptoStateChanged;
-      if (cryptoStateChanged != null) {
-        unawaited(cryptoStateChanged());
-      }
       await outboxStore.remove(clientMessageId);
       return sent;
     } on ApiException catch (error) {
@@ -821,6 +826,18 @@ class OutgoingMessageService {
           );
     if (queued.encryptedPayload.isEmpty) {
       await outboxStore.upsert(queued.copyWith(encryptedPayload: payload));
+    }
+    final ensureDurable = onCryptoStateChanged;
+    if (ensureDurable != null) {
+      try {
+        await ensureDurable();
+      } catch (_) {
+        throw ApiException(
+          'Encryption keys are not backed up yet. Retry when the connection is stable.',
+          code: 'crypto_recovery_not_durable',
+          isRetryable: true,
+        );
+      }
     }
     final message = await remoteDataSource.sendMessage(
       conversation.id,
