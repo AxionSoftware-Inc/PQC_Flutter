@@ -276,15 +276,17 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<List<MessagesTableData>> readMessagesForConversation(
-    int conversationId,
-  ) {
-    return (select(messagesTable)
-          ..where((tbl) => tbl.conversationId.equals(conversationId))
-          ..orderBy([
-            (t) => OrderingTerm.asc(t.createdAt),
-            (t) => OrderingTerm.asc(t.id),
-          ]))
-        .get();
+    int conversationId, {
+    int? limit,
+  }) {
+    final query = select(messagesTable)
+      ..where((tbl) => tbl.conversationId.equals(conversationId))
+      ..orderBy([
+        (t) => OrderingTerm.desc(t.createdAt),
+        (t) => OrderingTerm.desc(t.id),
+      ]);
+    if (limit != null) query.limit(limit);
+    return query.get().then((rows) => rows.reversed.toList(growable: false));
   }
 
   Future<void> upsertQueuedMessage(
