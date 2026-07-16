@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:cryptography/cryptography.dart';
+
 import '../../../core/device/device_identity_service.dart';
 import '../../../core/network/api_client.dart';
 import 'crypto_core_facade.dart';
@@ -17,6 +21,7 @@ class EnterpriseRecoverySyncService {
   final CryptoCoreFacade cryptoCoreFacade;
   final DeviceIdentityService deviceIdentityService;
   Future<void>? _inFlight;
+  String? _lastPublishedPayloadHash;
 
   Future<void> publishInBackground() {
     return _inFlight ??= _publish().whenComplete(() => _inFlight = null);
@@ -58,6 +63,12 @@ class EnterpriseRecoverySyncService {
   Future<void> _publish() async {
     final deviceId = (await deviceIdentityService.getIdentity()).id;
     final payload = await cryptoCoreFacade.exportEnterpriseRecoveryManifest();
+    final payloadHash = base64UrlEncode(
+      (await Sha256().hash(utf8.encode(payload))).bytes,
+    ).replaceAll('=', '');
+    if (_lastPublishedPayloadHash == payloadHash) {
+      return;
+    }
     final index = await apiClient.get('/users/me/crypto-recovery');
     var sequence = index is Map && index['available'] == true
         ? index['sequence'] as int? ?? 0
@@ -70,6 +81,7 @@ class EnterpriseRecoverySyncService {
           'source_device_id': deviceId,
           'expected_sequence': sequence,
         });
+        _lastPublishedPayloadHash = payloadHash;
         return;
       } on ApiException catch (error) {
         if (error.statusCode != 412 || attempt == 1) rethrow;
