@@ -172,7 +172,11 @@ Future<void> main() async {
       // Keep the account recovery snapshot current before a second device or
       // reinstall needs to restore historical keys. Failures are retried by
       // the next lifecycle/send and must not block login.
-      unawaited(enterpriseRecoverySyncService.publishInBackground());
+      try {
+        await enterpriseRecoverySyncService.publishInBackground();
+      } catch (_) {
+        // Retry on the next lifecycle/send without blocking login forever.
+      }
       await chatRealtimeService.connect(
         token: sessionUser.token,
         workspaceId: '${sessionUser.activeWorkspaceId}',
