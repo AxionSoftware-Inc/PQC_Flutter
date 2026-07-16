@@ -431,6 +431,9 @@ class MessageSyncService {
         currentUserId: currentUserId,
         usersById: usersById,
         payload: row.encryptedBody,
+        messageId: row.clientMessageId.isNotEmpty
+            ? row.clientMessageId
+            : row.id.toString(),
         refreshUsers: refreshUsers,
       );
       if (!cryptoService.isDecryptFailureMarker(repaired)) {
@@ -517,6 +520,7 @@ class MessageSyncService {
     required int currentUserId,
     required Map<int, AppUser> usersById,
     required String payload,
+    required String messageId,
     required Future<void> Function() refreshUsers,
   }) async {
     final plaintext = await cryptoService.decrypt(
@@ -524,6 +528,7 @@ class MessageSyncService {
         currentUserId: currentUserId,
         conversation: conversation,
         usersById: usersById,
+        messageId: messageId,
       ),
       payload: payload,
     );
@@ -537,6 +542,7 @@ class MessageSyncService {
         currentUserId: currentUserId,
         conversation: conversation,
         usersById: usersById,
+        messageId: messageId,
       ),
       payload: payload,
     );
@@ -556,6 +562,9 @@ class MessageSyncService {
       currentUserId: currentUserId,
       usersById: usersById,
       payload: message.body,
+      messageId: message.clientMessageId.isNotEmpty
+          ? message.clientMessageId
+          : message.id.toString(),
       refreshUsers: refreshUsers,
     );
     if (!cryptoService.isDecryptFailureMarker(plaintext)) {
