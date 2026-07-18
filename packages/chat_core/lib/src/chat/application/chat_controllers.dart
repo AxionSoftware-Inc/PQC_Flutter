@@ -150,8 +150,13 @@ class ChatConversationController extends ChangeNotifier {
         conversation: conversation,
         currentUserId: currentUserId,
       );
-      _messages = state.messages;
-      _hasOlderMessages = state.messages.length >= 50;
+      // Polling only returns the newest window. Replacing an expanded local
+      // timeline with that window makes older rows disappear every few
+      // seconds, which in turn resets scroll position and replays decrypt
+      // placeholders. Keep older pages already loaded by the user and let
+      // fresh server rows replace only their matching ids.
+      _messages = _mergeVisibleTimeline(_messages, state.messages);
+      _hasOlderMessages = _messages.length >= 50;
       _trust = state.trust;
       _error = null;
       for (final message in _messages) {
@@ -190,6 +195,37 @@ class ChatConversationController extends ChangeNotifier {
       _isLoadingOlder = false;
       notifyListeners();
     }
+  }
+
+  List<ChatMessage> _mergeVisibleTimeline(
+    List<ChatMessage> existing,
+    List<ChatMessage> incoming,
+  ) {
+    if (existing.isEmpty) {
+      return incoming;
+    }
+    final byStableId = <String, ChatMessage>{};
+    for (final message in existing) {
+      byStableId[_timelineIdentity(message)] = message;
+    }
+    for (final message in incoming) {
+      // Incoming data is authoritative for the visible/newest window.
+      byStableId[_timelineIdentity(message)] = message;
+    }
+    final merged = byStableId.values.toList()
+      ..sort((left, right) {
+        final byTime = left.createdAt.compareTo(right.createdAt);
+        return byTime != 0 ? byTime : left.id.compareTo(right.id);
+      });
+    return merged;
+  }
+
+  String _timelineIdentity(ChatMessage message) {
+    if (message.id > 0) return 'server:${message.id}';
+    if (message.clientMessageId.isNotEmpty) {
+      return 'client:${message.clientMessageId}';
+    }
+    return 'transient:${message.senderId}:${message.createdAt.microsecondsSinceEpoch}';
   }
 
   Future<void> sendMessage(SendMessageCommand command) async {
