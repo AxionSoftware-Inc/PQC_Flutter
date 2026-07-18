@@ -16,7 +16,17 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
 
   final ApiClient apiClient;
 
+  CryptoProtocolCapabilities? _cachedProtocolCapabilities;
+  DateTime? _protocolCapabilitiesCachedAt;
+
   Future<CryptoProtocolCapabilities> fetchCryptoProtocolCapabilities() async {
+    final cached = _cachedProtocolCapabilities;
+    final cachedAt = _protocolCapabilitiesCachedAt;
+    if (cached != null &&
+        cachedAt != null &&
+        DateTime.now().difference(cachedAt) < const Duration(seconds: 20)) {
+      return cached;
+    }
     final response = await apiClient.get('/crypto/protocols');
     if (response is! Map<String, dynamic>) {
       throw ApiException(
@@ -25,7 +35,10 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
         isRetryable: false,
       );
     }
-    return CryptoProtocolCapabilities.fromJson(response);
+    final capabilities = CryptoProtocolCapabilities.fromJson(response);
+    _cachedProtocolCapabilities = capabilities;
+    _protocolCapabilitiesCachedAt = DateTime.now();
+    return capabilities;
   }
 
   Future<List<AppUser>> fetchUsers() async {

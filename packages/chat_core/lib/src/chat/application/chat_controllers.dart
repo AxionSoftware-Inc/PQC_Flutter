@@ -137,8 +137,22 @@ class ChatConversationController extends ChangeNotifier {
     _isSending = true;
     notifyListeners();
     try {
-      await chatFacade.sendMessage(command);
-      await refresh(showLoader: false);
+      final sent = await chatFacade.sendMessage(command);
+      // The send response already contains the authoritative message. Keeping
+      // it locally avoids making the composer wait for a second full history
+      // request before it becomes available again.
+      _messages = [
+        ..._messages.where(
+          (item) =>
+              item.id != sent.id &&
+              item.clientMessageId != sent.clientMessageId,
+        ),
+        sent,
+      ]..sort((left, right) => left.createdAt.compareTo(right.createdAt));
+      _error = null;
+      notifyListeners();
+      // Reconcile in the background for events created on other devices.
+      unawaited(refresh(showLoader: false).catchError((_) {}));
     } finally {
       _isSending = false;
       notifyListeners();
