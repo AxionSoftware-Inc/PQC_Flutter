@@ -489,6 +489,11 @@ class ChatHubController extends ChangeNotifier {
     }
   }
 
+  Future<void> revokeDevice(String deviceId) async {
+    await apiClient.post('/users/me/devices/$deviceId/revoke', const {});
+    await refresh();
+  }
+
   Future<void> blockUser(int userId) async {
     await apiClient.post('/users/$userId/block', const {});
     await refresh();
