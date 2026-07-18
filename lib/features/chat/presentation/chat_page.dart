@@ -326,6 +326,7 @@ class _ChatPageState extends State<ChatPage> {
             trust: conversationTrust,
             brandLabel: brand?.label,
             onBack: () => Navigator.of(context).maybePop(),
+            onOpenDetails: _showConversationDetails,
             onVerify:
                 !widget.conversation.isGroup &&
                     conversationTrust?.isAvailable == true
@@ -506,6 +507,26 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _showConversationDetails() {
+    return Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        transitionDuration: const Duration(milliseconds: 220),
+        reverseTransitionDuration: const Duration(milliseconds: 180),
+        pageBuilder: (_, animation, _) => FadeTransition(
+          opacity: CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          ),
+          child: _ConversationProfilePage(
+            title: widget.title,
+            conversation: widget.conversation,
+            trust: _controller.trust?.trust,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildSelectedAttachmentTray() {
     final spacing = context.appSpacing;
     return SizedBox(
@@ -606,6 +627,12 @@ class _ChatPageState extends State<ChatPage> {
         message.body == ChatCryptoService.decryptNeedsBackupRestoreMarker ||
         message.body == ChatCryptoService.decryptKeyMissingMarker;
     final isDecryptError = message.body == ChatCryptoService.decryptErrorMarker;
+    final isImageOnly =
+        message.attachments.length == 1 &&
+        message.attachments.single.mimeType.startsWith('image/') &&
+        message.body.trim().isEmpty &&
+        !isDecryptNeedsRestore &&
+        !isDecryptError;
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -625,12 +652,18 @@ class _ChatPageState extends State<ChatPage> {
                   : CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: spacing.md,
-                    vertical: spacing.sm,
-                  ),
+                  padding: isImageOnly
+                      ? EdgeInsets.zero
+                      : EdgeInsets.symmetric(
+                          horizontal: spacing.md,
+                          vertical: spacing.sm,
+                        ),
                   decoration: BoxDecoration(
-                    color: isMine ? colors.chatMine : colors.chatPeer,
+                    color: isImageOnly
+                        ? Colors.transparent
+                        : isMine
+                        ? colors.chatMine
+                        : colors.chatPeer,
                     borderRadius: BorderRadius.only(
                       topLeft: Radius.circular(context.appRadii.md),
                       topRight: Radius.circular(context.appRadii.md),
@@ -641,10 +674,8 @@ class _ChatPageState extends State<ChatPage> {
                         isMine ? context.appRadii.sm : context.appRadii.md,
                       ),
                     ),
-                    border:
-                        message.attachments.isNotEmpty &&
-                            message.body.trim().isEmpty
-                        ? Border.all(color: Colors.transparent)
+                    border: isImageOnly
+                        ? null
                         : Border.all(
                             color: isMine
                                 ? colors.primary.withValues(alpha: 0.16)
@@ -655,7 +686,7 @@ class _ChatPageState extends State<ChatPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (!isMine) ...[
+                      if (!isMine && !isImageOnly) ...[
                         Text(
                           message.senderName,
                           style: Theme.of(context).textTheme.labelMedium
@@ -671,7 +702,14 @@ class _ChatPageState extends State<ChatPage> {
                           spacing: spacing.xs,
                           runSpacing: spacing.xs,
                           children: message.attachments
-                              .map(_buildAttachmentChip)
+                              .map(
+                                (attachment) => _buildAttachmentChip(
+                                  attachment,
+                                  message: message,
+                                  isMine: isMine,
+                                  showDeliveryOverlay: isImageOnly,
+                                ),
+                              )
                               .toList(),
                         ),
                         if (message.body.trim().isNotEmpty)
@@ -704,45 +742,10 @@ class _ChatPageState extends State<ChatPage> {
                                 height: 1.35,
                               ),
                         ),
-                      SizedBox(height: spacing.xs),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Wrap(
-                          spacing: spacing.xs,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            if (message.deliveryState !=
-                                MessageDeliveryState.sent)
-                              Text(
-                                _statusLabel(message),
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: isMine
-                                          ? Colors.white.withValues(alpha: 0.72)
-                                          : colors.textMuted,
-                                    ),
-                              ),
-                            Text(
-                              _formatMessageTime(message.createdAt),
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: isMine
-                                        ? Colors.white.withValues(alpha: 0.68)
-                                        : colors.textMuted,
-                                  ),
-                            ),
-                            if (isMine)
-                              Icon(
-                                message.deliveryState ==
-                                        MessageDeliveryState.sent
-                                    ? Icons.done_all_rounded
-                                    : Icons.schedule_rounded,
-                                size: 14,
-                                color: Colors.white.withValues(alpha: 0.75),
-                              ),
-                          ],
-                        ),
-                      ),
+                      if (!isImageOnly) ...[
+                        SizedBox(height: spacing.xs),
+                        _buildMessageFooter(message: message, isMine: isMine),
+                      ],
                     ],
                   ),
                 ),
@@ -759,7 +762,12 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Widget _buildAttachmentChip(ChatAttachment attachment) {
+  Widget _buildAttachmentChip(
+    ChatAttachment attachment, {
+    ChatMessage? message,
+    bool isMine = false,
+    bool showDeliveryOverlay = false,
+  }) {
     final transfer = _controller.findDownloadTransfer(attachment.id);
     final isBusy =
         transfer != null &&
@@ -818,55 +826,143 @@ class _ChatPageState extends State<ChatPage> {
           };
     if (isImage) {
       if (localPath != null && localPath.isNotEmpty) {
-        return InkWell(
-          onTap: () => _showImageLightbox(attachment.filename, localPath),
-          borderRadius: BorderRadius.circular(context.appRadii.md),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(context.appRadii.md),
-            child: SizedBox(
-              width: 220,
-              child: buildChatLocalImage(context, localPath),
+        return Stack(
+          children: [
+            InkWell(
+              onTap: () => _showImageLightbox(attachment.filename, localPath),
+              borderRadius: BorderRadius.circular(context.appRadii.sm),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(context.appRadii.sm),
+                child: SizedBox(
+                  width: 248,
+                  child: buildChatLocalImage(context, localPath),
+                ),
+              ),
             ),
-          ),
+            if (showDeliveryOverlay && message != null)
+              _buildImageDeliveryOverlay(message: message, isMine: isMine),
+          ],
         );
       }
-      return Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(context.appRadii.sm),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 220),
-            padding: EdgeInsets.symmetric(
-              horizontal: context.appSpacing.sm,
-              vertical: context.appSpacing.xs,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.12),
+      return Stack(
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onPressed,
               borderRadius: BorderRadius.circular(context.appRadii.sm),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.image_rounded, size: 18),
-                SizedBox(width: context.appSpacing.xs),
-                Flexible(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+              child: Ink(
+                width: 248,
+                height: 172,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.24),
+                  borderRadius: BorderRadius.circular(context.appRadii.sm),
                 ),
-              ],
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.photo_outlined, size: 34),
+                    SizedBox(height: context.appSpacing.xs),
+                    Text(
+                      'Tap to load photo',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
+          if (showDeliveryOverlay && message != null)
+            _buildImageDeliveryOverlay(message: message, isMine: isMine),
+        ],
       );
     }
     return ActionChip(
       avatar: const Icon(Icons.insert_drive_file_outlined, size: 18),
       label: Text(label),
       onPressed: onPressed,
+    );
+  }
+
+  Widget _buildMessageFooter({
+    required ChatMessage message,
+    required bool isMine,
+  }) {
+    final colors = context.appColors;
+    final spacing = context.appSpacing;
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Wrap(
+        spacing: spacing.xs,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (message.deliveryState != MessageDeliveryState.sent)
+            Text(
+              _statusLabel(message),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: isMine
+                    ? Colors.white.withValues(alpha: 0.72)
+                    : colors.textMuted,
+              ),
+            ),
+          Text(
+            _formatMessageTime(message.createdAt),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: isMine
+                  ? Colors.white.withValues(alpha: 0.68)
+                  : colors.textMuted,
+            ),
+          ),
+          if (isMine)
+            Icon(
+              message.deliveryState == MessageDeliveryState.sent
+                  ? Icons.done_all_rounded
+                  : Icons.schedule_rounded,
+              size: 14,
+              color: Colors.white.withValues(alpha: 0.75),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImageDeliveryOverlay({
+    required ChatMessage message,
+    required bool isMine,
+  }) {
+    return Positioned(
+      right: 6,
+      bottom: 6,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.48),
+          borderRadius: BorderRadius.circular(context.appRadii.pill),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _formatMessageTime(message.createdAt),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.92),
+                ),
+              ),
+              if (isMine) ...[
+                const SizedBox(width: 3),
+                Icon(
+                  message.deliveryState == MessageDeliveryState.sent
+                      ? Icons.done_all_rounded
+                      : Icons.schedule_rounded,
+                  size: 13,
+                  color: Colors.white.withValues(alpha: 0.92),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1235,6 +1331,7 @@ class _ConversationHeader extends StatelessWidget {
     required this.trust,
     required this.brandLabel,
     required this.onBack,
+    required this.onOpenDetails,
     required this.onVerify,
     required this.transferCount,
   });
@@ -1244,6 +1341,7 @@ class _ConversationHeader extends StatelessWidget {
   final ConversationKeyTrust? trust;
   final String? brandLabel;
   final VoidCallback onBack;
+  final VoidCallback onOpenDetails;
   final Future<void> Function()? onVerify;
   final int transferCount;
 
@@ -1268,33 +1366,44 @@ class _ConversationHeader extends StatelessWidget {
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
             tooltip: 'Back',
           ),
-          AppAvatar(
-            label: title,
-            icon: conversation.isGroup ? Icons.forum_outlined : null,
-            radius: 20,
+          InkWell(
+            onTap: onOpenDetails,
+            borderRadius: BorderRadius.circular(context.appRadii.pill),
+            child: AppAvatar(
+              label: title,
+              icon: conversation.isGroup ? Icons.forum_outlined : null,
+              radius: 20,
+            ),
           ),
           SizedBox(width: spacing.sm),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+            child: InkWell(
+              onTap: onOpenDetails,
+              borderRadius: BorderRadius.circular(context.appRadii.sm),
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: spacing.xs),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      _headerSubtitle(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: context.appColors.textMuted,
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
-                  _headerSubtitle(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: context.appColors.textMuted,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
           if (transferCount > 0)
@@ -1325,6 +1434,150 @@ class _ConversationHeader extends StatelessWidget {
       return '$base • $brandLabel';
     }
     return base;
+  }
+}
+
+class _ConversationProfilePage extends StatelessWidget {
+  const _ConversationProfilePage({
+    required this.title,
+    required this.conversation,
+    required this.trust,
+  });
+
+  final String title;
+  final Conversation conversation;
+  final ConversationKeyTrust? trust;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = context.appSpacing;
+    final colors = context.appColors;
+    final isGroup = conversation.isGroup;
+    final securityLabel = trust == null
+        ? (isGroup ? 'Protected group conversation' : 'Security unavailable')
+        : trust!.isEnterpriseVerified
+        ? 'Verified security'
+        : trust!.isEnterpriseReady
+        ? 'Secure channel ready'
+        : trust!.isVerified
+        ? 'Verified device key'
+        : 'Key verification pending';
+    return AppScaffold(
+      appBar: AppBar(title: Text(isGroup ? 'Group info' : 'Contact details')),
+      body: ListView(
+        padding: EdgeInsets.all(spacing.lg),
+        children: [
+          AppSurfaceCard(
+            backgroundColor: colors.primarySoft,
+            child: Column(
+              children: [
+                AppAvatar(
+                  label: title,
+                  icon: isGroup ? Icons.forum_outlined : null,
+                  radius: 46,
+                ),
+                SizedBox(height: spacing.md),
+                Text(title, style: Theme.of(context).textTheme.headlineSmall),
+                SizedBox(height: spacing.xs),
+                Text(
+                  isGroup ? 'Workspace group' : 'Private conversation',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: colors.textMuted),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: spacing.lg),
+          AppSectionHeader(
+            title: 'Conversation',
+            subtitle: isGroup
+                ? 'Shared messages are protected for the group.'
+                : 'Messages are protected end-to-end.',
+          ),
+          SizedBox(height: spacing.sm),
+          AppSurfaceCard(
+            child: Column(
+              children: [
+                _ProfileInfoRow(
+                  icon: Icons.lock_outline_rounded,
+                  title: 'Security',
+                  value: securityLabel,
+                ),
+                Divider(color: colors.border, height: spacing.lg),
+                _ProfileInfoRow(
+                  icon: Icons.photo_library_outlined,
+                  title: 'Media',
+                  value: 'Photos and files remain in this chat',
+                ),
+                Divider(color: colors.border, height: spacing.lg),
+                _ProfileInfoRow(
+                  icon: isGroup
+                      ? Icons.groups_2_outlined
+                      : Icons.person_outline_rounded,
+                  title: isGroup ? 'Type' : 'Privacy',
+                  value: isGroup
+                      ? 'Group conversation'
+                      : 'Private conversation',
+                ),
+              ],
+            ),
+          ),
+          if (trust != null && !isGroup) ...[
+            SizedBox(height: spacing.lg),
+            const AppSectionHeader(
+              title: 'Key status',
+              subtitle: 'This device uses the current protected keyset.',
+            ),
+            SizedBox(height: spacing.sm),
+            AppStatusBanner(
+              message: securityLabel,
+              tone: trust!.isEnterpriseVerified || trust!.isVerified
+                  ? AppStatusTone.success
+                  : AppStatusTone.info,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileInfoRow extends StatelessWidget {
+  const _ProfileInfoRow({
+    required this.icon,
+    required this.title,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: context.appColors.primary),
+        SizedBox(width: context.appSpacing.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleSmall),
+              SizedBox(height: context.appSpacing.xs),
+              Text(
+                value,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: context.appColors.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }
 
