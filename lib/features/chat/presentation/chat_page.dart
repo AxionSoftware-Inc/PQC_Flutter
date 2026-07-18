@@ -1537,6 +1537,12 @@ class _ConversationProfilePage extends StatelessWidget {
                   : AppStatusTone.info,
             ),
           ],
+          SizedBox(height: spacing.lg),
+          AppPrimaryButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.chat_bubble_outline_rounded),
+            label: const Text('Open chat'),
+          ),
         ],
       ),
     );
