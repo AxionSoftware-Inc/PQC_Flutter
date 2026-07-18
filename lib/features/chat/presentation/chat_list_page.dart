@@ -41,7 +41,11 @@ class _ChatListPageState extends State<ChatListPage> {
   int _selectedTabIndex = 0;
   bool _recoveryPromptShown = false;
   bool _notificationsEnabled = true;
+  bool _notificationPreviewsEnabled = true;
   bool _readReceiptsEnabled = true;
+  bool _typingIndicatorsEnabled = true;
+  String _lastSeenVisibility = 'contacts';
+  String _onlineVisibility = 'contacts';
   bool _accountSettingsHydrated = false;
   final Set<int> _selectedConversationIds = <int>{};
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -78,8 +82,16 @@ class _ChatListPageState extends State<ChatListPage> {
     if (!_accountSettingsHydrated && accountSettings.isNotEmpty) {
       _notificationsEnabled =
           accountSettings['notifications_enabled'] as bool? ?? true;
+      _notificationPreviewsEnabled =
+          accountSettings['notification_previews'] as bool? ?? true;
       _readReceiptsEnabled =
           accountSettings['read_receipts_enabled'] as bool? ?? true;
+      _typingIndicatorsEnabled =
+          accountSettings['typing_indicators_enabled'] as bool? ?? true;
+      _lastSeenVisibility =
+          accountSettings['last_seen_visibility'] as String? ?? 'contacts';
+      _onlineVisibility =
+          accountSettings['online_visibility'] as String? ?? 'contacts';
       _accountSettingsHydrated = true;
     }
     final chatQuery = _controller.chatState.preferences.searchQuery;
@@ -1008,33 +1020,6 @@ class _ChatListPageState extends State<ChatListPage> {
 
   Widget _buildSettingsOverview(SettingsViewState state) {
     final spacing = context.appSpacing;
-    final sections = <(String, IconData, String)>[
-      (
-        'Account',
-        Icons.person_outline_rounded,
-        'Profile, workspace and account identity',
-      ),
-      (
-        'Security',
-        Icons.shield_outlined,
-        'Trust, encryption and recovery health',
-      ),
-      (
-        'Devices',
-        Icons.devices_outlined,
-        'Sessions, device keys and revoke controls',
-      ),
-      (
-        'Backup & Recovery',
-        Icons.backup_outlined,
-        'Encrypted history recovery and approvals',
-      ),
-      (
-        'Preferences',
-        Icons.tune_rounded,
-        'Notifications, privacy, theme and inbox behavior',
-      ),
-    ];
     return ListView(
       padding: EdgeInsets.all(spacing.lg),
       children: [
@@ -1043,31 +1028,55 @@ class _ChatListPageState extends State<ChatListPage> {
           subtitle: 'Choose a section to manage your account.',
         ),
         SizedBox(height: spacing.md),
-        for (final section in sections)
-          Padding(
-            padding: EdgeInsets.only(bottom: spacing.sm),
-            child: AppSurfaceCard(
-              child: ListTile(
-                contentPadding: EdgeInsets.symmetric(horizontal: spacing.md),
-                leading: Icon(section.$2, color: context.appColors.primary),
-                title: Text(section.$1),
-                subtitle: Text(section.$3),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => _SettingsPage(
-                      title: section.$1,
-                      child: _buildSettingsTab(state),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+        _settingsSectionTile(
+          title: 'Account',
+          subtitle: 'Profile, workspace and sign-in',
+          icon: Icons.person_outline_rounded,
+          builder: _buildAccountSettings,
+        ),
+        _settingsSectionTile(
+          title: 'Security',
+          subtitle: 'Trust, encryption and key health',
+          icon: Icons.shield_outlined,
+          builder: _buildSecuritySettings,
+        ),
+        _settingsSectionTile(
+          title: 'Devices',
+          subtitle: 'Sessions, registered devices and revoke',
+          icon: Icons.devices_outlined,
+          builder: _buildDevicesSettings,
+        ),
+        _settingsSectionTile(
+          title: 'Backup & Recovery',
+          subtitle: 'Encrypted history and recovery approvals',
+          icon: Icons.backup_outlined,
+          builder: _buildBackupSettings,
+        ),
+        _settingsSectionTile(
+          title: 'Notifications & Privacy',
+          subtitle: 'Notification delivery and read receipts',
+          icon: Icons.notifications_outlined,
+          builder: _buildNotificationsPrivacySettings,
+        ),
+        _settingsSectionTile(
+          title: 'Appearance & Chats',
+          subtitle: 'Theme, inbox layout and drafts',
+          icon: Icons.palette_outlined,
+          builder: _buildAppearanceSettings,
+        ),
+        _settingsSectionTile(
+          title: 'About & Support',
+          subtitle: 'Version, support and connection details',
+          icon: Icons.info_outline_rounded,
+          builder: _buildAboutSettings,
+        ),
       ],
     );
   }
 
+  // Kept temporarily as a migration reference while the new section pages
+  // above replace its old all-in-one settings experience.
+  // ignore: unused_element
   Widget _buildSettingsTab(SettingsViewState state) {
     final spacing = context.appSpacing;
     final theme = Theme.of(context);
@@ -1451,6 +1460,558 @@ class _ChatListPageState extends State<ChatListPage> {
         ),
       ],
     );
+  }
+
+  Widget _settingsSectionTile({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Widget Function(SettingsViewState state) builder,
+  }) {
+    final spacing = context.appSpacing;
+    return Padding(
+      padding: EdgeInsets.only(bottom: spacing.sm),
+      child: AppSurfaceCard(
+        child: ListTile(
+          contentPadding: EdgeInsets.symmetric(horizontal: spacing.md),
+          leading: Icon(icon, color: context.appColors.primary),
+          title: Text(title),
+          subtitle: Text(subtitle),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => _SettingsPage(
+                title: title,
+                child: ListenableBuilder(
+                  listenable: _controller,
+                  builder: (_, _) => builder(_controller.settingsState),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _settingsList(List<Widget> children) => ListView(
+    padding: EdgeInsets.all(context.appSpacing.lg),
+    children: children,
+  );
+
+  Widget _buildAccountSettings(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    final session = state.sessionUser;
+    return _settingsList([
+      AppSurfaceCard(
+        backgroundColor: context.appColors.primarySoft,
+        child: Column(
+          children: [
+            AppAvatar(label: session.displayName, radius: 38),
+            SizedBox(height: spacing.md),
+            Text(
+              session.displayName,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            Text(
+              session.username,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: context.appColors.textMuted,
+              ),
+            ),
+            SizedBox(height: spacing.sm),
+            AppPrimaryButton(
+              onPressed: _editProfile,
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Edit profile'),
+            ),
+          ],
+        ),
+      ),
+      SizedBox(height: spacing.lg),
+      const AppSectionHeader(
+        title: 'Workspace',
+        subtitle: 'Switch only the workspace used by this device.',
+      ),
+      SizedBox(height: spacing.sm),
+      AppSurfaceCard(
+        child: Column(
+          children: [
+            _buildInfoRow('Current', state.currentWorkspace?.name ?? 'None'),
+            for (final organization in session.organizations)
+              for (final workspace in organization.workspaces)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    workspace.id == session.activeWorkspaceId
+                        ? Icons.check_circle_rounded
+                        : Icons.apartment_outlined,
+                  ),
+                  title: Text(workspace.name),
+                  subtitle: Text(organization.name),
+                  onTap: workspace.id == session.activeWorkspaceId
+                      ? null
+                      : () => _switchWorkspace(workspace.id),
+                ),
+          ],
+        ),
+      ),
+      SizedBox(height: spacing.lg),
+      const AppSectionHeader(title: 'Session'),
+      SizedBox(height: spacing.sm),
+      AppSurfaceCard(
+        child: Column(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.logout_rounded),
+              title: const Text('Log out'),
+              subtitle: const Text('Keep this device registered.'),
+              onTap: () => _logout(forgetDevice: false),
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.delete_outline_rounded,
+                color: context.appColors.danger,
+              ),
+              title: const Text('Forget this device'),
+              subtitle: const Text(
+                'Remove this local session and local history.',
+              ),
+              onTap: () => _logout(forgetDevice: true),
+            ),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildSecuritySettings(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    return _settingsList([
+      const AppSectionHeader(
+        title: 'Security Center',
+        subtitle: 'Key trust and historical decrypt readiness.',
+      ),
+      SizedBox(height: spacing.sm),
+      AppSurfaceCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: spacing.sm,
+              runSpacing: spacing.sm,
+              children: [
+                AppBadge(
+                  label: '${state.security.verifiedPeersCount} verified',
+                  tone: AppStatusTone.success,
+                ),
+                AppBadge(
+                  label: '${state.security.needsAttentionCount} need attention',
+                  tone: AppStatusTone.warning,
+                ),
+                AppBadge(
+                  label: '${state.security.notReadyCount} not ready',
+                  tone: AppStatusTone.danger,
+                ),
+              ],
+            ),
+            SizedBox(height: spacing.md),
+            AppStatusBanner(
+              message: state.security.hasHistoricalDecryptCapability
+                  ? 'Historical decrypt ready. ${state.security.availableHistoricalKeysets} keysets available.'
+                  : 'Historical decrypt is limited. Restore a backup to recover older messages.',
+              tone: state.security.hasHistoricalDecryptCapability
+                  ? AppStatusTone.success
+                  : AppStatusTone.warning,
+            ),
+            SizedBox(height: spacing.sm),
+            AppStatusBanner(
+              message: state.security.isCurrentDeviceReady
+                  ? 'This device is ready for secure messaging.'
+                  : 'This device needs key setup before secure messaging.',
+              tone: state.security.isCurrentDeviceReady
+                  ? AppStatusTone.success
+                  : AppStatusTone.warning,
+            ),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildDevicesSettings(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    return _settingsList([
+      const AppSectionHeader(
+        title: 'Devices & Sessions',
+        subtitle: 'Remove a device only if you no longer recognize it.',
+      ),
+      SizedBox(height: spacing.sm),
+      for (final device in state.devices)
+        Padding(
+          padding: EdgeInsets.only(bottom: spacing.sm),
+          child: AppSurfaceCard(
+            child: ListTile(
+              leading: Icon(
+                device.deviceId == state.sessionUser.deviceId
+                    ? Icons.phone_android_rounded
+                    : Icons.devices_outlined,
+              ),
+              title: Text(
+                device.deviceName.isEmpty ? device.deviceId : device.deviceName,
+              ),
+              subtitle: Text(
+                '${device.platform.isEmpty ? 'Unknown platform' : device.platform} • ${device.status}'
+                '${device.lastSeenAt == null ? '' : ' • ${_formatRelativeTime(device.lastSeenAt!)}'}',
+              ),
+              trailing: device.deviceId == state.sessionUser.deviceId
+                  ? const AppBadge(
+                      label: 'This device',
+                      tone: AppStatusTone.info,
+                    )
+                  : IconButton(
+                      tooltip: 'Revoke device',
+                      icon: Icon(
+                        Icons.remove_circle_outline_rounded,
+                        color: context.appColors.danger,
+                      ),
+                      onPressed: () => _confirmDeviceRevoke(device),
+                    ),
+            ),
+          ),
+        ),
+      if (state.devices.isEmpty)
+        _buildEmptyCard('No registered devices found.'),
+    ]);
+  }
+
+  Widget _buildBackupSettings(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    return _settingsList([
+      const AppSectionHeader(
+        title: 'Backup & Recovery',
+        subtitle:
+            'Recover encrypted history after a reinstall or device switch.',
+      ),
+      SizedBox(height: spacing.sm),
+      if (state.backup.statusMessage != null) ...[
+        AppStatusBanner(
+          message: state.backup.statusMessage!,
+          tone: _statusTone(state.backup.statusTone),
+        ),
+        SizedBox(height: spacing.sm),
+      ],
+      AppSurfaceCard(
+        child: Column(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.restore_rounded),
+              title: const Text('Restore encrypted history'),
+              subtitle: const Text(
+                'Import the account recovery manifest after approval.',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: _restoreEnterpriseRecovery,
+            ),
+            ListTile(
+              leading: const Icon(Icons.verified_user_outlined),
+              title: const Text('Recovery approvals'),
+              subtitle: const Text('Review requests from your other devices.'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: _showPendingRecoveryApprovals,
+            ),
+            ListTile(
+              leading: const Icon(Icons.upload_file_outlined),
+              title: const Text('Export encrypted backup'),
+              subtitle: const Text(
+                'Create a portable, passphrase-protected backup.',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: _showExportBackupSheet,
+            ),
+            ListTile(
+              leading: const Icon(Icons.download_for_offline_outlined),
+              title: const Text('Import encrypted backup'),
+              subtitle: const Text(
+                'Restore a backup blob using its passphrase.',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: _showImportBackupSheet,
+            ),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildNotificationsPrivacySettings(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    return _settingsList([
+      const AppSectionHeader(
+        title: 'Notifications',
+        subtitle: 'These account preferences sync with your other devices.',
+      ),
+      SizedBox(height: spacing.sm),
+      AppSurfaceCard(
+        child: Column(
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _notificationsEnabled,
+              title: const Text('Notifications'),
+              subtitle: const Text('Allow account notification delivery.'),
+              onChanged: _setNotificationsEnabled,
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _notificationPreviewsEnabled,
+              title: const Text('Notification previews'),
+              subtitle: const Text(
+                'Include message text in notification alerts.',
+              ),
+              onChanged: _setNotificationPreviewsEnabled,
+            ),
+          ],
+        ),
+      ),
+      SizedBox(height: spacing.lg),
+      const AppSectionHeader(
+        title: 'Privacy',
+        subtitle:
+            'Control presence and message-state information shared with contacts.',
+      ),
+      SizedBox(height: spacing.sm),
+      AppSurfaceCard(
+        child: Column(
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _readReceiptsEnabled,
+              title: const Text('Read receipts'),
+              subtitle: const Text(
+                'Let contacts see when you have read a message.',
+              ),
+              onChanged: _setReadReceiptsEnabled,
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _typingIndicatorsEnabled,
+              title: const Text('Typing indicators'),
+              subtitle: const Text('Let contacts see when you are typing.'),
+              onChanged: _setTypingIndicatorsEnabled,
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Last seen visibility'),
+              subtitle: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _lastSeenVisibility,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'everyone',
+                      child: Text('Everyone'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'contacts',
+                      child: Text('Contacts'),
+                    ),
+                    DropdownMenuItem(value: 'nobody', child: Text('Nobody')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) _setLastSeenVisibility(value);
+                  },
+                ),
+              ),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Online visibility'),
+              subtitle: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _onlineVisibility,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'everyone',
+                      child: Text('Everyone'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'contacts',
+                      child: Text('Contacts'),
+                    ),
+                    DropdownMenuItem(value: 'nobody', child: Text('Nobody')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) _setOnlineVisibility(value);
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      SizedBox(height: spacing.lg),
+      const AppSurfaceCard(
+        child: ListTile(
+          leading: Icon(Icons.lock_outline_rounded),
+          title: Text('Message content'),
+          subtitle: Text(
+            'Message content remains end-to-end encrypted and is not readable by the server.',
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildAppearanceSettings(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    return _settingsList([
+      const AppSectionHeader(
+        title: 'Appearance & Chats',
+        subtitle: 'Local display and composer preferences for this device.',
+      ),
+      SizedBox(height: spacing.sm),
+      AppSurfaceCard(
+        child: Column(
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: widget.themeController.themeMode == ThemeMode.dark,
+              title: const Text('Dark mode'),
+              subtitle: const Text('Use the dark color theme.'),
+              onChanged: (value) => widget.themeController.setThemeMode(
+                value ? ThemeMode.dark : ThemeMode.light,
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: state.appPreferences.compactListMode,
+              title: const Text('Compact chat list'),
+              subtitle: const Text('Use shorter rows in the chats list.'),
+              onChanged: (value) => _controller.updateAppPreferences(
+                state.appPreferences.copyWith(compactListMode: value),
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: state.appPreferences.showArchivedByDefault,
+              title: const Text('Show archived chats'),
+              subtitle: const Text('Include archived chats in the main list.'),
+              onChanged: (value) => _controller.updateAppPreferences(
+                state.appPreferences.copyWith(showArchivedByDefault: value),
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: state.appPreferences.keepDrafts,
+              title: const Text('Keep drafts'),
+              subtitle: const Text(
+                'Save unfinished composer text automatically.',
+              ),
+              onChanged: (value) => _controller.updateAppPreferences(
+                state.appPreferences.copyWith(keepDrafts: value),
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: state.appPreferences.preferManualRefreshHints,
+              title: const Text('Manual refresh hints'),
+              subtitle: const Text(
+                'Prefer manual refresh prompts in the inbox.',
+              ),
+              onChanged: (value) => _controller.updateAppPreferences(
+                state.appPreferences.copyWith(preferManualRefreshHints: value),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildAboutSettings(SettingsViewState state) => _settingsList([
+    const AppSectionHeader(title: 'About & Support'),
+    SizedBox(height: context.appSpacing.sm),
+    AppSurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildInfoRow('Version', state.appVersion),
+          _buildInfoRow('Support', state.supportEmail),
+          _buildInfoRow('API', state.apiBaseUrl),
+          _buildInfoRow('Skin', state.appSkinId),
+        ],
+      ),
+    ),
+  ]);
+
+  Future<void> _restoreEnterpriseRecovery() async {
+    try {
+      await _controller.restoreEnterpriseRecovery();
+    } catch (error) {
+      if (mounted) _showMessage(error.toString(), tone: AppStatusTone.danger);
+    }
+  }
+
+  void _setNotificationsEnabled(bool value) {
+    setState(() => _notificationsEnabled = value);
+    _controller.updateAccountSettings({'notifications_enabled': value});
+  }
+
+  void _setNotificationPreviewsEnabled(bool value) {
+    setState(() => _notificationPreviewsEnabled = value);
+    _controller.updateAccountSettings({'notification_previews': value});
+  }
+
+  void _setReadReceiptsEnabled(bool value) {
+    setState(() => _readReceiptsEnabled = value);
+    _controller.updateAccountSettings({'read_receipts_enabled': value});
+  }
+
+  void _setTypingIndicatorsEnabled(bool value) {
+    setState(() => _typingIndicatorsEnabled = value);
+    _controller.updateAccountSettings({'typing_indicators_enabled': value});
+  }
+
+  void _setLastSeenVisibility(String value) {
+    setState(() => _lastSeenVisibility = value);
+    _controller.updateAccountSettings({'last_seen_visibility': value});
+  }
+
+  void _setOnlineVisibility(String value) {
+    setState(() => _onlineVisibility = value);
+    _controller.updateAccountSettings({'online_visibility': value});
+  }
+
+  Future<void> _confirmDeviceRevoke(AppUserDevice device) async {
+    final label = device.deviceName.isEmpty
+        ? device.deviceId
+        : device.deviceName;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Revoke device?'),
+        content: Text('$label will no longer be able to access this account.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Revoke'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _controller.revokeDevice(device.deviceId);
+      if (mounted) _showMessage('Device revoked.', tone: AppStatusTone.success);
+    } catch (error) {
+      if (mounted) _showMessage(error.toString(), tone: AppStatusTone.danger);
+    }
   }
 
   Widget _buildNavigationDrawer(SettingsViewState state) {
