@@ -327,6 +327,7 @@ class ChatFacade {
     final transfer = await _attachmentTransferFacade?.saveDirectDownload(
       attachment: attachment,
       bytes: bytes,
+      conversationId: conversation.id,
     );
     if (transfer != null) return transfer;
     throw StateError('Attachment download storage is not configured.');

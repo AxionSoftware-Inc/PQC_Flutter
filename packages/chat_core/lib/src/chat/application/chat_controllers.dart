@@ -41,7 +41,13 @@ class ChatListController extends ChangeNotifier {
       _conversations = state.conversations;
       _trustByUserId = state.trustByUserId;
     } catch (error) {
-      _error = error.toString();
+      // A background poll can fail while the server closes a keep-alive
+      // connection. Do not cover an already loaded chat with a scary error
+      // banner; the next poll will reconcile it. Initial-load failures still
+      // remain visible to the user.
+      if (_users.isEmpty && _conversations.isEmpty) {
+        _error = error.toString();
+      }
       rethrow;
     } finally {
       _isLoading = false;
@@ -135,7 +141,13 @@ class ChatConversationController extends ChangeNotifier {
       _trust = state.trust;
       _error = null;
     } catch (error) {
-      _error = error.toString();
+      // A background poll can fail while the server closes a keep-alive
+      // connection. Do not cover an already loaded chat with a scary error
+      // banner; the next poll will reconcile it. Initial-load failures still
+      // remain visible to the user.
+      if (_messages.isEmpty) {
+        _error = error.toString();
+      }
       rethrow;
     } finally {
       if (showLoader) {
