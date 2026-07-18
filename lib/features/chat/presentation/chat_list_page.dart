@@ -40,6 +40,13 @@ class _ChatListPageState extends State<ChatListPage> {
       TextEditingController();
   int _selectedTabIndex = 0;
   bool _recoveryPromptShown = false;
+  bool _notificationsEnabled = true;
+  bool _notificationPreviewsEnabled = true;
+  bool _readReceiptsEnabled = true;
+  bool _typingIndicatorsEnabled = true;
+  String _lastSeenVisibility = 'contacts';
+  String _onlineVisibility = 'contacts';
+  bool _accountSettingsHydrated = false;
 
   @override
   void initState() {
@@ -68,6 +75,22 @@ class _ChatListPageState extends State<ChatListPage> {
   void _onControllerChanged() {
     if (!mounted) {
       return;
+    }
+    final accountSettings = _controller.accountSettings;
+    if (!_accountSettingsHydrated && accountSettings.isNotEmpty) {
+      _notificationsEnabled =
+          accountSettings['notifications_enabled'] as bool? ?? true;
+      _notificationPreviewsEnabled =
+          accountSettings['notification_previews'] as bool? ?? true;
+      _readReceiptsEnabled =
+          accountSettings['read_receipts_enabled'] as bool? ?? true;
+      _typingIndicatorsEnabled =
+          accountSettings['typing_indicators_enabled'] as bool? ?? true;
+      _lastSeenVisibility =
+          accountSettings['last_seen_visibility'] as String? ?? 'contacts';
+      _onlineVisibility =
+          accountSettings['online_visibility'] as String? ?? 'contacts';
+      _accountSettingsHydrated = true;
     }
     final chatQuery = _controller.chatState.preferences.searchQuery;
     if (_chatSearchController.text != chatQuery) {
@@ -673,7 +696,7 @@ class _ChatListPageState extends State<ChatListPage> {
                   ),
                   RefreshIndicator(
                     onRefresh: _refresh,
-                    child: _buildSettingsTab(settingsState),
+                    child: _buildSettingsOverview(settingsState),
                   ),
                 ],
               ),
@@ -791,6 +814,8 @@ class _ChatListPageState extends State<ChatListPage> {
     );
   }
 
+  // Legacy all-in-one layout kept temporarily as a migration reference.
+  // ignore: unused_element
   Widget _buildSettingsTab(SettingsViewState state) {
     final spacing = context.appSpacing;
     final theme = Theme.of(context);
@@ -1142,6 +1167,536 @@ class _ChatListPageState extends State<ChatListPage> {
         ),
       ],
     );
+  }
+
+  Widget _buildSettingsOverview(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    return ListView(
+      padding: EdgeInsets.all(spacing.lg),
+      children: [
+        const AppSectionHeader(
+          title: 'Settings',
+          subtitle: 'Choose a section to manage this account.',
+        ),
+        SizedBox(height: spacing.md),
+        _settingsSection(
+          'Account',
+          'Profile, workspace and session',
+          Icons.person_outline_rounded,
+          _buildAccountSettings,
+        ),
+        _settingsSection(
+          'Security',
+          'Trust, keys and decrypt health',
+          Icons.shield_outlined,
+          _buildSecuritySettings,
+        ),
+        _settingsSection(
+          'Devices',
+          'Registered devices and revoke',
+          Icons.devices_outlined,
+          _buildDevicesSettings,
+        ),
+        _settingsSection(
+          'Backup & Recovery',
+          'Restore and portable encrypted backups',
+          Icons.backup_outlined,
+          _buildBackupSettings,
+        ),
+        _settingsSection(
+          'Notifications & Privacy',
+          'Alerts, typing and presence',
+          Icons.notifications_outlined,
+          _buildNotificationsSettings,
+        ),
+        _settingsSection(
+          'Appearance & Chats',
+          'Theme, drafts and inbox layout',
+          Icons.palette_outlined,
+          _buildAppearanceSettings,
+        ),
+        _settingsSection(
+          'About & Support',
+          'Version and support details',
+          Icons.info_outline_rounded,
+          _buildAboutSettings,
+        ),
+      ],
+    );
+  }
+
+  Widget _settingsSection(
+    String title,
+    String subtitle,
+    IconData icon,
+    Widget Function(SettingsViewState) builder,
+  ) {
+    final spacing = context.appSpacing;
+    return Padding(
+      padding: EdgeInsets.only(bottom: spacing.sm),
+      child: AppSurfaceCard(
+        child: ListTile(
+          contentPadding: EdgeInsets.symmetric(horizontal: spacing.md),
+          leading: Icon(icon, color: context.appColors.primary),
+          title: Text(title),
+          subtitle: Text(subtitle),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => _SettingsPage(
+                title: title,
+                child: ListenableBuilder(
+                  listenable: _controller,
+                  builder: (_, _) => builder(_controller.settingsState),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _settingsList(List<Widget> children) => ListView(
+    padding: EdgeInsets.all(context.appSpacing.lg),
+    children: children,
+  );
+
+  Widget _buildAccountSettings(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    final session = state.sessionUser;
+    return _settingsList([
+      AppSurfaceCard(
+        backgroundColor: context.appColors.primarySoft,
+        child: Column(
+          children: [
+            AppAvatar(label: session.displayName, radius: 38),
+            SizedBox(height: spacing.md),
+            Text(
+              session.displayName,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            Text(
+              session.username,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: context.appColors.textMuted,
+              ),
+            ),
+          ],
+        ),
+      ),
+      SizedBox(height: spacing.lg),
+      const AppSectionHeader(title: 'Workspace'),
+      SizedBox(height: spacing.sm),
+      AppSurfaceCard(
+        child: Column(
+          children: [
+            _buildInfoRow('Current', state.currentWorkspace?.name ?? 'None'),
+            for (final organization in session.organizations)
+              for (final workspace in organization.workspaces)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    workspace.id == session.activeWorkspaceId
+                        ? Icons.check_circle_rounded
+                        : Icons.apartment_outlined,
+                  ),
+                  title: Text(workspace.name),
+                  subtitle: Text(organization.name),
+                  onTap: workspace.id == session.activeWorkspaceId
+                      ? null
+                      : () => _switchWorkspace(workspace.id),
+                ),
+          ],
+        ),
+      ),
+      SizedBox(height: spacing.lg),
+      AppSurfaceCard(
+        child: Column(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.logout_rounded),
+              title: const Text('Log out'),
+              subtitle: const Text('Keep this device registered.'),
+              onTap: () => _logout(forgetDevice: false),
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.delete_outline_rounded,
+                color: context.appColors.danger,
+              ),
+              title: const Text('Forget this device'),
+              subtitle: const Text(
+                'Remove this local session and local history.',
+              ),
+              onTap: () => _logout(forgetDevice: true),
+            ),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildSecuritySettings(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    return _settingsList([
+      const AppSectionHeader(
+        title: 'Security Center',
+        subtitle: 'Trust and historical decrypt readiness.',
+      ),
+      SizedBox(height: spacing.sm),
+      AppSurfaceCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: spacing.sm,
+              runSpacing: spacing.sm,
+              children: [
+                AppBadge(
+                  label: '${state.security.verifiedPeersCount} verified',
+                  tone: AppStatusTone.success,
+                ),
+                AppBadge(
+                  label: '${state.security.needsAttentionCount} need attention',
+                  tone: AppStatusTone.warning,
+                ),
+                AppBadge(
+                  label: '${state.security.notReadyCount} not ready',
+                  tone: AppStatusTone.danger,
+                ),
+              ],
+            ),
+            SizedBox(height: spacing.md),
+            AppStatusBanner(
+              message: state.security.hasHistoricalDecryptCapability
+                  ? 'Historical decrypt ready. ${state.security.availableHistoricalKeysets} keysets available.'
+                  : 'Historical decrypt is limited. Restore a backup for older messages.',
+              tone: state.security.hasHistoricalDecryptCapability
+                  ? AppStatusTone.success
+                  : AppStatusTone.warning,
+            ),
+            SizedBox(height: spacing.sm),
+            AppStatusBanner(
+              message: state.security.isCurrentDeviceReady
+                  ? 'This device is ready for secure messaging.'
+                  : 'This device needs key setup.',
+              tone: state.security.isCurrentDeviceReady
+                  ? AppStatusTone.success
+                  : AppStatusTone.warning,
+            ),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildDevicesSettings(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    return _settingsList([
+      const AppSectionHeader(
+        title: 'Devices & Sessions',
+        subtitle: 'Revoke only devices you do not recognize.',
+      ),
+      SizedBox(height: spacing.sm),
+      for (final device in state.devices)
+        Padding(
+          padding: EdgeInsets.only(bottom: spacing.sm),
+          child: AppSurfaceCard(
+            child: ListTile(
+              leading: Icon(
+                device.deviceId == state.sessionUser.deviceId
+                    ? Icons.phone_android_rounded
+                    : Icons.devices_outlined,
+              ),
+              title: Text(
+                device.deviceName.isEmpty ? device.deviceId : device.deviceName,
+              ),
+              subtitle: Text(
+                '${device.platform.isEmpty ? 'Unknown platform' : device.platform} • ${device.status}',
+              ),
+              trailing: device.deviceId == state.sessionUser.deviceId
+                  ? const AppBadge(
+                      label: 'This device',
+                      tone: AppStatusTone.info,
+                    )
+                  : IconButton(
+                      tooltip: 'Revoke device',
+                      icon: Icon(
+                        Icons.remove_circle_outline_rounded,
+                        color: context.appColors.danger,
+                      ),
+                      onPressed: () => _confirmDeviceRevoke(device),
+                    ),
+            ),
+          ),
+        ),
+      if (state.devices.isEmpty)
+        _buildEmptyCard('No registered devices found.'),
+    ]);
+  }
+
+  Widget _buildBackupSettings(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    return _settingsList([
+      const AppSectionHeader(
+        title: 'Backup & Recovery',
+        subtitle: 'Recover encrypted history after reinstall or device switch.',
+      ),
+      SizedBox(height: spacing.sm),
+      if (state.backup.statusMessage != null)
+        AppStatusBanner(
+          message: state.backup.statusMessage!,
+          tone: _statusTone(state.backup.statusTone),
+        ),
+      AppSurfaceCard(
+        child: Column(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.restore_rounded),
+              title: const Text('Restore encrypted history'),
+              subtitle: const Text(
+                'Import the account recovery manifest after approval.',
+              ),
+              onTap: _restoreEnterpriseRecovery,
+            ),
+            ListTile(
+              leading: const Icon(Icons.verified_user_outlined),
+              title: const Text('Recovery approvals'),
+              subtitle: const Text('Review requests from your other devices.'),
+              onTap: _showPendingRecoveryApprovals,
+            ),
+            ListTile(
+              leading: const Icon(Icons.upload_file_outlined),
+              title: const Text('Export encrypted backup'),
+              onTap: _showExportBackupSheet,
+            ),
+            ListTile(
+              leading: const Icon(Icons.download_for_offline_outlined),
+              title: const Text('Import encrypted backup'),
+              onTap: _showImportBackupSheet,
+            ),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildNotificationsSettings(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    return _settingsList([
+      const AppSectionHeader(
+        title: 'Notifications',
+        subtitle: 'These preferences synchronize with your account.',
+      ),
+      SizedBox(height: spacing.sm),
+      AppSurfaceCard(
+        child: Column(
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _notificationsEnabled,
+              title: const Text('Notifications'),
+              onChanged: (value) =>
+                  _setAccountBool('notifications_enabled', value),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _notificationPreviewsEnabled,
+              title: const Text('Notification previews'),
+              subtitle: const Text('Include message text in alerts.'),
+              onChanged: (value) =>
+                  _setAccountBool('notification_previews', value),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _readReceiptsEnabled,
+              title: const Text('Read receipts'),
+              onChanged: (value) =>
+                  _setAccountBool('read_receipts_enabled', value),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _typingIndicatorsEnabled,
+              title: const Text('Typing indicators'),
+              onChanged: (value) =>
+                  _setAccountBool('typing_indicators_enabled', value),
+            ),
+            _visibilitySetting(
+              'Last seen visibility',
+              _lastSeenVisibility,
+              _setLastSeenVisibility,
+            ),
+            _visibilitySetting(
+              'Online visibility',
+              _onlineVisibility,
+              _setOnlineVisibility,
+            ),
+          ],
+        ),
+      ),
+      SizedBox(height: spacing.lg),
+      const AppSurfaceCard(
+        child: ListTile(
+          leading: Icon(Icons.lock_outline_rounded),
+          title: Text('Message content'),
+          subtitle: Text(
+            'Message content remains end-to-end encrypted and is not readable by the server.',
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _visibilitySetting(
+    String title,
+    String value,
+    ValueChanged<String> onChanged,
+  ) => ListTile(
+    contentPadding: EdgeInsets.zero,
+    title: Text(title),
+    subtitle: DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        value: value,
+        isExpanded: true,
+        items: const [
+          DropdownMenuItem(value: 'everyone', child: Text('Everyone')),
+          DropdownMenuItem(value: 'contacts', child: Text('Contacts')),
+          DropdownMenuItem(value: 'nobody', child: Text('Nobody')),
+        ],
+        onChanged: (next) {
+          if (next != null) onChanged(next);
+        },
+      ),
+    ),
+  );
+
+  Widget _buildAppearanceSettings(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    return _settingsList([
+      const AppSectionHeader(
+        title: 'Appearance & Chats',
+        subtitle: 'Local display and composer preferences.',
+      ),
+      SizedBox(height: spacing.sm),
+      AppSurfaceCard(
+        child: Column(
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: widget.themeController.themeMode == ThemeMode.dark,
+              title: const Text('Dark mode'),
+              onChanged: (value) => widget.themeController.setThemeMode(
+                value ? ThemeMode.dark : ThemeMode.light,
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: state.appPreferences.compactListMode,
+              title: const Text('Compact chat list'),
+              onChanged: (value) => _controller.updateAppPreferences(
+                state.appPreferences.copyWith(compactListMode: value),
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: state.appPreferences.showArchivedByDefault,
+              title: const Text('Show archived chats'),
+              onChanged: (value) => _controller.updateAppPreferences(
+                state.appPreferences.copyWith(showArchivedByDefault: value),
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: state.appPreferences.keepDrafts,
+              title: const Text('Keep drafts'),
+              onChanged: (value) => _controller.updateAppPreferences(
+                state.appPreferences.copyWith(keepDrafts: value),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildAboutSettings(SettingsViewState state) => _settingsList([
+    const AppSectionHeader(title: 'About & Support'),
+    SizedBox(height: context.appSpacing.sm),
+    AppSurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildInfoRow('Version', state.appVersion),
+          _buildInfoRow('Support', state.supportEmail),
+          _buildInfoRow('API', state.apiBaseUrl),
+        ],
+      ),
+    ),
+  ]);
+
+  Future<void> _restoreEnterpriseRecovery() async {
+    try {
+      await _controller.restoreEnterpriseRecovery();
+    } catch (error) {
+      if (mounted) _showMessage(error.toString(), tone: AppStatusTone.danger);
+    }
+  }
+
+  void _setAccountBool(String key, bool value) {
+    setState(() {
+      switch (key) {
+        case 'notifications_enabled':
+          _notificationsEnabled = value;
+        case 'notification_previews':
+          _notificationPreviewsEnabled = value;
+        case 'read_receipts_enabled':
+          _readReceiptsEnabled = value;
+        case 'typing_indicators_enabled':
+          _typingIndicatorsEnabled = value;
+      }
+    });
+    _controller.updateAccountSettings({key: value});
+  }
+
+  void _setLastSeenVisibility(String value) {
+    setState(() => _lastSeenVisibility = value);
+    _controller.updateAccountSettings({'last_seen_visibility': value});
+  }
+
+  void _setOnlineVisibility(String value) {
+    setState(() => _onlineVisibility = value);
+    _controller.updateAccountSettings({'online_visibility': value});
+  }
+
+  Future<void> _confirmDeviceRevoke(AppUserDevice device) async {
+    final label = device.deviceName.isEmpty
+        ? device.deviceId
+        : device.deviceName;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Revoke device?'),
+        content: Text('$label will no longer access this account.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Revoke'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _controller.revokeDevice(device.deviceId);
+      if (mounted) _showMessage('Device revoked.', tone: AppStatusTone.success);
+    } catch (error) {
+      if (mounted) _showMessage(error.toString(), tone: AppStatusTone.danger);
+    }
   }
 
   Widget _buildChatFilterSelector(ChatListFilter filter) {
@@ -1627,6 +2182,21 @@ class _ContactListRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SettingsPage extends StatelessWidget {
+  const _SettingsPage({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppScaffold(
+      appBar: AppBar(title: Text(title)),
+      body: child,
     );
   }
 }
