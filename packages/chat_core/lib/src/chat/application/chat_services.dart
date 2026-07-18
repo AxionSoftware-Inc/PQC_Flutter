@@ -609,7 +609,7 @@ class MessageSyncService {
 }
 
 class OutgoingMessageService {
-  const OutgoingMessageService({
+  OutgoingMessageService({
     required this.remoteDataSource,
     required this.cryptoService,
     required this.localStore,
@@ -624,6 +624,10 @@ class OutgoingMessageService {
   final OutboxStore outboxStore;
   final AttachmentTransferFacade? attachmentTransferFacade;
   final Future<void> Function()? onCryptoStateChanged;
+  CryptoProtocolCapabilities? _cachedCapabilities;
+  DateTime? _capabilitiesFetchedAt;
+
+  static const _capabilitiesCacheLifetime = Duration(minutes: 5);
 
   Future<ChatMessage> sendMessage({
     required SendMessageCommand command,
@@ -847,7 +851,7 @@ class OutgoingMessageService {
 
     final capabilities = await runStage(
       SendPipelineStage.capabilityCheck,
-      remoteDataSource.fetchCryptoProtocolCapabilities,
+      _fetchCryptoProtocolCapabilities,
       successDetail: 'Server accepts the selected crypto protocol.',
     );
     try {
@@ -996,6 +1000,22 @@ class OutgoingMessageService {
       'All send checks completed successfully.',
     );
     return decoded;
+  }
+
+  Future<CryptoProtocolCapabilities> _fetchCryptoProtocolCapabilities() async {
+    final cached = _cachedCapabilities;
+    final fetchedAt = _capabilitiesFetchedAt;
+    if (cached != null &&
+        fetchedAt != null &&
+        DateTime.now().toUtc().difference(fetchedAt) <
+            _capabilitiesCacheLifetime) {
+      return cached;
+    }
+    final capabilities = await remoteDataSource
+        .fetchCryptoProtocolCapabilities();
+    _cachedCapabilities = capabilities;
+    _capabilitiesFetchedAt = DateTime.now().toUtc();
+    return capabilities;
   }
 
   Future<String> _encryptPayloadWithUserRefresh({
