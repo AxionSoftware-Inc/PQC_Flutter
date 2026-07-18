@@ -225,19 +225,13 @@ class AppRadii extends ThemeExtension<AppRadii> {
 
 @immutable
 class AppShadows extends ThemeExtension<AppShadows> {
-  const AppShadows({
-    required this.card,
-    required this.floating,
-  });
+  const AppShadows({required this.card, required this.floating});
 
   final List<BoxShadow> card;
   final List<BoxShadow> floating;
 
   @override
-  AppShadows copyWith({
-    List<BoxShadow>? card,
-    List<BoxShadow>? floating,
-  }) {
+  AppShadows copyWith({List<BoxShadow>? card, List<BoxShadow>? floating}) {
     return AppShadows(
       card: card ?? this.card,
       floating: floating ?? this.floating,
@@ -255,23 +249,14 @@ class AppShadows extends ThemeExtension<AppShadows> {
 
 @immutable
 class AppDurations extends ThemeExtension<AppDurations> {
-  const AppDurations({
-    required this.fast,
-    required this.normal,
-  });
+  const AppDurations({required this.fast, required this.normal});
 
   final Duration fast;
   final Duration normal;
 
   @override
-  AppDurations copyWith({
-    Duration? fast,
-    Duration? normal,
-  }) {
-    return AppDurations(
-      fast: fast ?? this.fast,
-      normal: normal ?? this.normal,
-    );
+  AppDurations copyWith({Duration? fast, Duration? normal}) {
+    return AppDurations(fast: fast ?? this.fast, normal: normal ?? this.normal);
   }
 
   @override
@@ -297,28 +282,27 @@ class AppThemeFactory {
     final accent = brand?.policy == BrandAccentPolicy.workspaceOverride
         ? brand!.accentColor
         : skin.primaryColor;
-    final scheme = ColorScheme.fromSeed(
-      seedColor: accent,
-      brightness: brightness,
-    ).copyWith(
-      primary: accent,
-      secondary: skin.secondaryColor,
-      surface: brightness == Brightness.dark
-          ? _mix(skin.surfaceColor, Colors.black, 0.82)
-          : skin.surfaceColor,
-    );
+    final scheme =
+        ColorScheme.fromSeed(
+          seedColor: accent,
+          brightness: brightness,
+        ).copyWith(
+          primary: accent,
+          secondary: skin.secondaryColor,
+          surface: brightness == Brightness.dark
+              ? _mix(skin.surfaceColor, Colors.black, 0.82)
+              : skin.surfaceColor,
+        );
     final isDark = brightness == Brightness.dark;
-    final background = isDark
-        ? _mix(skin.backgroundColor, Colors.black, 0.88)
-        : skin.backgroundColor;
-    final surface = isDark
-        ? _mix(skin.surfaceColor, Colors.black, 0.78)
-        : skin.surfaceColor;
+    final background = isDark ? const Color(0xFF050609) : skin.backgroundColor;
+    final surface = isDark ? const Color(0xFF0B0D12) : skin.surfaceColor;
     final surfaceMuted = isDark
-        ? _mix(skin.surfaceMutedColor, Colors.black, 0.72)
+        ? const Color(0xFF12151C)
         : skin.surfaceMutedColor;
-    final border = isDark ? const Color(0xFF303440) : const Color(0xFFE3E6EC);
-    final foreground = isDark ? const Color(0xFFF3F4F6) : const Color(0xFF111827);
+    final border = isDark ? const Color(0xFF20242D) : const Color(0xFFE3E6EC);
+    final foreground = isDark
+        ? const Color(0xFFF3F4F6)
+        : const Color(0xFF111827);
     final colors = AppColors(
       background: background,
       surface: surface,
@@ -348,23 +332,10 @@ class AppThemeFactory {
       info: accent,
       infoSoft: isDark ? _mix(accent, Colors.black, 0.7) : _softTone(accent),
       chatMine: accent,
-      chatPeer: isDark ? const Color(0xFF232834) : const Color(0xFFE9EAEE),
+      chatPeer: isDark ? const Color(0xFF141821) : const Color(0xFFE9EAEE),
     );
-    const spacing = AppSpacing(
-      xs: 4,
-      sm: 8,
-      md: 12,
-      lg: 16,
-      xl: 24,
-      xxl: 32,
-    );
-    const radii = AppRadii(
-      sm: 10,
-      md: 16,
-      lg: 22,
-      xl: 28,
-      pill: 999,
-    );
+    const spacing = AppSpacing(xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32);
+    const radii = AppRadii(sm: 10, md: 16, lg: 22, xl: 28, pill: 999);
     final shadows = AppShadows(
       card: [
         BoxShadow(
@@ -388,30 +359,34 @@ class AppThemeFactory {
     final baseTextTheme = isDark
         ? Typography.material2021().white
         : Typography.material2021().black;
-    final textTheme = baseTextTheme.copyWith(
-      headlineSmall: baseTextTheme.headlineSmall?.copyWith(
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.4,
-      ),
-      titleLarge: baseTextTheme.titleLarge?.copyWith(
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.3,
-      ),
-      titleMedium: baseTextTheme.titleMedium?.copyWith(
-        fontWeight: FontWeight.w600,
-      ),
-      bodyLarge: baseTextTheme.bodyLarge?.copyWith(height: 1.45),
-      bodyMedium: baseTextTheme.bodyMedium?.copyWith(height: 1.45),
-      labelLarge: baseTextTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
-      labelMedium: baseTextTheme.labelMedium?.copyWith(
-        color: colors.textMuted,
-        fontWeight: FontWeight.w500,
-      ),
-    ).apply(
-      bodyColor: foreground,
-      displayColor: foreground,
-      fontFamily: skin.fontFamily,
-    );
+    final textTheme = baseTextTheme
+        .copyWith(
+          headlineSmall: baseTextTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.4,
+          ),
+          titleLarge: baseTextTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+          ),
+          titleMedium: baseTextTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+          bodyLarge: baseTextTheme.bodyLarge?.copyWith(height: 1.45),
+          bodyMedium: baseTextTheme.bodyMedium?.copyWith(height: 1.45),
+          labelLarge: baseTextTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+          labelMedium: baseTextTheme.labelMedium?.copyWith(
+            color: colors.textMuted,
+            fontWeight: FontWeight.w500,
+          ),
+        )
+        .apply(
+          bodyColor: foreground,
+          displayColor: foreground,
+          fontFamily: skin.fontFamily,
+        );
 
     return ThemeData(
       useMaterial3: true,
@@ -492,8 +467,10 @@ class AppThemeFactory {
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: colors.surface.withValues(alpha: 0.94),
-        indicatorColor: _mix(accent, Colors.white, 0.78),
+        backgroundColor: colors.surface.withValues(alpha: isDark ? 0.98 : 0.94),
+        indicatorColor: isDark
+            ? _mix(accent, Colors.black, 0.42)
+            : _mix(accent, Colors.white, 0.78),
         surfaceTintColor: Colors.transparent,
         height: 72,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
@@ -506,10 +483,7 @@ class AppThemeFactory {
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final style = textTheme.labelMedium ?? const TextStyle();
           if (states.contains(WidgetState.selected)) {
-            return style.copyWith(
-              color: accent,
-              fontWeight: FontWeight.w700,
-            );
+            return style.copyWith(color: accent, fontWeight: FontWeight.w700);
           }
           return style;
         }),
@@ -526,13 +500,7 @@ class AppThemeFactory {
         ),
         labelStyle: textTheme.bodySmall,
       ),
-      extensions: [
-        colors,
-        spacing,
-        radii,
-        shadows,
-        durations,
-      ],
+      extensions: [colors, spacing, radii, shadows, durations],
     );
   }
 
