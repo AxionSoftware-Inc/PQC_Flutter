@@ -190,47 +190,44 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
-    if ((text.isEmpty && _selectedAttachments.isEmpty) ||
-        _controller.isSending) {
+    final selectedAttachments = _selectedAttachments;
+    if (text.isEmpty && selectedAttachments.isEmpty) {
       return;
     }
 
+    final sendFuture = _controller.sendMessage(
+      SendMessageCommand(
+        conversation: widget.conversation,
+        currentUserId: widget.currentUserId,
+        text: text,
+        messageType: selectedAttachments.isEmpty
+            ? 'text'
+            : selectedAttachments.any((item) => item.isImage)
+            ? 'image'
+            : 'file',
+        attachments: selectedAttachments
+            .map(
+              (item) => PendingAttachmentUpload(
+                filename: item.name,
+                bytes: item.bytes,
+                filePath: item.filePath,
+                sizeBytes: item.sizeBytes,
+                mimeType: item.mimeType,
+              ),
+            )
+            .toList(),
+        onProgress: _handleSendPipelineUpdate,
+      ),
+    );
+    // The message is already durable in the local outbox. Clear only this
+    // composer snapshot immediately so the user can continue typing while
+    // ordered delivery proceeds in the background.
+    _messageController.clear();
+    setState(() {
+      _selectedAttachments = const [];
+    });
     try {
-      await _controller.sendMessage(
-        SendMessageCommand(
-          conversation: widget.conversation,
-          currentUserId: widget.currentUserId,
-          text: text,
-          messageType: _selectedAttachments.isEmpty
-              ? 'text'
-              : _selectedAttachments.any((item) => item.isImage)
-              ? 'image'
-              : 'file',
-          attachments: _selectedAttachments
-              .map(
-                (item) => PendingAttachmentUpload(
-                  filename: item.name,
-                  bytes: item.bytes,
-                  filePath: item.filePath,
-                  sizeBytes: item.sizeBytes,
-                  mimeType: item.mimeType,
-                ),
-              )
-              .toList(),
-          onProgress: _handleSendPipelineUpdate,
-        ),
-      );
-      _messageController.clear();
-      await _database.upsertDraft(
-        DraftsTableCompanion(
-          conversationId: drift.Value(widget.conversation.id),
-          draftText: const drift.Value(''),
-          updatedAt: drift.Value(DateTime.now().toUtc()),
-        ),
-      );
-      setState(() {
-        _selectedAttachments = const [];
-      });
+      await sendFuture;
     } catch (error) {
       if (error is UnauthorizedApiException) {
         await widget.onUnauthorized();
@@ -583,17 +580,13 @@ class _ChatPageState extends State<ChatPage> {
                           children: [
                             ChatComposerActionButton(
                               icon: Icons.add_rounded,
-                              onPressed: _controller.isSending
-                                  ? null
-                                  : _pickAttachments,
+                              onPressed: _pickAttachments,
                             ),
                             ChatComposerActionButton(
                               icon: _isRecordingVoice
                                   ? Icons.stop_rounded
                                   : Icons.mic_none_rounded,
-                              onPressed: _controller.isSending
-                                  ? null
-                                  : _toggleVoiceRecording,
+                              onPressed: _toggleVoiceRecording,
                             ),
                             Expanded(
                               child: Theme(
@@ -623,10 +616,8 @@ class _ChatPageState extends State<ChatPage> {
                             ),
                             SizedBox(width: spacing.xs),
                             ChatComposerSendButton(
-                              isSending: _controller.isSending,
-                              onPressed: _controller.isSending
-                                  ? null
-                                  : _sendMessage,
+                              isSending: false,
+                              onPressed: _sendMessage,
                             ),
                           ],
                         ),

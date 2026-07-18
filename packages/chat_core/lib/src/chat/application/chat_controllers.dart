@@ -72,9 +72,10 @@ class ChatConversationController extends ChangeNotifier {
 
   List<ChatMessage> _messages = const [];
   bool _isLoading = true;
-  bool _isSending = false;
   bool _isLoadingOlder = false;
   bool _hasOlderMessages = true;
+  int _queuedSendCount = 0;
+  Future<void> _sendTail = Future.value();
   String? _error;
   ConversationTrustState? _trust;
   Timer? _pollingTimer;
@@ -87,7 +88,7 @@ class ChatConversationController extends ChangeNotifier {
 
   List<ChatMessage> get messages => _messages;
   bool get isLoading => _isLoading;
-  bool get isSending => _isSending;
+  bool get isSending => _queuedSendCount > 0;
   bool get isLoadingOlder => _isLoadingOlder;
   bool get hasOlderMessages => _hasOlderMessages;
   String? get error => _error;
@@ -228,16 +229,22 @@ class ChatConversationController extends ChangeNotifier {
     return 'transient:${message.senderId}:${message.createdAt.microsecondsSinceEpoch}';
   }
 
-  Future<void> sendMessage(SendMessageCommand command) async {
-    _isSending = true;
+  Future<void> sendMessage(SendMessageCommand command) {
+    _queuedSendCount++;
     notifyListeners();
-    try {
-      await chatFacade.sendMessage(command);
-      await refresh(showLoader: false);
-    } finally {
-      _isSending = false;
+    final operation = _sendTail.then((_) => _sendMessageInOrder(command));
+    // A failed message remains in the durable outbox, but it must not block
+    // the next message the user already queued in the composer.
+    _sendTail = operation.catchError((_) {});
+    return operation.whenComplete(() {
+      _queuedSendCount--;
       notifyListeners();
-    }
+    });
+  }
+
+  Future<void> _sendMessageInOrder(SendMessageCommand command) async {
+    await chatFacade.sendMessage(command);
+    await refresh(showLoader: false);
   }
 
   Future<void> retryMessage(String clientMessageId) async {
