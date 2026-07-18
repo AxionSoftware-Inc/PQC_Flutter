@@ -93,15 +93,19 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
   }) async {
     try {
       final current = await keyMaterialRegistry.ensureCurrentKeysetRegistered();
-      final identity = await identityService.getIdentity();
       final candidates = <dynamic>[
         current,
         ...await keyMaterialRegistry.readHistoricalDecryptKeysets(),
       ];
       Object? lastError;
       for (final keyset in candidates) {
-        if (keyset.deviceId != identity.id) continue;
         try {
+          // A reinstall creates a new installation id.  Historical keysets
+          // belong to the prior installation, so their recipient wrap must be
+          // resolved with *their* device id, not the newly-created one.  The
+          // envelope still requires both the old device id and exact keyset
+          // id, therefore trying retained keysets cannot decrypt a payload
+          // that was not addressed to this account's retained key material.
           return await _codec.decrypt(
             context: V3CodecContext(
               conversationId: context.conversation.id,
@@ -110,7 +114,7 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
               senderDeviceId: '',
               senderKeysetId: '',
               signingPublicKey: '',
-              localDeviceId: identity.id,
+              localDeviceId: keyset.deviceId,
               localKeysetId: keyset.keysetId,
               localSecretKey: keyset.pqcSecretKey,
             ),
