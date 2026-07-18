@@ -242,6 +242,7 @@ class ChatHubController extends ChangeNotifier {
   List<AppUser> _users = const [];
   List<Conversation> _conversations = const [];
   Map<int, UserKeyTrust> _trustByUserId = const {};
+  Map<String, dynamic> _accountSettings = const {};
   List<ConversationListItemState> _conversationItems = const [];
   List<ContactsSectionState> _contactSections = const [];
   String? _recoveryApprovalChallenge;
@@ -257,6 +258,8 @@ class ChatHubController extends ChangeNotifier {
     selectedFilter: _contactsFilter,
     sections: _contactSections,
   );
+  Map<String, dynamic> get accountSettings =>
+      Map.unmodifiable(Map<String, dynamic>.of(_accountSettings));
   SettingsViewState get settingsState {
     final sessionUser = sessionUserProvider();
     final currentUser = _users
@@ -329,6 +332,14 @@ class ChatHubController extends ChangeNotifier {
       accountId: sessionUser.accountId,
       workspaceId: sessionUser.activeWorkspaceId,
     );
+    try {
+      final response = await apiClient.get('/users/me/settings');
+      if (response is Map) {
+        _accountSettings = Map<String, dynamic>.from(response);
+      }
+    } catch (_) {
+      // Account settings must not block the inbox while offline.
+    }
     final state = await chatFacade.loadChatList(currentUserId: currentUserId);
     _users = state.users;
     _conversations = state.conversations;
@@ -440,6 +451,19 @@ class ChatHubController extends ChangeNotifier {
     await _preferencesStore.writeAppPreferences(state);
     _conversationItems = await _buildConversationItems(sessionUserProvider());
     notifyListeners();
+  }
+
+  Future<void> updateAccountSettings(Map<String, dynamic> values) async {
+    final response = await apiClient.patch('/users/me/settings', values);
+    if (response is Map) {
+      _accountSettings = Map<String, dynamic>.from(response);
+      notifyListeners();
+    }
+  }
+
+  Future<void> revokeDevice(String deviceId) async {
+    await apiClient.post('/users/me/devices/$deviceId/revoke', const {});
+    await refresh();
   }
 
   Future<String> exportBackup(String recoveryPassphrase) async {
