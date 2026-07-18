@@ -633,11 +633,15 @@ class _ChatPageState extends State<ChatPage> {
                         isMine ? context.appRadii.sm : context.appRadii.md,
                       ),
                     ),
-                    border: Border.all(
-                      color: isMine
-                          ? colors.primary.withValues(alpha: 0.16)
-                          : colors.border,
-                    ),
+                    border:
+                        message.attachments.isNotEmpty &&
+                            message.body.trim().isEmpty
+                        ? Border.all(color: Colors.transparent)
+                        : Border.all(
+                            color: isMine
+                                ? colors.primary.withValues(alpha: 0.16)
+                                : colors.border,
+                          ),
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -753,58 +757,88 @@ class _ChatPageState extends State<ChatPage> {
         transfer != null &&
         transfer.status != AttachmentTransferStatus.completed &&
         transfer.status != AttachmentTransferStatus.failed;
-    return ActionChip(
-      avatar: Icon(
-        attachment.mimeType.startsWith('image/')
-            ? Icons.image_outlined
-            : Icons.insert_drive_file_outlined,
-        size: 18,
-      ),
-      label: Text(
-        transfer == null
-            ? '${attachment.filename} (${_formatBytes(attachment.sizeBytes)})'
-            : '${attachment.filename} • ${_transferStatusLabel(transfer)}',
-      ),
-      onPressed: isBusy
-          ? () async {
-              await _controller.pauseTransfer(transfer.localId);
-            }
-          : () async {
-              try {
-                final path = await _controller.downloadAttachment(attachment);
-                if (!mounted) {
-                  return;
-                }
-                if (kIsWeb) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Attachment downloaded to $path')),
-                  );
-                  return;
-                }
-                final result = await OpenFilex.open(path);
-                if (!mounted) {
-                  return;
-                }
-                if (result.type != ResultType.done) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        result.message.isEmpty
-                            ? 'Downloaded, but no app can open this file.'
-                            : result.message,
-                      ),
-                    ),
-                  );
-                }
-              } catch (error) {
-                if (!mounted) {
-                  return;
-                }
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(error.toString())));
+    final isImage = attachment.mimeType.startsWith('image/');
+    final label = transfer == null
+        ? '${attachment.filename} (${_formatBytes(attachment.sizeBytes)})'
+        : '${attachment.filename} • ${_transferStatusLabel(transfer)}';
+    final onPressed = isBusy
+        ? () async {
+            await _controller.pauseTransfer(transfer.localId);
+          }
+        : () async {
+            try {
+              final path = await _controller.downloadAttachment(attachment);
+              if (!mounted) {
+                return;
               }
-            },
+              if (kIsWeb) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Attachment downloaded to $path')),
+                );
+                return;
+              }
+              final result = await OpenFilex.open(path);
+              if (!mounted) {
+                return;
+              }
+              if (result.type != ResultType.done) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      result.message.isEmpty
+                          ? 'Downloaded, but no app can open this file.'
+                          : result.message,
+                    ),
+                  ),
+                );
+              }
+            } catch (error) {
+              if (!mounted) {
+                return;
+              }
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(error.toString())));
+            }
+          };
+    if (isImage) {
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(context.appRadii.sm),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 220),
+            padding: EdgeInsets.symmetric(
+              horizontal: context.appSpacing.sm,
+              vertical: context.appSpacing.xs,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(context.appRadii.sm),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.image_rounded, size: 18),
+                SizedBox(width: context.appSpacing.xs),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return ActionChip(
+      avatar: const Icon(Icons.insert_drive_file_outlined, size: 18),
+      label: Text(label),
+      onPressed: onPressed,
     );
   }
 
@@ -1124,7 +1158,7 @@ class _ComposerSendButton extends StatelessWidget {
               height: 14,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
-          : const Icon(Icons.arrow_upward_rounded, size: 18),
+          : const Icon(Icons.send_rounded, size: 18),
     );
   }
 }
