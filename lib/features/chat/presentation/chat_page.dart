@@ -21,6 +21,7 @@ import '../application/chat_facade.dart';
 import '../application/chat_models.dart';
 import '../application/chat_services.dart';
 import '../../transfers/application/attachment_transfer.dart';
+import 'chat_local_image.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -55,6 +56,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _keepDrafts = true;
   bool _showSecurityDetails = false;
   bool _showTransferDetails = false;
+  final Map<int, String> _downloadedAttachmentPaths = <int, String>{};
   int _lastMessageCount = 0;
   bool _hasRenderedMessages = false;
 
@@ -127,6 +129,12 @@ class _ChatPageState extends State<ChatPage> {
         (messageCount > _lastMessageCount && isNearBottom);
     _lastMessageCount = messageCount;
     _hasRenderedMessages = true;
+    for (final transfer in _controller.attachmentTransfers) {
+      if (transfer.attachmentId != null && transfer.localPath != null) {
+        _downloadedAttachmentPaths[transfer.attachmentId!] =
+            transfer.localPath!;
+      }
+    }
     setState(() {});
     if (shouldJump) {
       _jumpToBottom();
@@ -758,6 +766,7 @@ class _ChatPageState extends State<ChatPage> {
         transfer.status != AttachmentTransferStatus.completed &&
         transfer.status != AttachmentTransferStatus.failed;
     final isImage = attachment.mimeType.startsWith('image/');
+    final localPath = _downloadedAttachmentPaths[attachment.id];
     final label = transfer == null
         ? '${attachment.filename} (${_formatBytes(attachment.sizeBytes)})'
         : '${attachment.filename} • ${_transferStatusLabel(transfer)}';
@@ -769,6 +778,12 @@ class _ChatPageState extends State<ChatPage> {
             try {
               final path = await _controller.downloadAttachment(attachment);
               if (!mounted) {
+                return;
+              }
+              if (isImage) {
+                _downloadedAttachmentPaths[attachment.id] = path;
+                if (mounted) setState(() {});
+                await _showImageLightbox(attachment.filename, path);
                 return;
               }
               if (kIsWeb) {
@@ -802,6 +817,19 @@ class _ChatPageState extends State<ChatPage> {
             }
           };
     if (isImage) {
+      if (localPath != null && localPath.isNotEmpty) {
+        return InkWell(
+          onTap: () => _showImageLightbox(attachment.filename, localPath),
+          borderRadius: BorderRadius.circular(context.appRadii.md),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(context.appRadii.md),
+            child: SizedBox(
+              width: 220,
+              child: buildChatLocalImage(context, localPath),
+            ),
+          ),
+        );
+      }
       return Material(
         color: Colors.transparent,
         child: InkWell(
@@ -839,6 +867,43 @@ class _ChatPageState extends State<ChatPage> {
       avatar: const Icon(Icons.insert_drive_file_outlined, size: 18),
       label: Text(label),
       onPressed: onPressed,
+    );
+  }
+
+  Future<void> _showImageLightbox(String title, String path) {
+    return showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.92),
+      builder: (dialogContext) => Dialog.fullscreen(
+        backgroundColor: Colors.transparent,
+        child: Stack(
+          children: [
+            Center(child: buildChatLocalImageViewer(dialogContext, path)),
+            SafeArea(
+              child: Align(
+                alignment: Alignment.topRight,
+                child: IconButton.filledTonal(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  tooltip: 'Close image',
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ),
+            ),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Text(
+                    title,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
