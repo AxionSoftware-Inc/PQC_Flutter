@@ -1436,14 +1436,31 @@ class _ChatListPageState extends State<ChatListPage> {
           subtitle: Text(subtitle),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => _SettingsPage(
-                title: title,
-                child: ListenableBuilder(
-                  listenable: _controller,
-                  builder: (_, _) => builder(_controller.settingsState),
-                ),
-              ),
+            PageRouteBuilder<void>(
+              transitionDuration: const Duration(milliseconds: 220),
+              reverseTransitionDuration: const Duration(milliseconds: 180),
+              pageBuilder: (_, animation, _) {
+                final curve = CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutCubic,
+                );
+                return FadeTransition(
+                  opacity: curve,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0.015, 0.02),
+                      end: Offset.zero,
+                    ).animate(curve),
+                    child: _SettingsPage(
+                      title: title,
+                      child: ListenableBuilder(
+                        listenable: _controller,
+                        builder: (_, _) => builder(_controller.settingsState),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ),
