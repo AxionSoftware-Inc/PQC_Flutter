@@ -135,15 +135,20 @@ class V3MessageCodec {
     required String payload,
   }) async {
     final envelope = V3Envelope.decode(payload);
+    // Sender fields are authenticated envelope data.  A receiving client does
+    // not know them before decoding, so they must be taken from the signed
+    // envelope rather than from the caller's local-only context.  Using empty
+    // local values here made every uncached V3 message fail AES-GCM
+    // authentication after reinstall.
     final effectiveContext = V3CodecContext(
       conversationId: context.conversationId,
       conversationType: context.conversationType,
       messageId: context.messageId.isEmpty
           ? envelope.messageId
           : context.messageId,
-      senderDeviceId: context.senderDeviceId,
-      senderKeysetId: context.senderKeysetId,
-      signingPublicKey: context.signingPublicKey,
+      senderDeviceId: envelope.senderDeviceId,
+      senderKeysetId: envelope.senderKeysetId ?? '',
+      signingPublicKey: envelope.signingPublicKey ?? '',
       localDeviceId: context.localDeviceId,
       localKeysetId: context.localKeysetId,
       localSecretKey: context.localSecretKey,

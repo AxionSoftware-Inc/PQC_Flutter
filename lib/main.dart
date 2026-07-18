@@ -176,8 +176,11 @@ Future<void> main() async {
         return;
       }
       await cryptoCoreFacade.activateAccount('${sessionUser.accountId}');
-      await cryptoCoreFacade.initialize();
+      // Restore retained keysets before creating/registering a fresh
+      // installation keyset.  A reinstall has a different device id, but it
+      // must still be able to decrypt wraps addressed to the prior device.
       await enterpriseRecoverySyncService.restoreIfAvailable();
+      await cryptoCoreFacade.initialize();
       // Finish the account recovery snapshot before the app becomes usable.
       // This closes the uninstall/reinstall race where a newly-created keyset
       // had not reached the server yet.

@@ -24,7 +24,9 @@ class EnterpriseRecoverySyncService {
   String? _lastPublishedPayloadHash;
 
   Future<void> publishInBackground() {
-    return _inFlight ??= _publish().whenComplete(() => _inFlight = null);
+    return _inFlight ??= _publishAndVerify().whenComplete(
+      () => _inFlight = null,
+    );
   }
 
   /// Restores escrowed keysets during login/reinstall without requiring a
@@ -88,6 +90,44 @@ class EnterpriseRecoverySyncService {
         final latest = await apiClient.get('/users/me/crypto-recovery');
         sequence = latest is Map ? latest['sequence'] as int? ?? 0 : 0;
       }
+    }
+  }
+
+  /// A successful PUT only proves that the request reached the server.  The
+  /// send pipeline may report recovery as durable only after a fresh GET has
+  /// proven that the current keyset is present in the authenticated manifest.
+  Future<void> _publishAndVerify() async {
+    await _publish();
+    final current = await cryptoCoreFacade.keyMaterialRegistry
+        .ensureCurrentKeysetRegistered();
+    final response = await apiClient.get('/users/me/crypto-recovery');
+    if (response is! Map || response['available'] != true) {
+      throw StateError('Recovery vault did not retain the current keyset.');
+    }
+    final records = response['records'] as List<dynamic>? ?? const [];
+    final payloads = records
+        .whereType<Map>()
+        .map((record) => record['payload'])
+        .whereType<String>()
+        .where((payload) => payload.isNotEmpty)
+        .toList(growable: false);
+    await RecoveryManifestIntegrity.verify(
+      payloads: payloads,
+      expectedMerkleRoot: response['merkle_root'] as String? ?? '',
+    );
+    final containsCurrent = payloads.any((payload) {
+      try {
+        final document = jsonDecode(payload) as Map<String, dynamic>;
+        final keysets = document['keysets'] as List<dynamic>? ?? const [];
+        return keysets.whereType<Map>().any(
+          (keyset) => keyset['keyset_id'] == current.keysetId,
+        );
+      } catch (_) {
+        return false;
+      }
+    });
+    if (!containsCurrent) {
+      throw StateError('Recovery vault is missing the current keyset.');
     }
   }
 }
