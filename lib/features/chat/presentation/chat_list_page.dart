@@ -48,6 +48,7 @@ class _ChatListPageState extends State<ChatListPage> {
   String _onlineVisibility = 'contacts';
   bool _accountSettingsHydrated = false;
   final Set<int> _selectedConversationIds = <int>{};
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
@@ -602,6 +603,11 @@ class _ChatListPageState extends State<ChatListPage> {
         title: 'Contacts',
       ),
       const _TabMeta(
+        label: 'Account',
+        icon: Icons.person_outline_rounded,
+        title: 'Account',
+      ),
+      const _TabMeta(
         label: 'Settings',
         icon: Icons.settings_outlined,
         title: 'Settings',
@@ -609,8 +615,15 @@ class _ChatListPageState extends State<ChatListPage> {
     ];
 
     return AppScaffold(
+      scaffoldKey: _scaffoldKey,
+      drawer: _buildNavigationDrawer(settingsState),
       appBar: AppBar(
         toolbarHeight: 68,
+        leading: IconButton(
+          tooltip: 'Menu',
+          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+          icon: const Icon(Icons.menu_rounded),
+        ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.end,
@@ -625,45 +638,6 @@ class _ChatListPageState extends State<ChatListPage> {
             Text(sessionUser.displayName, style: theme.textTheme.labelMedium),
           ],
         ),
-        actions: [
-          if (sessionUser.organizations.isNotEmpty)
-            PopupMenuButton<int>(
-              tooltip: 'Switch workspace',
-              onSelected: _switchWorkspace,
-              itemBuilder: (context) {
-                final items = <PopupMenuEntry<int>>[];
-                for (final organization in sessionUser.organizations) {
-                  items.add(
-                    PopupMenuItem<int>(
-                      enabled: false,
-                      child: Text(organization.name),
-                    ),
-                  );
-                  for (final workspace in organization.workspaces) {
-                    items.add(
-                      PopupMenuItem<int>(
-                        value: workspace.id,
-                        child: Row(
-                          children: [
-                            Expanded(child: Text(workspace.name)),
-                            if (workspace.id == sessionUser.activeWorkspaceId)
-                              const Icon(Icons.check, size: 18),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
-                }
-                return items;
-              },
-              icon: const Icon(Icons.apartment_outlined),
-            ),
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: _refresh,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
       ),
       body: SafeArea(
         child: Column(
@@ -695,6 +669,7 @@ class _ChatListPageState extends State<ChatListPage> {
                     onRefresh: _refresh,
                     child: _buildContactsTab(contactsState),
                   ),
+                  _buildAccountTab(settingsState),
                   RefreshIndicator(
                     onRefresh: _refresh,
                     child: _buildSettingsOverview(settingsState),
@@ -1264,6 +1239,125 @@ class _ChatListPageState extends State<ChatListPage> {
               ),
             ),
           ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNavigationDrawer(SettingsViewState state) {
+    final session = state.sessionUser;
+    return Drawer(
+      child: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(color: context.appColors.primarySoft),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AppAvatar(label: session.displayName, radius: 28),
+                  const Spacer(),
+                  Text(
+                    session.displayName,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  Text(
+                    session.username,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.chat_bubble_outline_rounded),
+              title: const Text('Chats'),
+              onTap: () {
+                _scaffoldKey.currentState?.closeDrawer();
+                setState(() => _selectedTabIndex = 0);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.people_alt_outlined),
+              title: const Text('Contacts'),
+              onTap: () {
+                _scaffoldKey.currentState?.closeDrawer();
+                setState(() => _selectedTabIndex = 1);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_outline_rounded),
+              title: const Text('Account'),
+              onTap: () {
+                _scaffoldKey.currentState?.closeDrawer();
+                setState(() => _selectedTabIndex = 2);
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('Settings'),
+              onTap: () {
+                _scaffoldKey.currentState?.closeDrawer();
+                setState(() => _selectedTabIndex = 3);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded),
+              title: const Text('Log out'),
+              onTap: () async {
+                _scaffoldKey.currentState?.closeDrawer();
+                await _logout(forgetDevice: false);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAccountTab(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    final session = state.sessionUser;
+    return ListView(
+      padding: EdgeInsets.all(spacing.lg),
+      children: [
+        AppSurfaceCard(
+          backgroundColor: context.appColors.primarySoft,
+          child: Column(
+            children: [
+              AppAvatar(label: session.displayName, radius: 42),
+              SizedBox(height: spacing.md),
+              Text(
+                session.displayName,
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              Text(
+                session.username,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: context.appColors.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: spacing.lg),
+        AppSurfaceCard(
+          child: Column(
+            children: [
+              _buildInfoRow(
+                'Workspace',
+                state.currentWorkspace?.name ?? 'None',
+              ),
+              _buildInfoRow('Device', session.deviceId),
+            ],
+          ),
+        ),
+        SizedBox(height: spacing.lg),
+        AppPrimaryButton(
+          onPressed: () => setState(() => _selectedTabIndex = 3),
+          icon: const Icon(Icons.settings_outlined),
+          label: const Text('Open settings'),
         ),
       ],
     );
