@@ -530,6 +530,9 @@ class _ChatPageState extends State<ChatPage> {
                                       .inMinutes <=
                                   5;
                           return Column(
+                            key: ValueKey(
+                              'message:${message.id}:${message.clientMessageId}',
+                            ),
                             children: [
                               if (showDate)
                                 _buildDateSeparator(message.createdAt),
