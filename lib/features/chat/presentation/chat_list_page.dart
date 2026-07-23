@@ -251,6 +251,7 @@ class _ChatListPageState extends State<ChatListPage> {
     required Conversation conversation,
     required String title,
     String avatarUrl = '',
+    String roleLabel = '',
   }) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -259,6 +260,7 @@ class _ChatListPageState extends State<ChatListPage> {
           conversation: conversation,
           title: title,
           avatarUrl: avatarUrl,
+          roleLabel: roleLabel,
           chatFacade: widget.chatFacade,
           cryptoCoreFacade: widget.cryptoCoreFacade,
           onUnauthorized: widget.sessionController.invalidateSession,
@@ -273,6 +275,7 @@ class _ChatListPageState extends State<ChatListPage> {
       conversation: item.conversation,
       title: item.title,
       avatarUrl: item.avatarUrl,
+      roleLabel: item.roleLabel,
     );
   }
 
@@ -286,6 +289,7 @@ class _ChatListPageState extends State<ChatListPage> {
         conversation: conversation,
         title: user.displayName,
         avatarUrl: user.avatarUrl,
+        roleLabel: user.roleLabel,
       );
     } catch (error) {
       if (error is UnauthorizedApiException) {
@@ -379,6 +383,11 @@ class _ChatListPageState extends State<ChatListPage> {
                     'Contact key verified.',
                     tone: AppStatusTone.success,
                   );
+                }
+              : null,
+          onRoleChanged: item.user.canManageRole
+              ? (role) async {
+                  await _controller.updateContactRole(item.user, role);
                 }
               : null,
         ),
@@ -1299,6 +1308,14 @@ class _ChatListPageState extends State<ChatListPage> {
                     session.username,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
+                  if (state.currentUser?.roleLabel.isNotEmpty == true)
+                    Text(
+                      state.currentUser!.roleLabel,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: context.appColors.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -1387,6 +1404,13 @@ class _ChatListPageState extends State<ChatListPage> {
                   color: context.appColors.textMuted,
                 ),
               ),
+              if (state.currentUser?.roleLabel.isNotEmpty == true) ...[
+                SizedBox(height: spacing.xs),
+                AppBadge(
+                  label: state.currentUser!.roleLabel,
+                  tone: AppStatusTone.info,
+                ),
+              ],
             ],
           ),
         ),
@@ -2694,12 +2718,14 @@ class _ContactDetailPage extends StatelessWidget {
     required this.detail,
     required this.onStartChat,
     required this.onVerify,
+    required this.onRoleChanged,
   });
 
   final ContactListItemState item;
   final ContactDetailState detail;
   final Future<void> Function()? onStartChat;
   final Future<void> Function()? onVerify;
+  final Future<void> Function(String role)? onRoleChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -2728,7 +2754,7 @@ class _ContactDetailPage extends StatelessWidget {
                       ),
                       SizedBox(height: spacing.xs),
                       Text(
-                        item.user.username,
+                        '${item.user.roleLabel} • ${item.user.username}',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: context.appColors.textMuted,
                         ),
@@ -2737,6 +2763,24 @@ class _ContactDetailPage extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+          SizedBox(height: spacing.lg),
+          AppSurfaceCard(
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                Icons.badge_outlined,
+                color: context.appColors.primary,
+              ),
+              title: const Text('Korporativ roli'),
+              subtitle: Text(item.user.roleLabel),
+              trailing: onRoleChanged == null
+                  ? null
+                  : const Icon(Icons.chevron_right_rounded),
+              onTap: onRoleChanged == null
+                  ? null
+                  : () => _showRolePicker(context),
             ),
           ),
           SizedBox(height: spacing.lg),
@@ -2835,6 +2879,60 @@ class _ContactDetailPage extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _showRolePicker(BuildContext context) async {
+    const roles = <(String, String, IconData)>[
+      ('owner', 'Egasi', Icons.workspace_premium_outlined),
+      ('admin', 'Administrator', Icons.admin_panel_settings_outlined),
+      ('manager', 'Menejer', Icons.supervisor_account_outlined),
+      ('member', 'Xodim', Icons.badge_outlined),
+    ];
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            context.appSpacing.md,
+            0,
+            context.appSpacing.md,
+            context.appSpacing.md,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: EdgeInsets.all(context.appSpacing.sm),
+                child: Text(
+                  'Rolni tanlang',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              for (final role in roles)
+                ListTile(
+                  leading: Icon(role.$3),
+                  title: Text(role.$2),
+                  trailing: item.user.role == role.$1
+                      ? Icon(
+                          Icons.check_circle_rounded,
+                          color: context.appColors.primary,
+                        )
+                      : null,
+                  onTap: () => Navigator.of(sheetContext).pop(role.$1),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (selected != null && selected != item.user.role) {
+      await onRoleChanged!(selected);
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+    }
   }
 
   AppStatusTone _mapTone(UiStatusTone tone) {

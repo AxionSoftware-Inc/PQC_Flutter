@@ -5,6 +5,23 @@ import 'dart:convert';
 final _validMlKem768PublicKey = base64Encode(List<int>.filled(1184, 0));
 
 void main() {
+  test('corporate role metadata is parsed from the user API', () {
+    final user = AppUser.fromJson({
+      'id': 7,
+      'username': 'dilshod',
+      'display_name': 'Dilshod',
+      'avatar_url': '',
+      'role': 'manager',
+      'role_label': 'Menejer',
+      'can_manage_role': true,
+      'devices': <dynamic>[],
+    });
+
+    expect(user.role, 'manager');
+    expect(user.roleLabel, 'Menejer');
+    expect(user.canManageRole, isTrue);
+  });
+
   test(
     'x25519 device key is usable only for valid 32-byte base64 public key',
     () {

@@ -159,6 +159,9 @@ class AppUser {
     required this.displayName,
     required this.devices,
     this.avatarUrl = '',
+    this.role = 'member',
+    this.roleLabel = 'Xodim',
+    this.canManageRole = false,
   });
 
   final int id;
@@ -166,6 +169,9 @@ class AppUser {
   final String displayName;
   final List<AppUserDevice> devices;
   final String avatarUrl;
+  final String role;
+  final String roleLabel;
+  final bool canManageRole;
 
   bool get hasUsableDeviceKey => preferredX25519Device != null;
 
@@ -202,6 +208,9 @@ class AppUser {
       displayName:
           (json['display_name'] as String?) ?? json['username'] as String,
       avatarUrl: json['avatar_url'] as String? ?? '',
+      role: json['role'] as String? ?? 'member',
+      roleLabel: json['role_label'] as String? ?? 'Xodim',
+      canManageRole: json['can_manage_role'] as bool? ?? false,
       devices: (json['devices'] as List<dynamic>? ?? const [])
           .map((item) => AppUserDevice.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -214,6 +223,9 @@ class AppUser {
     String? displayName,
     List<AppUserDevice>? devices,
     String? avatarUrl,
+    String? role,
+    String? roleLabel,
+    bool? canManageRole,
   }) {
     return AppUser(
       id: id ?? this.id,
@@ -221,6 +233,9 @@ class AppUser {
       displayName: displayName ?? this.displayName,
       devices: devices ?? this.devices,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      role: role ?? this.role,
+      roleLabel: roleLabel ?? this.roleLabel,
+      canManageRole: canManageRole ?? this.canManageRole,
     );
   }
 }

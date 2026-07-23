@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from users.models import Invitation, Organization, OrganizationMember, Workspace, WorkspaceMember
+from users.roles import CorporateRole, DEFAULT_CORPORATE_ROLE
 
 
 User = get_user_model()
@@ -177,6 +178,9 @@ class UserSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
     devices = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
+    role = serializers.SerializerMethodField()
+    role_label = serializers.SerializerMethodField()
+    can_manage_role = serializers.SerializerMethodField()
     account_id = serializers.IntegerField(source='id')
 
     class Meta:
@@ -187,6 +191,9 @@ class UserSerializer(serializers.ModelSerializer):
             'username',
             'display_name',
             'avatar_url',
+            'role',
+            'role_label',
+            'can_manage_role',
             'devices',
         ]
 
@@ -199,6 +206,33 @@ class UserSerializer(serializers.ModelSerializer):
     def get_avatar_url(self, obj):
         account = getattr(obj, 'google_account', None)
         return account.avatar_url if account else ''
+
+    def get_role(self, obj):
+        roles = self.context.get('workspace_roles_by_user', {})
+        if obj.id in roles:
+            return roles[obj.id]
+        resolved = getattr(self, '_resolved_roles', {})
+        if obj.id in resolved:
+            return resolved[obj.id]
+        membership = WorkspaceMember.objects.filter(
+            organization_member__user=obj,
+            organization_member__is_active=True,
+            is_active=True,
+        ).order_by('-workspace__is_default', 'workspace_id').first()
+        role = membership.role if membership else DEFAULT_CORPORATE_ROLE
+        resolved[obj.id] = role
+        self._resolved_roles = resolved
+        return role
+
+    def get_role_label(self, obj):
+        value = self.get_role(obj)
+        try:
+            return CorporateRole(value).label
+        except ValueError:
+            return CorporateRole.MEMBER.label
+
+    def get_can_manage_role(self, obj):
+        return obj.id in self.context.get('manageable_role_user_ids', set())
 
     def get_devices(self, obj):
         device_rows = [
@@ -323,6 +357,10 @@ class InvitationAcceptSerializer(serializers.Serializer):
 
 class WorkspaceSwitchSerializer(serializers.Serializer):
     workspace_id = serializers.IntegerField()
+
+
+class WorkspaceRoleUpdateSerializer(serializers.Serializer):
+    role = serializers.ChoiceField(choices=CorporateRole.choices)
 
 
 class WorkspaceMemberSerializer(serializers.ModelSerializer):

@@ -32,6 +32,7 @@ class ConversationListItemState {
     this.trustBadge,
     this.deviceSummary = '',
     this.avatarUrl = '',
+    this.roleLabel = '',
   });
 
   final Conversation conversation;
@@ -47,6 +48,7 @@ class ConversationListItemState {
   final ContactTrustBadgeState? trustBadge;
   final String deviceSummary;
   final String avatarUrl;
+  final String roleLabel;
 
   bool get isUnread => unreadCount > 0 || isManuallyUnread;
   bool get hasDraft => draftPreview != null && draftPreview!.trim().isNotEmpty;
@@ -384,6 +386,11 @@ class ChatHubController extends ChangeNotifier {
       currentUserId: currentUserId,
       conversation: conversation,
     );
+    await refresh();
+  }
+
+  Future<void> updateContactRole(AppUser user, String role) async {
+    await chatFacade.updateUserRole(userId: user.id, role: role);
     await refresh();
   }
 
@@ -747,6 +754,7 @@ class ChatHubController extends ChangeNotifier {
                 ? 'Workspace encrypted'
                 : _deviceSummaryForUser(peerUser),
             avatarUrl: conversation.isGroup ? '' : peerUser?.avatarUrl ?? '',
+            roleLabel: conversation.isGroup ? '' : peerUser?.roleLabel ?? '',
           );
         })
         .where(_matchesConversationFilter)
@@ -805,9 +813,9 @@ class ChatHubController extends ChangeNotifier {
           (user) => ContactListItemState(
             user: user,
             title: user.id == sessionUser.id
-                ? '${user.displayName} (You)'
+                ? '${user.displayName} (Siz)'
                 : user.displayName,
-            subtitle: user.username,
+            subtitle: user.roleLabel,
             sortKey: user.displayName.toLowerCase(),
             badge: _buildContactBadge(user),
             deviceSummary: _deviceSummaryForUser(user),

@@ -109,6 +109,15 @@ class ChatFacade {
     return users;
   }
 
+  Future<AppUser> updateUserRole({
+    required int userId,
+    required String role,
+  }) async {
+    final user = await _remoteDataSource.updateUserRole(userId, role);
+    _usersById[user.id] = user;
+    return user;
+  }
+
   Future<ChatListState> loadChatList({required int currentUserId}) async {
     _activeCurrentUserId = currentUserId;
     final users = await fetchUsers();

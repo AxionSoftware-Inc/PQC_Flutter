@@ -30,6 +30,7 @@ class ChatPage extends StatefulWidget {
     required this.conversation,
     required this.title,
     this.avatarUrl = '',
+    this.roleLabel = '',
     required this.chatFacade,
     required this.cryptoCoreFacade,
     required this.onUnauthorized,
@@ -39,6 +40,7 @@ class ChatPage extends StatefulWidget {
   final Conversation conversation;
   final String title;
   final String avatarUrl;
+  final String roleLabel;
   final ChatFacade chatFacade;
   final CryptoCoreFacade cryptoCoreFacade;
   final Future<void> Function() onUnauthorized;
@@ -325,6 +327,7 @@ class _ChatPageState extends State<ChatPage> {
           _ConversationHeader(
             title: widget.title,
             avatarUrl: widget.avatarUrl,
+            roleLabel: widget.roleLabel,
             conversation: widget.conversation,
             trust: conversationTrust,
             brandLabel: brand?.label,
@@ -534,6 +537,7 @@ class _ChatPageState extends State<ChatPage> {
           child: _ConversationProfilePage(
             title: widget.title,
             avatarUrl: widget.avatarUrl,
+            roleLabel: widget.roleLabel,
             conversation: widget.conversation,
             trust: _controller.trust?.trust,
           ),
@@ -1384,6 +1388,7 @@ class _ConversationHeader extends StatelessWidget {
   const _ConversationHeader({
     required this.title,
     required this.avatarUrl,
+    required this.roleLabel,
     required this.conversation,
     required this.trust,
     required this.brandLabel,
@@ -1395,6 +1400,7 @@ class _ConversationHeader extends StatelessWidget {
 
   final String title;
   final String avatarUrl;
+  final String roleLabel;
   final Conversation conversation;
   final ConversationKeyTrust? trust;
   final String? brandLabel;
@@ -1498,6 +1504,9 @@ class _ConversationHeader extends StatelessWidget {
 
   String _headerSubtitle() {
     final base = conversation.isGroup ? 'Guruh suhbati' : 'Shaxsiy suhbat';
+    if (!conversation.isGroup && roleLabel.isNotEmpty) {
+      return roleLabel;
+    }
     if (brandLabel?.isNotEmpty == true) {
       return '$base • $brandLabel';
     }
@@ -1509,12 +1518,14 @@ class _ConversationProfilePage extends StatelessWidget {
   const _ConversationProfilePage({
     required this.title,
     required this.avatarUrl,
+    required this.roleLabel,
     required this.conversation,
     required this.trust,
   });
 
   final String title;
   final String avatarUrl;
+  final String roleLabel;
   final Conversation conversation;
   final ConversationKeyTrust? trust;
 
@@ -1553,7 +1564,9 @@ class _ConversationProfilePage extends StatelessWidget {
                 Text(title, style: Theme.of(context).textTheme.headlineSmall),
                 SizedBox(height: spacing.xs),
                 Text(
-                  isGroup ? 'Guruh suhbati' : 'Shaxsiy suhbat',
+                  isGroup
+                      ? 'Guruh suhbati'
+                      : (roleLabel.isEmpty ? 'Shaxsiy suhbat' : roleLabel),
                   style: Theme.of(
                     context,
                   ).textTheme.bodyMedium?.copyWith(color: colors.textMuted),

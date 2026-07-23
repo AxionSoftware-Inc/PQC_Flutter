@@ -45,9 +45,11 @@ from users.serializers import (
     OrganizationSerializer,
     UserSerializer,
     WorkspaceMemberSerializer,
+    WorkspaceRoleUpdateSerializer,
     WorkspaceSerializer,
     WorkspaceSwitchSerializer,
 )
+from users.roles import CorporateRole, DEFAULT_CORPORATE_ROLE, role_catalog
 
 
 User = get_user_model()
@@ -138,7 +140,7 @@ def _get_request_active_workspace(request):
 
 
 def _ensure_default_workspace_membership(user):
-    org, _ = _safe_get_or_create(
+    org, org_created = _safe_get_or_create(
         Organization,
         slug='default-org',
         defaults={
@@ -164,7 +166,15 @@ def _ensure_default_workspace_membership(user):
         organization=org,
         user=user,
         defaults={
-            'role': OrganizationMember.Role.OWNER,
+            'role': (
+                CorporateRole.OWNER
+                if org_created
+                or not OrganizationMember.objects.filter(
+                    organization=org,
+                    is_active=True,
+                ).exists()
+                else DEFAULT_CORPORATE_ROLE
+            ),
         },
     )
     if not created and not org_member.is_active:
@@ -833,11 +843,123 @@ class UserListView(APIView):
         workspace, error_response = _get_request_active_workspace(request)
         if error_response is not None:
             return error_response
+        memberships = list(
+            WorkspaceMember.objects.select_related('organization_member').filter(
+                workspace=workspace,
+                organization_member__is_active=True,
+                is_active=True,
+            )
+        )
+        roles_by_user = {
+            membership.organization_member.user_id: membership.role
+            for membership in memberships
+        }
+        current_role = roles_by_user.get(request.user.id)
+        manageable_user_ids = set()
+        if current_role in (CorporateRole.OWNER, CorporateRole.ADMIN):
+            manageable_user_ids = {
+                user_id
+                for user_id, role in roles_by_user.items()
+                if (
+                    current_role == CorporateRole.OWNER
+                    or role != CorporateRole.OWNER
+                )
+            }
         users = User.objects.filter(
             organization_memberships__workspace_memberships__workspace=workspace,
             organization_memberships__workspace_memberships__is_active=True,
         ).distinct().order_by('id')
-        return Response(UserSerializer(users, many=True).data)
+        return Response(
+            UserSerializer(
+                users,
+                many=True,
+                context={
+                    'workspace_roles_by_user': roles_by_user,
+                    'manageable_role_user_ids': manageable_user_ids,
+                },
+            ).data
+        )
+
+
+class RoleCatalogView(APIView):
+    def get(self, request):
+        return Response(role_catalog())
+
+
+class UserRoleView(APIView):
+    @transaction.atomic
+    def put(self, request, user_id):
+        serializer = WorkspaceRoleUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        workspace, error_response = _get_request_active_workspace(request)
+        if error_response is not None:
+            return error_response
+
+        actor = WorkspaceMember.objects.select_for_update().filter(
+            workspace=workspace,
+            organization_member__user=request.user,
+            organization_member__is_active=True,
+            is_active=True,
+        ).first()
+        if actor is None or actor.role not in (
+            CorporateRole.OWNER,
+            CorporateRole.ADMIN,
+        ):
+            return Response(
+                {'detail': 'Rolni o‘zgartirish uchun administrator huquqi kerak.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        target = WorkspaceMember.objects.select_for_update().select_related(
+            'organization_member',
+            'organization_member__user',
+        ).filter(
+            workspace=workspace,
+            organization_member__user_id=user_id,
+            organization_member__is_active=True,
+            is_active=True,
+        ).first()
+        if target is None:
+            return Response(
+                {'detail': 'Foydalanuvchi joriy ish maydonida topilmadi.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        next_role = serializer.validated_data['role']
+        if actor.role == CorporateRole.ADMIN and (
+            target.role == CorporateRole.OWNER
+            or next_role == CorporateRole.OWNER
+        ):
+            return Response(
+                {'detail': 'Faqat tashkilot egasi Egasi rolini boshqara oladi.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if target.role == CorporateRole.OWNER and next_role != CorporateRole.OWNER:
+            owner_count = WorkspaceMember.objects.filter(
+                workspace=workspace,
+                role=CorporateRole.OWNER,
+                organization_member__is_active=True,
+                is_active=True,
+            ).count()
+            if owner_count <= 1:
+                return Response(
+                    {'detail': 'Ish maydonida kamida bitta Egasi qolishi kerak.'},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+        target.role = next_role
+        target.save(update_fields=['role', 'updated_at'])
+        target_user = target.organization_member.user
+        return Response(
+            UserSerializer(
+                target_user,
+                context={
+                    'workspace_roles_by_user': {target_user.id: target.role},
+                    'manageable_role_user_ids': {target_user.id},
+                },
+            ).data
+        )
 
 
 class DeviceSyncView(APIView):

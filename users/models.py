@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.db import models
 
+from users.roles import CorporateRole, DEFAULT_CORPORATE_ROLE
+
 
 class Organization(models.Model):
     name = models.CharField(max_length=255)
@@ -165,10 +167,7 @@ class Workspace(models.Model):
 
 
 class OrganizationMember(models.Model):
-    class Role(models.TextChoices):
-        OWNER = 'owner', 'Owner'
-        ADMIN = 'admin', 'Admin'
-        MEMBER = 'member', 'Member'
+    Role = CorporateRole
 
     organization = models.ForeignKey(
         Organization,
@@ -182,8 +181,8 @@ class OrganizationMember(models.Model):
     )
     role = models.CharField(
         max_length=32,
-        choices=Role.choices,
-        default=Role.MEMBER,
+        choices=CorporateRole.choices,
+        default=DEFAULT_CORPORATE_ROLE,
     )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -210,8 +209,8 @@ class WorkspaceMember(models.Model):
     )
     role = models.CharField(
         max_length=32,
-        choices=OrganizationMember.Role.choices,
-        default=OrganizationMember.Role.MEMBER,
+        choices=CorporateRole.choices,
+        default=DEFAULT_CORPORATE_ROLE,
     )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -251,8 +250,8 @@ class Invitation(models.Model):
     email = models.EmailField()
     role = models.CharField(
         max_length=32,
-        choices=OrganizationMember.Role.choices,
-        default=OrganizationMember.Role.MEMBER,
+        choices=CorporateRole.choices,
+        default=DEFAULT_CORPORATE_ROLE,
     )
     invite_code = models.CharField(max_length=64, unique=True)
     status = models.CharField(

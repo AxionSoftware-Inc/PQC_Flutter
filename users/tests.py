@@ -10,9 +10,10 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient, APITestCase
 
 from chat.models import Conversation, ConversationParticipant
-from users.models import GoogleAccount, UserDevice
+from users.models import GoogleAccount, UserDevice, WorkspaceMember
 from users.models import AccountKeysetEscrowRecord, AccountRecoveryManifest
 from users.escrow import LocalDevelopmentEscrowProvider
+from users.roles import CorporateRole
 
 
 User = get_user_model()
@@ -219,6 +220,8 @@ class AuthApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['user']['username'], 'ali')
+        self.assertEqual(response.data['user']['role'], 'owner')
+        self.assertEqual(response.data['user']['role_label'], 'Egasi')
         user_id = response.data['account_id']
         self.assertTrue(Token.objects.filter(user_id=user_id).exists())
         self.assertTrue(
@@ -319,6 +322,72 @@ class AuthApiTests(APITestCase):
             avatar_user['avatar_url'],
             'https://example.com/avatar.jpg',
         )
+
+    def test_users_endpoint_exposes_workspace_role_to_every_contact(self):
+        owner = self.client.post(
+            '/api/auth/login',
+            {'username': 'owner', 'device_id': 'owner-device'},
+            format='json',
+        )
+        member = self.client.post(
+            '/api/auth/login',
+            {'username': 'member', 'device_id': 'member-device'},
+            format='json',
+        )
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Token {owner.data['token']}",
+        )
+
+        response = self.client.get('/api/users')
+
+        self.assertEqual(response.status_code, 200)
+        by_id = {item['id']: item for item in response.data}
+        self.assertEqual(by_id[owner.data['account_id']]['role'], 'owner')
+        self.assertEqual(by_id[owner.data['account_id']]['role_label'], 'Egasi')
+        self.assertEqual(by_id[member.data['account_id']]['role'], 'member')
+        self.assertEqual(by_id[member.data['account_id']]['role_label'], 'Xodim')
+
+    def test_owner_can_assign_manager_role_and_member_cannot_escalate(self):
+        owner = self.client.post(
+            '/api/auth/login',
+            {'username': 'owner', 'device_id': 'role-owner-device'},
+            format='json',
+        )
+        member = self.client.post(
+            '/api/auth/login',
+            {'username': 'member', 'device_id': 'role-member-device'},
+            format='json',
+        )
+        member_id = member.data['account_id']
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Token {owner.data['token']}",
+        )
+
+        updated = self.client.put(
+            f'/api/users/{member_id}/role',
+            {'role': 'manager'},
+            format='json',
+        )
+
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.data['role'], 'manager')
+        self.assertEqual(updated.data['role_label'], 'Menejer')
+        self.assertEqual(
+            WorkspaceMember.objects.get(
+                organization_member__user_id=member_id,
+            ).role,
+            CorporateRole.MANAGER,
+        )
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Token {member.data['token']}",
+        )
+        forbidden = self.client.put(
+            f"/api/users/{owner.data['account_id']}/role",
+            {'role': 'member'},
+            format='json',
+        )
+        self.assertEqual(forbidden.status_code, 403)
 
     def test_same_device_reuses_existing_account_binding(self):
         first = self.client.post(
