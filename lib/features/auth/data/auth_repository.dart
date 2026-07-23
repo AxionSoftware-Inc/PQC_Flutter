@@ -177,6 +177,7 @@ class AuthRepository {
       username: user['username'] as String,
       displayName:
           (user['display_name'] as String?) ?? user['username'] as String,
+      avatarUrl: user['avatar_url'] as String? ?? '',
       deviceId: response['device_id'] as String? ?? deviceIdentity.id,
       deviceStatus: response['device_status'] as String? ?? 'active',
       profileFingerprint: response['profile_fingerprint'] as String? ?? '',
@@ -243,6 +244,7 @@ class AuthRepository {
         username: user['username'] as String,
         displayName:
             (user['display_name'] as String?) ?? user['username'] as String,
+        avatarUrl: user['avatar_url'] as String? ?? '',
         deviceId: response['device_id'] as String? ?? deviceIdentity.id,
         deviceStatus: response['device_status'] as String? ?? 'active',
         profileFingerprint: response['profile_fingerprint'] as String? ?? '',
@@ -281,6 +283,7 @@ class AuthRepository {
       username: user['username'] as String,
       displayName:
           user['display_name'] as String? ?? user['username'] as String,
+      avatarUrl: user['avatar_url'] as String? ?? '',
       deviceId: response['device_id'] as String? ?? fallbackDeviceId,
       deviceStatus: response['device_status'] as String? ?? 'active',
       profileFingerprint: response['profile_fingerprint'] as String? ?? '',

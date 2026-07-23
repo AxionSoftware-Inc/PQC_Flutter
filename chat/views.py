@@ -22,6 +22,7 @@ from chat.models import (
     AttachmentUploadSession,
     Conversation,
     ConversationCryptoEpoch,
+    ConversationReadState,
     Message,
     MessageAttachment,
 )
@@ -218,7 +219,38 @@ class MessageListCreateView(APIView):
         messages = conversation.messages.select_related('sender').prefetch_related('attachments').all()
         if after_id.isdigit():
             messages = messages.filter(id__gt=int(after_id))
-        return Response(MessageSerializer(messages, many=True).data)
+        message_rows = list(messages)
+        newest = message_rows[-1] if message_rows else None
+        if newest is not None:
+            state, _ = ConversationReadState.objects.get_or_create(
+                conversation=conversation,
+                user=request.user,
+            )
+            if (state.last_read_message_id or 0) < newest.id:
+                state.last_read_message = newest
+                state.save(update_fields=['last_read_message', 'read_at'])
+                publish_workspace_event(
+                    conversation.workspace_id,
+                    'receipt.read',
+                    {
+                        'conversation_id': conversation.id,
+                        'message_id': newest.id,
+                        'user_id': request.user.id,
+                    },
+                )
+        read_cursors = list(
+            conversation.read_states.exclude(user=request.user).values_list(
+                'last_read_message_id',
+                flat=True,
+            )
+        )
+        return Response(
+            MessageSerializer(
+                message_rows,
+                many=True,
+                context={'request': request, 'read_cursors': read_cursors},
+            ).data
+        )
 
     @transaction.atomic
     def post(self, request, conversation_id):
@@ -240,7 +272,12 @@ class MessageListCreateView(APIView):
                 client_message_id=client_message_id,
             ).select_related('sender').first()
             if existing is not None:
-                return Response(MessageSerializer(existing).data)
+                return Response(
+                    MessageSerializer(
+                        existing,
+                        context={'request': request, 'read_cursors': []},
+                    ).data
+                )
 
         message = Message.objects.create(
             conversation=conversation,
@@ -262,7 +299,10 @@ class MessageListCreateView(APIView):
             message.attachment_count = attachment_count
             message.save(update_fields=['attachment_count'])
         conversation.save(update_fields=['updated_at'])
-        serialized = MessageSerializer(message).data
+        serialized = MessageSerializer(
+            message,
+            context={'request': request, 'read_cursors': []},
+        ).data
         publish_workspace_event(
             conversation.workspace_id,
             'message.created',
@@ -280,6 +320,59 @@ class MessageListCreateView(APIView):
         return Response(
             serialized,
             status=status.HTTP_201_CREATED,
+        )
+
+
+class MessageReadView(APIView):
+    def get(self, request, conversation_id):
+        conversation = get_user_conversation_or_404(request, conversation_id)
+        cursor = (
+            conversation.read_states.exclude(user=request.user)
+            .order_by('-last_read_message_id')
+            .values_list('last_read_message_id', flat=True)
+            .first()
+        )
+        return Response(
+            {
+                'conversation_id': conversation.id,
+                'read_through_message_id': cursor or 0,
+            }
+        )
+
+    def post(self, request, conversation_id):
+        conversation = get_user_conversation_or_404(request, conversation_id)
+        message_id = request.data.get('message_id')
+        if not isinstance(message_id, int):
+            return Response(
+                {'detail': 'message_id is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        message = generics.get_object_or_404(
+            conversation.messages,
+            pk=message_id,
+        )
+        state, _ = ConversationReadState.objects.get_or_create(
+            conversation=conversation,
+            user=request.user,
+        )
+        if (state.last_read_message_id or 0) < message.id:
+            state.last_read_message = message
+            state.save(update_fields=['last_read_message', 'read_at'])
+            publish_workspace_event(
+                conversation.workspace_id,
+                'receipt.read',
+                {
+                    'conversation_id': conversation.id,
+                    'message_id': message.id,
+                    'user_id': request.user.id,
+                },
+            )
+        return Response(
+            {
+                'conversation_id': conversation.id,
+                'last_read_message_id': state.last_read_message_id,
+                'read_at': state.read_at,
+            }
         )
 
 

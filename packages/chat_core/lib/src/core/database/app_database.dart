@@ -35,6 +35,7 @@ class MessagesTable extends Table {
   TextColumn get deliveryState => text().withDefault(const Constant('sent'))();
   TextColumn get failureReason => text().nullable()();
   BoolColumn get isPending => boolean().withDefault(const Constant(false))();
+  BoolColumn get isRead => boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime()();
 
   @override
@@ -76,10 +77,8 @@ class VerifiedKeysTable extends Table {
   TextColumn get kind => text()();
   TextColumn get verifiedFingerprint => text().nullable()();
   TextColumn get lastSeenFingerprint => text().nullable()();
-  DateTimeColumn get createdAt =>
-      dateTime().withDefault(currentDateAndTime)();
-  DateTimeColumn get updatedAt =>
-      dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 
   @override
   Set<Column<Object>> get primaryKey => {userId, deviceId, kind};
@@ -118,7 +117,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -127,14 +126,19 @@ class AppDatabase extends _$AppDatabase {
       if (from < 2) {
         final messageColumns = await _readColumnNames('messages_table');
         if (!messageColumns.contains('attachments_json')) {
-          await migrator.addColumn(messagesTable, messagesTable.attachmentsJson);
+          await migrator.addColumn(
+            messagesTable,
+            messagesTable.attachmentsJson,
+          );
         }
       }
       if (from < 3) {
         await _rebuildVerifiedKeysTableV3();
       }
       if (from < 4) {
-        final queuedColumns = await _readColumnNames('queued_outgoing_messages_table');
+        final queuedColumns = await _readColumnNames(
+          'queued_outgoing_messages_table',
+        );
         if (!queuedColumns.contains('message_type')) {
           await migrator.addColumn(
             queuedOutgoingMessagesTable,
@@ -148,6 +152,12 @@ class AppDatabase extends _$AppDatabase {
           );
         }
       }
+      if (from < 5) {
+        final messageColumns = await _readColumnNames('messages_table');
+        if (!messageColumns.contains('is_read')) {
+          await migrator.addColumn(messagesTable, messagesTable.isRead);
+        }
+      }
     },
     beforeOpen: (details) async {
       await _ensureVerifiedKeysTableIsHealthy();
@@ -155,13 +165,8 @@ class AppDatabase extends _$AppDatabase {
   );
 
   Future<Set<String>> _readColumnNames(String tableName) async {
-    final rows = await customSelect(
-      "PRAGMA table_info('$tableName');",
-    ).get();
-    return rows
-        .map((row) => row.data['name'])
-        .whereType<String>()
-        .toSet();
+    final rows = await customSelect("PRAGMA table_info('$tableName');").get();
+    return rows.map((row) => row.data['name']).whereType<String>().toSet();
   }
 
   Future<void> _rebuildVerifiedKeysTableV3() async {
@@ -227,14 +232,19 @@ class AppDatabase extends _$AppDatabase {
     if (rows.isEmpty) {
       return;
     }
-    final names = rows.map((row) => row.data['name']).whereType<String>().toSet();
+    final names = rows
+        .map((row) => row.data['name'])
+        .whereType<String>()
+        .toSet();
     final typesByName = {
       for (final row in rows)
         if (row.data['name'] is String)
-          row.data['name'] as String:
-              (row.data['type'] as String? ?? '').toUpperCase(),
+          row.data['name'] as String: (row.data['type'] as String? ?? '')
+              .toUpperCase(),
     };
-    final pkColumnCount = rows.where((row) => ((row.data['pk'] as int?) ?? 0) > 0).length;
+    final pkColumnCount = rows
+        .where((row) => ((row.data['pk'] as int?) ?? 0) > 0)
+        .length;
     final isHealthy =
         names.contains('device_id') &&
         names.contains('created_at') &&
@@ -285,6 +295,20 @@ class AppDatabase extends _$AppDatabase {
             (t) => OrderingTerm.asc(t.id),
           ]))
         .get();
+  }
+
+  Future<void> markMessagesRead({
+    required int conversationId,
+    required int senderId,
+    required int throughMessageId,
+  }) async {
+    await (update(messagesTable)..where(
+          (table) =>
+              table.conversationId.equals(conversationId) &
+              table.senderId.equals(senderId) &
+              table.id.isSmallerOrEqualValue(throughMessageId),
+        ))
+        .write(const MessagesTableCompanion(isRead: Value(true)));
   }
 
   Future<void> upsertQueuedMessage(

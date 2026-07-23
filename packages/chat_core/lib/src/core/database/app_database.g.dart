@@ -667,6 +667,19 @@ class $MessagesTableTable extends MessagesTable
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _isReadMeta = const VerificationMeta('isRead');
+  @override
+  late final GeneratedColumn<bool> isRead = GeneratedColumn<bool>(
+    'is_read',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_read" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -693,6 +706,7 @@ class $MessagesTableTable extends MessagesTable
     deliveryState,
     failureReason,
     isPending,
+    isRead,
     createdAt,
   ];
   @override
@@ -815,6 +829,12 @@ class $MessagesTableTable extends MessagesTable
         isPending.isAcceptableOrUnknown(data['is_pending']!, _isPendingMeta),
       );
     }
+    if (data.containsKey('is_read')) {
+      context.handle(
+        _isReadMeta,
+        isRead.isAcceptableOrUnknown(data['is_read']!, _isReadMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -884,6 +904,10 @@ class $MessagesTableTable extends MessagesTable
         DriftSqlType.bool,
         data['${effectivePrefix}is_pending'],
       )!,
+      isRead: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_read'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -912,6 +936,7 @@ class MessagesTableData extends DataClass
   final String deliveryState;
   final String? failureReason;
   final bool isPending;
+  final bool isRead;
   final DateTime createdAt;
   const MessagesTableData({
     required this.id,
@@ -927,6 +952,7 @@ class MessagesTableData extends DataClass
     required this.deliveryState,
     this.failureReason,
     required this.isPending,
+    required this.isRead,
     required this.createdAt,
   });
   @override
@@ -947,6 +973,7 @@ class MessagesTableData extends DataClass
       map['failure_reason'] = Variable<String>(failureReason);
     }
     map['is_pending'] = Variable<bool>(isPending);
+    map['is_read'] = Variable<bool>(isRead);
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -968,6 +995,7 @@ class MessagesTableData extends DataClass
           ? const Value.absent()
           : Value(failureReason),
       isPending: Value(isPending),
+      isRead: Value(isRead),
       createdAt: Value(createdAt),
     );
   }
@@ -991,6 +1019,7 @@ class MessagesTableData extends DataClass
       deliveryState: serializer.fromJson<String>(json['deliveryState']),
       failureReason: serializer.fromJson<String?>(json['failureReason']),
       isPending: serializer.fromJson<bool>(json['isPending']),
+      isRead: serializer.fromJson<bool>(json['isRead']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -1011,6 +1040,7 @@ class MessagesTableData extends DataClass
       'deliveryState': serializer.toJson<String>(deliveryState),
       'failureReason': serializer.toJson<String?>(failureReason),
       'isPending': serializer.toJson<bool>(isPending),
+      'isRead': serializer.toJson<bool>(isRead),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -1029,6 +1059,7 @@ class MessagesTableData extends DataClass
     String? deliveryState,
     Value<String?> failureReason = const Value.absent(),
     bool? isPending,
+    bool? isRead,
     DateTime? createdAt,
   }) => MessagesTableData(
     id: id ?? this.id,
@@ -1046,6 +1077,7 @@ class MessagesTableData extends DataClass
         ? failureReason.value
         : this.failureReason,
     isPending: isPending ?? this.isPending,
+    isRead: isRead ?? this.isRead,
     createdAt: createdAt ?? this.createdAt,
   );
   MessagesTableData copyWithCompanion(MessagesTableCompanion data) {
@@ -1083,6 +1115,7 @@ class MessagesTableData extends DataClass
           ? data.failureReason.value
           : this.failureReason,
       isPending: data.isPending.present ? data.isPending.value : this.isPending,
+      isRead: data.isRead.present ? data.isRead.value : this.isRead,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -1103,6 +1136,7 @@ class MessagesTableData extends DataClass
           ..write('deliveryState: $deliveryState, ')
           ..write('failureReason: $failureReason, ')
           ..write('isPending: $isPending, ')
+          ..write('isRead: $isRead, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -1123,6 +1157,7 @@ class MessagesTableData extends DataClass
     deliveryState,
     failureReason,
     isPending,
+    isRead,
     createdAt,
   );
   @override
@@ -1142,6 +1177,7 @@ class MessagesTableData extends DataClass
           other.deliveryState == this.deliveryState &&
           other.failureReason == this.failureReason &&
           other.isPending == this.isPending &&
+          other.isRead == this.isRead &&
           other.createdAt == this.createdAt);
 }
 
@@ -1159,6 +1195,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessagesTableData> {
   final Value<String> deliveryState;
   final Value<String?> failureReason;
   final Value<bool> isPending;
+  final Value<bool> isRead;
   final Value<DateTime> createdAt;
   const MessagesTableCompanion({
     this.id = const Value.absent(),
@@ -1174,6 +1211,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessagesTableData> {
     this.deliveryState = const Value.absent(),
     this.failureReason = const Value.absent(),
     this.isPending = const Value.absent(),
+    this.isRead = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   MessagesTableCompanion.insert({
@@ -1190,6 +1228,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessagesTableData> {
     this.deliveryState = const Value.absent(),
     this.failureReason = const Value.absent(),
     this.isPending = const Value.absent(),
+    this.isRead = const Value.absent(),
     required DateTime createdAt,
   }) : conversationId = Value(conversationId),
        senderId = Value(senderId),
@@ -1209,6 +1248,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessagesTableData> {
     Expression<String>? deliveryState,
     Expression<String>? failureReason,
     Expression<bool>? isPending,
+    Expression<bool>? isRead,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -1225,6 +1265,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessagesTableData> {
       if (deliveryState != null) 'delivery_state': deliveryState,
       if (failureReason != null) 'failure_reason': failureReason,
       if (isPending != null) 'is_pending': isPending,
+      if (isRead != null) 'is_read': isRead,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -1243,6 +1284,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessagesTableData> {
     Value<String>? deliveryState,
     Value<String?>? failureReason,
     Value<bool>? isPending,
+    Value<bool>? isRead,
     Value<DateTime>? createdAt,
   }) {
     return MessagesTableCompanion(
@@ -1259,6 +1301,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessagesTableData> {
       deliveryState: deliveryState ?? this.deliveryState,
       failureReason: failureReason ?? this.failureReason,
       isPending: isPending ?? this.isPending,
+      isRead: isRead ?? this.isRead,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -1305,6 +1348,9 @@ class MessagesTableCompanion extends UpdateCompanion<MessagesTableData> {
     if (isPending.present) {
       map['is_pending'] = Variable<bool>(isPending.value);
     }
+    if (isRead.present) {
+      map['is_read'] = Variable<bool>(isRead.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -1327,6 +1373,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessagesTableData> {
           ..write('deliveryState: $deliveryState, ')
           ..write('failureReason: $failureReason, ')
           ..write('isPending: $isPending, ')
+          ..write('isRead: $isRead, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -3484,6 +3531,7 @@ typedef $$MessagesTableTableCreateCompanionBuilder =
       Value<String> deliveryState,
       Value<String?> failureReason,
       Value<bool> isPending,
+      Value<bool> isRead,
       required DateTime createdAt,
     });
 typedef $$MessagesTableTableUpdateCompanionBuilder =
@@ -3501,6 +3549,7 @@ typedef $$MessagesTableTableUpdateCompanionBuilder =
       Value<String> deliveryState,
       Value<String?> failureReason,
       Value<bool> isPending,
+      Value<bool> isRead,
       Value<DateTime> createdAt,
     });
 
@@ -3575,6 +3624,11 @@ class $$MessagesTableTableFilterComposer
 
   ColumnFilters<bool> get isPending => $composableBuilder(
     column: $table.isPending,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isRead => $composableBuilder(
+    column: $table.isRead,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3658,6 +3712,11 @@ class $$MessagesTableTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isRead => $composableBuilder(
+    column: $table.isRead,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -3732,6 +3791,9 @@ class $$MessagesTableTableAnnotationComposer
   GeneratedColumn<bool> get isPending =>
       $composableBuilder(column: $table.isPending, builder: (column) => column);
 
+  GeneratedColumn<bool> get isRead =>
+      $composableBuilder(column: $table.isRead, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 }
@@ -3784,6 +3846,7 @@ class $$MessagesTableTableTableManager
                 Value<String> deliveryState = const Value.absent(),
                 Value<String?> failureReason = const Value.absent(),
                 Value<bool> isPending = const Value.absent(),
+                Value<bool> isRead = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => MessagesTableCompanion(
                 id: id,
@@ -3799,6 +3862,7 @@ class $$MessagesTableTableTableManager
                 deliveryState: deliveryState,
                 failureReason: failureReason,
                 isPending: isPending,
+                isRead: isRead,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -3816,6 +3880,7 @@ class $$MessagesTableTableTableManager
                 Value<String> deliveryState = const Value.absent(),
                 Value<String?> failureReason = const Value.absent(),
                 Value<bool> isPending = const Value.absent(),
+                Value<bool> isRead = const Value.absent(),
                 required DateTime createdAt,
               }) => MessagesTableCompanion.insert(
                 id: id,
@@ -3831,6 +3896,7 @@ class $$MessagesTableTableTableManager
                 deliveryState: deliveryState,
                 failureReason: failureReason,
                 isPending: isPending,
+                isRead: isRead,
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0

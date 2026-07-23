@@ -15,6 +15,7 @@ void main() {
         id: 7,
         username: 'riley',
         displayName: 'Riley',
+        avatarUrl: 'https://example.com/riley.jpg',
         deviceId: 'device-1',
         token: 'secret-token',
       );
@@ -27,6 +28,7 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
 
       expect(restored?.token, 'secret-token');
+      expect(restored?.avatarUrl, 'https://example.com/riley.jpg');
       expect(secretStore.values['session_token'], 'secret-token');
       expect(prefs.getString('session_token'), isNull);
       expect(remembered?.displayName, 'Riley');
@@ -60,30 +62,33 @@ void main() {
     },
   );
 
-  test('local history owner can be written independently from session token', () async {
-    SharedPreferences.setMockInitialValues({});
-    final secretStore = _MemorySecretStore();
-    final storage = SessionStorage(secretStore: secretStore);
-    const session = SessionUser(
-      id: 11,
-      accountId: 42,
-      username: 'sam',
-      displayName: 'Sam',
-      deviceId: 'device-42',
-      token: 'temporary-token',
-    );
+  test(
+    'local history owner can be written independently from session token',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final secretStore = _MemorySecretStore();
+      final storage = SessionStorage(secretStore: secretStore);
+      const session = SessionUser(
+        id: 11,
+        accountId: 42,
+        username: 'sam',
+        displayName: 'Sam',
+        deviceId: 'device-42',
+        token: 'temporary-token',
+      );
 
-    await storage.writeLocalHistoryOwner(session);
-    await storage.clear(clearRememberedIdentity: false);
+      await storage.writeLocalHistoryOwner(session);
+      await storage.clear(clearRememberedIdentity: false);
 
-    final historyOwner = await storage.readLocalHistoryOwner();
-    final remembered = await storage.readRememberedIdentity();
+      final historyOwner = await storage.readLocalHistoryOwner();
+      final remembered = await storage.readRememberedIdentity();
 
-    expect(historyOwner?.accountId, 42);
-    expect(historyOwner?.username, 'sam');
-    expect(historyOwner?.displayName, 'Sam');
-    expect(remembered, isNull);
-  });
+      expect(historyOwner?.accountId, 42);
+      expect(historyOwner?.username, 'sam');
+      expect(historyOwner?.displayName, 'Sam');
+      expect(remembered, isNull);
+    },
+  );
 }
 
 class _MemorySecretStore extends LocalSecretStore {

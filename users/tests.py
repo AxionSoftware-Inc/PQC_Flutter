@@ -10,7 +10,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient, APITestCase
 
 from chat.models import Conversation, ConversationParticipant
-from users.models import UserDevice
+from users.models import GoogleAccount, UserDevice
 from users.models import AccountKeysetEscrowRecord, AccountRecoveryManifest
 from users.escrow import LocalDevelopmentEscrowProvider
 
@@ -293,6 +293,32 @@ class AuthApiTests(APITestCase):
         self.assertEqual(usernames, ['ali', 'vali'])
         self.assertEqual(response.data[0]['devices'][0]['device_id'], 'device-1')
         self.assertEqual(response.data[1]['devices'][0]['device_id'], 'device-2')
+
+    def test_users_endpoint_exposes_google_profile_picture(self):
+        login = self.client.post(
+            '/api/auth/login',
+            {'username': 'avatar-user', 'device_id': 'avatar-device'},
+            format='json',
+        )
+        user = User.objects.get(id=login.data['account_id'])
+        GoogleAccount.objects.create(
+            user=user,
+            google_subject='google-avatar-subject',
+            email='avatar@example.com',
+            avatar_url='https://example.com/avatar.jpg',
+        )
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Token {login.data['token']}",
+        )
+
+        response = self.client.get('/api/users')
+
+        self.assertEqual(response.status_code, 200)
+        avatar_user = next(item for item in response.data if item['id'] == user.id)
+        self.assertEqual(
+            avatar_user['avatar_url'],
+            'https://example.com/avatar.jpg',
+        )
 
     def test_same_device_reuses_existing_account_binding(self):
         first = self.client.post(

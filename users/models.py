@@ -34,6 +34,7 @@ class GoogleAccount(models.Model):
     )
     google_subject = models.CharField(max_length=255, unique=True)
     email = models.EmailField(blank=True)
+    avatar_url = models.URLField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

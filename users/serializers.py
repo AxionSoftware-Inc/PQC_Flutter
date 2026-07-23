@@ -176,17 +176,29 @@ class UserSerializer(serializers.ModelSerializer):
     username = serializers.SerializerMethodField()
     display_name = serializers.SerializerMethodField()
     devices = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
     account_id = serializers.IntegerField(source='id')
 
     class Meta:
         model = User
-        fields = ['id', 'account_id', 'username', 'display_name', 'devices']
+        fields = [
+            'id',
+            'account_id',
+            'username',
+            'display_name',
+            'avatar_url',
+            'devices',
+        ]
 
     def get_username(self, obj):
         return obj.first_name or obj.username
 
     def get_display_name(self, obj):
         return obj.first_name or obj.username
+
+    def get_avatar_url(self, obj):
+        account = getattr(obj, 'google_account', None)
+        return account.avatar_url if account else ''
 
     def get_devices(self, obj):
         device_rows = [

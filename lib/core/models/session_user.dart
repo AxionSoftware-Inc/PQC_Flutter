@@ -6,6 +6,7 @@ class SessionUser {
     int? accountId,
     required this.username,
     required this.displayName,
+    this.avatarUrl = '',
     this.deviceId = '',
     this.deviceStatus = 'active',
     this.profileFingerprint = '',
@@ -18,6 +19,7 @@ class SessionUser {
   final int accountId;
   final String username;
   final String displayName;
+  final String avatarUrl;
   final String deviceId;
   final String deviceStatus;
   final String profileFingerprint;
@@ -31,12 +33,14 @@ class SessionUser {
     String? deviceId,
     String? deviceStatus,
     String? profileFingerprint,
+    String? avatarUrl,
   }) {
     return SessionUser(
       id: id,
       accountId: accountId,
       username: username,
       displayName: displayName,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
       deviceId: deviceId ?? this.deviceId,
       deviceStatus: deviceStatus ?? this.deviceStatus,
       profileFingerprint: profileFingerprint ?? this.profileFingerprint,

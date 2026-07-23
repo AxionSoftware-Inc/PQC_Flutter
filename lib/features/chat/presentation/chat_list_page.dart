@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hugeicons/hugeicons.dart';
 
 import '../../../app/design_system/app_design_system.dart';
 import '../../../core/models/app_user.dart';
@@ -249,6 +250,7 @@ class _ChatListPageState extends State<ChatListPage> {
   Future<void> _openConversation({
     required Conversation conversation,
     required String title,
+    String avatarUrl = '',
   }) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -256,6 +258,7 @@ class _ChatListPageState extends State<ChatListPage> {
           currentUserId: widget.sessionController.sessionUser!.id,
           conversation: conversation,
           title: title,
+          avatarUrl: avatarUrl,
           chatFacade: widget.chatFacade,
           cryptoCoreFacade: widget.cryptoCoreFacade,
           onUnauthorized: widget.sessionController.invalidateSession,
@@ -269,6 +272,7 @@ class _ChatListPageState extends State<ChatListPage> {
     return _openConversation(
       conversation: item.conversation,
       title: item.title,
+      avatarUrl: item.avatarUrl,
     );
   }
 
@@ -281,6 +285,7 @@ class _ChatListPageState extends State<ChatListPage> {
       await _openConversation(
         conversation: conversation,
         title: user.displayName,
+        avatarUrl: user.avatarUrl,
       );
     } catch (error) {
       if (error is UnauthorizedApiException) {
@@ -593,24 +598,24 @@ class _ChatListPageState extends State<ChatListPage> {
     final settingsState = _controller.settingsState;
     final tabs = [
       _TabMeta(
-        label: 'Chats',
-        icon: Icons.chat_bubble_outline_rounded,
-        title: settingsState.currentWorkspace?.name ?? 'Chats',
+        label: 'Chatlar',
+        icon: HugeIcons.strokeRoundedChat,
+        title: settingsState.currentWorkspace?.name ?? 'Chatlar',
       ),
       const _TabMeta(
-        label: 'Contacts',
-        icon: Icons.people_alt_outlined,
-        title: 'Contacts',
+        label: 'Kontaktlar',
+        icon: HugeIcons.strokeRoundedContactBook,
+        title: 'Kontaktlar',
       ),
       const _TabMeta(
-        label: 'Account',
-        icon: Icons.person_outline_rounded,
-        title: 'Account',
+        label: 'Sozlamalar',
+        icon: HugeIcons.strokeRoundedSettings02,
+        title: 'Sozlamalar',
       ),
       const _TabMeta(
-        label: 'Settings',
-        icon: Icons.settings_outlined,
-        title: 'Settings',
+        label: 'Profil',
+        icon: HugeIcons.strokeRoundedUserCircle,
+        title: 'Profil',
       ),
     ];
 
@@ -662,7 +667,11 @@ class _ChatListPageState extends State<ChatListPage> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: AppAvatar(label: sessionUser.displayName, radius: 18),
+            child: AppAvatar(
+              label: sessionUser.displayName,
+              imageUrl: sessionUser.avatarUrl,
+              radius: 18,
+            ),
           ),
         ],
       ),
@@ -696,11 +705,11 @@ class _ChatListPageState extends State<ChatListPage> {
                     onRefresh: _refresh,
                     child: _buildContactsTab(contactsState),
                   ),
-                  _buildAccountTab(settingsState),
                   RefreshIndicator(
                     onRefresh: _refresh,
                     child: _buildSettingsOverview(settingsState),
                   ),
+                  _buildAccountTab(settingsState),
                 ],
               ),
             ),
@@ -725,33 +734,10 @@ class _ChatListPageState extends State<ChatListPage> {
             ),
             boxShadow: context.appShadows.floating,
           ),
-          child: NavigationBarTheme(
-            data: NavigationBarThemeData(
-              height: 64,
-              backgroundColor: Colors.transparent,
-              indicatorColor: context.appColors.primarySoft,
-              labelTextStyle: WidgetStatePropertyAll(
-                theme.textTheme.labelSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            child: NavigationBar(
-              destinations: [
-                for (final tab in tabs)
-                  NavigationDestination(
-                    icon: Icon(tab.icon, size: 21),
-                    selectedIcon: Icon(tab.icon, size: 21),
-                    label: tab.label,
-                  ),
-              ],
-              selectedIndex: _selectedTabIndex,
-              onDestinationSelected: (index) {
-                setState(() {
-                  _selectedTabIndex = index;
-                });
-              },
-            ),
+          child: _PremiumBottomNavigation(
+            tabs: tabs,
+            selectedIndex: _selectedTabIndex,
+            onSelected: (index) => setState(() => _selectedTabIndex = index),
           ),
         ),
       ),
@@ -781,12 +767,12 @@ class _ChatListPageState extends State<ChatListPage> {
                 ),
                 Expanded(
                   child: Text(
-                    '${_selectedConversationIds.length} selected',
+                    '${_selectedConversationIds.length} ta tanlandi',
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Archive selected',
+                  tooltip: 'Tanlanganlarni arxivlash',
                   onPressed: _archiveSelectedConversations,
                   icon: const Icon(Icons.archive_outlined),
                 ),
@@ -797,7 +783,7 @@ class _ChatListPageState extends State<ChatListPage> {
         ],
         AppSearchField(
           controller: _chatSearchController,
-          hintText: 'Search chats, drafts, people',
+          hintText: 'Chatlar va odamlarni qidiring',
           onChanged: (value) => _controller.setChatSearchQuery(value),
         ),
         SizedBox(height: spacing.md),
@@ -818,7 +804,7 @@ class _ChatListPageState extends State<ChatListPage> {
                 alignment: Alignment.centerLeft,
                 color: context.appColors.primary,
                 icon: Icons.mark_chat_read_outlined,
-                label: 'Unread',
+                label: 'O‘qilmagan',
               ),
               secondaryBackground: _swipeActionBackground(
                 alignment: Alignment.centerRight,
@@ -826,7 +812,7 @@ class _ChatListPageState extends State<ChatListPage> {
                 icon: item.isArchived
                     ? Icons.unarchive_outlined
                     : Icons.archive_outlined,
-                label: item.isArchived ? 'Restore' : 'Archive',
+                label: item.isArchived ? 'Qaytarish' : 'Arxivlash',
               ),
               confirmDismiss: (direction) async {
                 if (direction == DismissDirection.startToEnd) {
@@ -907,7 +893,7 @@ class _ChatListPageState extends State<ChatListPage> {
       children: [
         AppSearchField(
           controller: _contactsSearchController,
-          hintText: 'Search contacts',
+          hintText: 'Kontaktlarni qidiring',
           onChanged: _controller.setContactsSearchQuery,
         ),
         SizedBox(height: spacing.md),
@@ -916,7 +902,7 @@ class _ChatListPageState extends State<ChatListPage> {
         if (_controller.isLoading && state.sections.isEmpty)
           ..._buildContactSkeleton()
         else if (state.sections.isEmpty)
-          _buildEmptyCard('No contacts match the current filter.')
+          _buildEmptyCard('Bu filtr bo‘yicha kontakt topilmadi.')
         else
           for (final section in state.sections) ...[
             AppSectionHeader(title: section.label),
@@ -1299,7 +1285,11 @@ class _ChatListPageState extends State<ChatListPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  AppAvatar(label: session.displayName, radius: 28),
+                  AppAvatar(
+                    label: session.displayName,
+                    imageUrl: session.avatarUrl,
+                    radius: 28,
+                  ),
                   const Spacer(),
                   Text(
                     session.displayName,
@@ -1313,24 +1303,33 @@ class _ChatListPageState extends State<ChatListPage> {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.chat_bubble_outline_rounded),
-              title: const Text('Chats'),
+              leading: const HugeIcon(
+                icon: HugeIcons.strokeRoundedChat,
+                size: 21,
+              ),
+              title: const Text('Chatlar'),
               onTap: () {
                 _scaffoldKey.currentState?.closeDrawer();
                 setState(() => _selectedTabIndex = 0);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.people_alt_outlined),
-              title: const Text('Contacts'),
+              leading: const HugeIcon(
+                icon: HugeIcons.strokeRoundedContactBook,
+                size: 21,
+              ),
+              title: const Text('Kontaktlar'),
               onTap: () {
                 _scaffoldKey.currentState?.closeDrawer();
                 setState(() => _selectedTabIndex = 1);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.person_outline_rounded),
-              title: const Text('Account'),
+              leading: const HugeIcon(
+                icon: HugeIcons.strokeRoundedSettings02,
+                size: 21,
+              ),
+              title: const Text('Sozlamalar'),
               onTap: () {
                 _scaffoldKey.currentState?.closeDrawer();
                 setState(() => _selectedTabIndex = 2);
@@ -1338,8 +1337,11 @@ class _ChatListPageState extends State<ChatListPage> {
             ),
             const Divider(),
             ListTile(
-              leading: const Icon(Icons.settings_outlined),
-              title: const Text('Settings'),
+              leading: const HugeIcon(
+                icon: HugeIcons.strokeRoundedUserCircle,
+                size: 21,
+              ),
+              title: const Text('Profil'),
               onTap: () {
                 _scaffoldKey.currentState?.closeDrawer();
                 setState(() => _selectedTabIndex = 3);
@@ -1347,7 +1349,7 @@ class _ChatListPageState extends State<ChatListPage> {
             ),
             ListTile(
               leading: const Icon(Icons.logout_rounded),
-              title: const Text('Log out'),
+              title: const Text('Chiqish'),
               onTap: () async {
                 _scaffoldKey.currentState?.closeDrawer();
                 await _logout(forgetDevice: false);
@@ -1369,7 +1371,11 @@ class _ChatListPageState extends State<ChatListPage> {
           backgroundColor: context.appColors.primarySoft,
           child: Column(
             children: [
-              AppAvatar(label: session.displayName, radius: 42),
+              AppAvatar(
+                label: session.displayName,
+                imageUrl: session.avatarUrl,
+                radius: 42,
+              ),
               SizedBox(height: spacing.md),
               Text(
                 session.displayName,
@@ -1524,7 +1530,11 @@ class _ChatListPageState extends State<ChatListPage> {
         backgroundColor: context.appColors.primarySoft,
         child: Column(
           children: [
-            AppAvatar(label: session.displayName, radius: 38),
+            AppAvatar(
+              label: session.displayName,
+              imageUrl: session.avatarUrl,
+              radius: 38,
+            ),
             SizedBox(height: spacing.md),
             Text(
               session.displayName,
@@ -1957,10 +1967,10 @@ class _ChatListPageState extends State<ChatListPage> {
     return _FilterStrip<ChatListFilter>(
       selected: filter,
       options: const [
-        _FilterOption(value: ChatListFilter.all, label: 'All'),
-        _FilterOption(value: ChatListFilter.unread, label: 'Unread'),
-        _FilterOption(value: ChatListFilter.pinned, label: 'Pinned'),
-        _FilterOption(value: ChatListFilter.archived, label: 'Archived'),
+        _FilterOption(value: ChatListFilter.all, label: 'Barchasi'),
+        _FilterOption(value: ChatListFilter.unread, label: 'O‘qilmagan'),
+        _FilterOption(value: ChatListFilter.pinned, label: 'Mahkamlangan'),
+        _FilterOption(value: ChatListFilter.archived, label: 'Arxiv'),
       ],
       onSelected: _controller.setChatFilter,
     );
@@ -1970,13 +1980,19 @@ class _ChatListPageState extends State<ChatListPage> {
     return _FilterStrip<ContactsTrustFilter>(
       selected: filter,
       options: const [
-        _FilterOption(value: ContactsTrustFilter.all, label: 'All'),
-        _FilterOption(value: ContactsTrustFilter.verified, label: 'Verified'),
+        _FilterOption(value: ContactsTrustFilter.all, label: 'Barchasi'),
+        _FilterOption(
+          value: ContactsTrustFilter.verified,
+          label: 'Tasdiqlangan',
+        ),
         _FilterOption(
           value: ContactsTrustFilter.needsAttention,
-          label: 'Attention',
+          label: 'E’tibor kerak',
         ),
-        _FilterOption(value: ContactsTrustFilter.notReady, label: 'Not ready'),
+        _FilterOption(
+          value: ContactsTrustFilter.notReady,
+          label: 'Tayyor emas',
+        ),
       ],
       onSelected: _controller.setContactsFilter,
     );
@@ -2097,13 +2113,13 @@ class _ChatListPageState extends State<ChatListPage> {
   String _emptyMessageForChatState(ChatListFilter filter) {
     switch (filter) {
       case ChatListFilter.unread:
-        return 'Unread chat topilmadi.';
+        return 'O‘qilmagan chat topilmadi.';
       case ChatListFilter.pinned:
-        return 'Pinned chatlar hali yo‘q.';
+        return 'Mahkamlangan chatlar hali yo‘q.';
       case ChatListFilter.archived:
-        return 'Archived chatlar hali yo‘q.';
+        return 'Arxivlangan chatlar hali yo‘q.';
       case ChatListFilter.all:
-        return 'Hali chatlar yo‘q. Contacts bo‘limidan suhbat boshlashingiz mumkin.';
+        return 'Hali chatlar yo‘q. Kontaktlar bo‘limidan suhbat boshlashingiz mumkin.';
     }
   }
 
@@ -2200,6 +2216,7 @@ class _ConversationListRow extends StatelessWidget {
                       )
                     : AppAvatar(
                         label: item.title,
+                        imageUrl: item.avatarUrl,
                         icon: item.conversation.isGroup
                             ? Icons.forum_outlined
                             : null,
@@ -2398,6 +2415,91 @@ class _PremiumIconButton extends StatelessWidget {
   }
 }
 
+class _PremiumBottomNavigation extends StatelessWidget {
+  const _PremiumBottomNavigation({
+    required this.tabs,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final List<_TabMeta> tabs;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return SizedBox(
+      height: 58,
+      child: Row(
+        children: [
+          for (var index = 0; index < tabs.length; index++)
+            Expanded(
+              child: Semantics(
+                selected: selectedIndex == index,
+                button: true,
+                label: tabs[index].label,
+                child: InkWell(
+                  onTap: () => onSelected(index),
+                  child: AnimatedContainer(
+                    duration: context.appDurations.fast,
+                    curve: Curves.easeOutCubic,
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selectedIndex == index
+                          ? colors.primarySoft
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(
+                        context.appRadii.pill,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        AnimatedScale(
+                          duration: context.appDurations.fast,
+                          scale: selectedIndex == index ? 1.06 : 1,
+                          child: HugeIcon(
+                            icon: tabs[index].icon,
+                            size: 20,
+                            strokeWidth: selectedIndex == index ? 2.1 : 1.7,
+                            color: selectedIndex == index
+                                ? colors.primary
+                                : colors.textMuted,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          tabs[index].label,
+                          maxLines: 1,
+                          overflow: TextOverflow.fade,
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                fontSize: 10,
+                                height: 1,
+                                color: selectedIndex == index
+                                    ? colors.primary
+                                    : colors.textMuted,
+                                fontWeight: selectedIndex == index
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ContactListRow extends StatelessWidget {
   const _ContactListRow({required this.item, required this.onTap});
 
@@ -2428,7 +2530,11 @@ class _ContactListRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              AppAvatar(label: item.user.displayName, radius: 24),
+              AppAvatar(
+                label: item.user.displayName,
+                imageUrl: item.user.avatarUrl,
+                radius: 24,
+              ),
               SizedBox(width: spacing.md),
               Expanded(
                 child: Column(
@@ -2578,7 +2684,7 @@ class _TabMeta {
   });
 
   final String label;
-  final IconData icon;
+  final List<List<dynamic>> icon;
   final String title;
 }
 
@@ -2599,14 +2705,18 @@ class _ContactDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final spacing = context.appSpacing;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Contact details')),
+      appBar: AppBar(title: const Text('Kontakt ma’lumotlari')),
       body: ListView(
         padding: EdgeInsets.all(spacing.lg),
         children: [
           AppSurfaceCard(
             child: Row(
               children: [
-                AppAvatar(label: item.user.displayName, radius: 28),
+                AppAvatar(
+                  label: item.user.displayName,
+                  imageUrl: item.user.avatarUrl,
+                  radius: 28,
+                ),
                 SizedBox(width: spacing.md),
                 Expanded(
                   child: Column(

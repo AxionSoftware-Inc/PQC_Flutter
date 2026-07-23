@@ -158,12 +158,14 @@ class AppUser {
     required this.username,
     required this.displayName,
     required this.devices,
+    this.avatarUrl = '',
   });
 
   final int id;
   final String username;
   final String displayName;
   final List<AppUserDevice> devices;
+  final String avatarUrl;
 
   bool get hasUsableDeviceKey => preferredX25519Device != null;
 
@@ -199,6 +201,7 @@ class AppUser {
       username: json['username'] as String,
       displayName:
           (json['display_name'] as String?) ?? json['username'] as String,
+      avatarUrl: json['avatar_url'] as String? ?? '',
       devices: (json['devices'] as List<dynamic>? ?? const [])
           .map((item) => AppUserDevice.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -210,12 +213,14 @@ class AppUser {
     String? username,
     String? displayName,
     List<AppUserDevice>? devices,
+    String? avatarUrl,
   }) {
     return AppUser(
       id: id ?? this.id,
       username: username ?? this.username,
       displayName: displayName ?? this.displayName,
       devices: devices ?? this.devices,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
     );
   }
 }

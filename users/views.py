@@ -485,7 +485,11 @@ class GoogleLoginView(APIView):
             user.save(update_fields=['email'])
         GoogleAccount.objects.update_or_create(
             user=user,
-            defaults={'google_subject': subject, 'email': email},
+            defaults={
+                'google_subject': subject,
+                'email': email,
+                'avatar_url': str(claims.get('picture', '')).strip(),
+            },
         )
         device, error_response = upsert_user_device(
             user=user,

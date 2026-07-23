@@ -13,7 +13,11 @@ from chat.models import (
     ConversationParticipant,
     MessageAttachment,
 )
-from users.models import UserDevice
+from users.models import (
+    OrganizationMember,
+    UserDevice,
+    WorkspaceMember,
+)
 
 
 User = get_user_model()
@@ -165,6 +169,43 @@ class ChatApiTests(APITestCase):
             [item['body'] for item in response.data][-2:],
             [_group_payload('first'), _group_payload('second')],
         )
+
+    def test_sender_sees_double_check_only_after_another_participant_reads(self):
+        peer = User.objects.create_user(username='reader', first_name='Reader')
+        organization_member = OrganizationMember.objects.create(
+            organization=self.group.workspace.organization,
+            user=peer,
+        )
+        WorkspaceMember.objects.create(
+            workspace=self.group.workspace,
+            organization_member=organization_member,
+        )
+        ConversationParticipant.objects.create(
+            conversation=self.group,
+            user=peer,
+        )
+        created = self.client.post(
+            f'/api/conversations/{self.group.id}/messages',
+            {'body': _group_payload('read-state')},
+            format='json',
+        )
+        self.assertFalse(created.data['is_read'])
+
+        peer_client = APIClient()
+        peer_client.force_authenticate(peer)
+        peer_response = peer_client.get(
+            f'/api/conversations/{self.group.id}/messages',
+            HTTP_X_WORKSPACE_ID=str(self.group.workspace_id),
+        )
+        self.assertEqual(peer_response.status_code, 200)
+
+        sender_response = self.client.get(
+            f'/api/conversations/{self.group.id}/messages',
+        )
+        sent_message = next(
+            item for item in sender_response.data if item['id'] == created.data['id']
+        )
+        self.assertTrue(sent_message['is_read'])
 
     def test_message_create_is_idempotent_for_client_message_id(self):
         first = self.client.post(

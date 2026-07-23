@@ -8,11 +8,13 @@ class AppAvatar extends StatelessWidget {
     super.key,
     required this.label,
     this.icon,
+    this.imageUrl,
     this.radius = 22,
   });
 
   final String label;
   final IconData? icon;
+  final String? imageUrl;
   final double radius;
 
   @override
@@ -41,14 +43,26 @@ class AppAvatar extends StatelessWidget {
         ),
       ),
       alignment: Alignment.center,
-      child: icon != null
-          ? Icon(icon, size: radius * 0.92, color: accent)
-          : Text(
-              label.isEmpty ? '?' : label[0].toUpperCase(),
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: accent,
-                fontWeight: FontWeight.w700,
+      child: imageUrl?.trim().isNotEmpty == true
+          ? ClipOval(
+              child: Image.network(
+                imageUrl!,
+                width: radius * 2,
+                height: radius * 2,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => _AvatarFallback(
+                  label: label,
+                  icon: icon,
+                  radius: radius,
+                  color: accent,
+                ),
               ),
+            )
+          : _AvatarFallback(
+              label: label,
+              icon: icon,
+              radius: radius,
+              color: accent,
             ),
     );
   }
@@ -72,5 +86,32 @@ class AppAvatar extends StatelessWidget {
       (acc, item) => (acc * 31 + item) & 0x7fffffff,
     );
     return palette[hash % palette.length];
+  }
+}
+
+class _AvatarFallback extends StatelessWidget {
+  const _AvatarFallback({
+    required this.label,
+    required this.icon,
+    required this.radius,
+    required this.color,
+  });
+
+  final String label;
+  final IconData? icon;
+  final double radius;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return icon != null
+        ? Icon(icon, size: radius * 0.92, color: color)
+        : Text(
+            label.isEmpty ? '?' : label[0].toUpperCase(),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          );
   }
 }

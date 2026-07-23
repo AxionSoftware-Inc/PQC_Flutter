@@ -108,6 +108,19 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
     return ChatMessage.fromJson(response);
   }
 
+  Future<void> markConversationRead(int conversationId, int messageId) async {
+    await apiClient.post('/conversations/$conversationId/read', {
+      'message_id': messageId,
+    });
+  }
+
+  Future<int> fetchPeerReadThroughMessageId(int conversationId) async {
+    final response =
+        await apiClient.get('/conversations/$conversationId/read')
+            as Map<String, dynamic>;
+    return response['read_through_message_id'] as int? ?? 0;
+  }
+
   Future<ChatAttachment> uploadAttachment(
     int conversationId, {
     required String filename,

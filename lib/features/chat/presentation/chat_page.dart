@@ -29,6 +29,7 @@ class ChatPage extends StatefulWidget {
     required this.currentUserId,
     required this.conversation,
     required this.title,
+    this.avatarUrl = '',
     required this.chatFacade,
     required this.cryptoCoreFacade,
     required this.onUnauthorized,
@@ -37,6 +38,7 @@ class ChatPage extends StatefulWidget {
   final int currentUserId;
   final Conversation conversation;
   final String title;
+  final String avatarUrl;
   final ChatFacade chatFacade;
   final CryptoCoreFacade cryptoCoreFacade;
   final Future<void> Function() onUnauthorized;
@@ -322,6 +324,7 @@ class _ChatPageState extends State<ChatPage> {
         children: [
           _ConversationHeader(
             title: widget.title,
+            avatarUrl: widget.avatarUrl,
             conversation: widget.conversation,
             trust: conversationTrust,
             brandLabel: brand?.label,
@@ -478,7 +481,7 @@ class _ChatPageState extends State<ChatPage> {
                               ),
                               child: AppTextField(
                                 controller: _messageController,
-                                hintText: 'Message',
+                                hintText: 'Xabar',
                                 maxLines: 4,
                                 minLines: 1,
                                 onSubmitted: (_) => _sendMessage(),
@@ -508,11 +511,11 @@ class _ChatPageState extends State<ChatPage> {
   String _statusLabel(ChatMessage message) {
     switch (message.deliveryState) {
       case MessageDeliveryState.pending:
-        return 'Sending...';
+        return 'Yuborilmoqda...';
       case MessageDeliveryState.failedRetryable:
-        return message.failureReason ?? 'Send failed. Retry available.';
+        return message.failureReason ?? 'Yuborilmadi. Qayta urinib ko‘ring.';
       case MessageDeliveryState.failedPermanent:
-        return message.failureReason ?? 'Send failed permanently.';
+        return message.failureReason ?? 'Xabarni yuborib bo‘lmadi.';
       case MessageDeliveryState.sent:
         return '';
     }
@@ -530,6 +533,7 @@ class _ChatPageState extends State<ChatPage> {
           ),
           child: _ConversationProfilePage(
             title: widget.title,
+            avatarUrl: widget.avatarUrl,
             conversation: widget.conversation,
             trust: _controller.trust?.trust,
           ),
@@ -644,6 +648,11 @@ class _ChatPageState extends State<ChatPage> {
         message.body.trim().isEmpty &&
         !isDecryptNeedsRestore &&
         !isDecryptError;
+    final hasInlineFooter =
+        !isImageOnly &&
+        !isDecryptNeedsRestore &&
+        !isDecryptError &&
+        message.body.trim().isNotEmpty;
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -666,8 +675,8 @@ class _ChatPageState extends State<ChatPage> {
                   padding: isImageOnly
                       ? EdgeInsets.zero
                       : EdgeInsets.symmetric(
-                          horizontal: spacing.md,
-                          vertical: spacing.sm,
+                          horizontal: spacing.sm + 2,
+                          vertical: spacing.xs + 3,
                         ),
                   decoration: BoxDecoration(
                     color: isImageOnly
@@ -743,15 +752,27 @@ class _ChatPageState extends State<ChatPage> {
                               ),
                         )
                       else if (message.body.trim().isNotEmpty)
-                        Text(
-                          message.body,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: isMine ? Colors.white : null,
-                                height: 1.35,
-                              ),
+                        Wrap(
+                          spacing: spacing.sm,
+                          runSpacing: 2,
+                          alignment: WrapAlignment.end,
+                          crossAxisAlignment: WrapCrossAlignment.end,
+                          children: [
+                            Text(
+                              message.body,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: isMine ? Colors.white : null,
+                                    height: 1.28,
+                                  ),
+                            ),
+                            _buildMessageFooter(
+                              message: message,
+                              isMine: isMine,
+                            ),
+                          ],
                         ),
-                      if (!isImageOnly) ...[
+                      if (!isImageOnly && !hasInlineFooter) ...[
                         SizedBox(height: spacing.xs),
                         _buildMessageFooter(message: message, isMine: isMine),
                       ],
@@ -761,7 +782,7 @@ class _ChatPageState extends State<ChatPage> {
                 if (message.canRetry)
                   TextButton(
                     onPressed: () => _retryMessage(message),
-                    child: const Text('Retry'),
+                    child: const Text('Qayta urinish'),
                   ),
               ],
             ),
@@ -873,7 +894,7 @@ class _ChatPageState extends State<ChatPage> {
                     const Icon(Icons.photo_outlined, size: 34),
                     SizedBox(height: context.appSpacing.xs),
                     Text(
-                      'Tap to load photo',
+                      'Rasmni ochish',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
@@ -924,11 +945,11 @@ class _ChatPageState extends State<ChatPage> {
           ),
           if (isMine)
             Icon(
-              message.deliveryState == MessageDeliveryState.sent
-                  ? Icons.done_all_rounded
-                  : Icons.schedule_rounded,
+              _deliveryIcon(message),
               size: 14,
-              color: Colors.white.withValues(alpha: 0.75),
+              color: message.isRead
+                  ? const Color(0xFFB9E6FF)
+                  : Colors.white.withValues(alpha: 0.78),
             ),
         ],
       ),
@@ -961,11 +982,11 @@ class _ChatPageState extends State<ChatPage> {
               if (isMine) ...[
                 const SizedBox(width: 3),
                 Icon(
-                  message.deliveryState == MessageDeliveryState.sent
-                      ? Icons.done_all_rounded
-                      : Icons.schedule_rounded,
+                  _deliveryIcon(message),
                   size: 13,
-                  color: Colors.white.withValues(alpha: 0.92),
+                  color: message.isRead
+                      ? const Color(0xFFB9E6FF)
+                      : Colors.white.withValues(alpha: 0.92),
                 ),
               ],
             ],
@@ -973,6 +994,18 @@ class _ChatPageState extends State<ChatPage> {
         ),
       ),
     );
+  }
+
+  IconData _deliveryIcon(ChatMessage message) {
+    switch (message.deliveryState) {
+      case MessageDeliveryState.pending:
+        return Icons.schedule_rounded;
+      case MessageDeliveryState.failedRetryable:
+      case MessageDeliveryState.failedPermanent:
+        return Icons.error_outline_rounded;
+      case MessageDeliveryState.sent:
+        return message.isRead ? Icons.done_all_rounded : Icons.done_rounded;
+    }
   }
 
   Future<void> _showImageLightbox(String title, String path) {
@@ -989,7 +1022,7 @@ class _ChatPageState extends State<ChatPage> {
                 alignment: Alignment.topRight,
                 child: IconButton.filledTonal(
                   onPressed: () => Navigator.of(dialogContext).pop(),
-                  tooltip: 'Close image',
+                  tooltip: 'Rasmni yopish',
                   icon: const Icon(Icons.close_rounded),
                 ),
               ),
@@ -1350,6 +1383,7 @@ class _ComposerSendButton extends StatelessWidget {
 class _ConversationHeader extends StatelessWidget {
   const _ConversationHeader({
     required this.title,
+    required this.avatarUrl,
     required this.conversation,
     required this.trust,
     required this.brandLabel,
@@ -1360,6 +1394,7 @@ class _ConversationHeader extends StatelessWidget {
   });
 
   final String title;
+  final String avatarUrl;
   final Conversation conversation;
   final ConversationKeyTrust? trust;
   final String? brandLabel;
@@ -1391,13 +1426,14 @@ class _ConversationHeader extends StatelessWidget {
           IconButton(
             onPressed: onBack,
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-            tooltip: 'Back',
+            tooltip: 'Orqaga',
           ),
           InkWell(
             onTap: onOpenDetails,
             borderRadius: BorderRadius.circular(context.appRadii.pill),
             child: AppAvatar(
               label: title,
+              imageUrl: avatarUrl,
               icon: conversation.isGroup ? Icons.forum_outlined : null,
               radius: 20,
             ),
@@ -1461,9 +1497,7 @@ class _ConversationHeader extends StatelessWidget {
   }
 
   String _headerSubtitle() {
-    final base = conversation.isGroup
-        ? 'Workspace group'
-        : 'Private conversation';
+    final base = conversation.isGroup ? 'Guruh suhbati' : 'Shaxsiy suhbat';
     if (brandLabel?.isNotEmpty == true) {
       return '$base • $brandLabel';
     }
@@ -1474,11 +1508,13 @@ class _ConversationHeader extends StatelessWidget {
 class _ConversationProfilePage extends StatelessWidget {
   const _ConversationProfilePage({
     required this.title,
+    required this.avatarUrl,
     required this.conversation,
     required this.trust,
   });
 
   final String title;
+  final String avatarUrl;
   final Conversation conversation;
   final ConversationKeyTrust? trust;
 
@@ -1497,7 +1533,9 @@ class _ConversationProfilePage extends StatelessWidget {
         ? 'Verified device key'
         : 'Key verification pending';
     return AppScaffold(
-      appBar: AppBar(title: Text(isGroup ? 'Group info' : 'Contact details')),
+      appBar: AppBar(
+        title: Text(isGroup ? 'Guruh ma’lumotlari' : 'Kontakt ma’lumotlari'),
+      ),
       body: ListView(
         padding: EdgeInsets.all(spacing.lg),
         children: [
@@ -1507,6 +1545,7 @@ class _ConversationProfilePage extends StatelessWidget {
               children: [
                 AppAvatar(
                   label: title,
+                  imageUrl: avatarUrl,
                   icon: isGroup ? Icons.forum_outlined : null,
                   radius: 46,
                 ),
@@ -1514,7 +1553,7 @@ class _ConversationProfilePage extends StatelessWidget {
                 Text(title, style: Theme.of(context).textTheme.headlineSmall),
                 SizedBox(height: spacing.xs),
                 Text(
-                  isGroup ? 'Workspace group' : 'Private conversation',
+                  isGroup ? 'Guruh suhbati' : 'Shaxsiy suhbat',
                   style: Theme.of(
                     context,
                   ).textTheme.bodyMedium?.copyWith(color: colors.textMuted),
@@ -1524,10 +1563,10 @@ class _ConversationProfilePage extends StatelessWidget {
           ),
           SizedBox(height: spacing.lg),
           AppSectionHeader(
-            title: 'Conversation',
+            title: 'Suhbat',
             subtitle: isGroup
-                ? 'Shared messages are protected for the group.'
-                : 'Messages are protected end-to-end.',
+                ? 'Guruh xabarlari xavfsiz himoyalangan.'
+                : 'Xabarlar boshidan oxirigacha shifrlangan.',
           ),
           SizedBox(height: spacing.sm),
           AppSurfaceCard(
@@ -1535,24 +1574,22 @@ class _ConversationProfilePage extends StatelessWidget {
               children: [
                 _ProfileInfoRow(
                   icon: Icons.lock_outline_rounded,
-                  title: 'Security',
+                  title: 'Xavfsizlik',
                   value: securityLabel,
                 ),
                 Divider(color: colors.border, height: spacing.lg),
                 _ProfileInfoRow(
                   icon: Icons.photo_library_outlined,
                   title: 'Media',
-                  value: 'Photos and files remain in this chat',
+                  value: 'Rasm va fayllar shu chatda saqlanadi',
                 ),
                 Divider(color: colors.border, height: spacing.lg),
                 _ProfileInfoRow(
                   icon: isGroup
                       ? Icons.groups_2_outlined
                       : Icons.person_outline_rounded,
-                  title: isGroup ? 'Type' : 'Privacy',
-                  value: isGroup
-                      ? 'Group conversation'
-                      : 'Private conversation',
+                  title: isGroup ? 'Turi' : 'Maxfiylik',
+                  value: isGroup ? 'Guruh suhbati' : 'Shaxsiy suhbat',
                 ),
               ],
             ),

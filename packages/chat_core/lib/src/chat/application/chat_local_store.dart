@@ -11,10 +11,7 @@ import 'package:crypto_core/src/models/conversation.dart';
 import 'package:crypto_core/src/core/storage/local_data_protector.dart';
 
 class ChatLocalStore {
-  ChatLocalStore({
-    required this._database,
-    required this._localDataProtector,
-  });
+  ChatLocalStore({required this._database, required this._localDataProtector});
 
   final AppDatabase _database;
   final LocalDataProtector _localDataProtector;
@@ -105,9 +102,12 @@ class ChatLocalStore {
         messageType: drift.Value(decoded.messageType),
         attachmentCount: drift.Value(decoded.attachmentCount),
         clientMessageId: drift.Value(decoded.clientMessageId),
-        deliveryState: drift.Value(_deliveryStateToStored(decoded.deliveryState)),
+        deliveryState: drift.Value(
+          _deliveryStateToStored(decoded.deliveryState),
+        ),
         failureReason: drift.Value(decoded.failureReason),
         isPending: const drift.Value(false),
+        isRead: drift.Value(decoded.isRead),
         createdAt: drift.Value(decoded.createdAt),
       ),
     );
@@ -134,8 +134,21 @@ class ChatLocalStore {
         deliveryState: drift.Value(row.deliveryState),
         failureReason: drift.Value(row.failureReason),
         isPending: drift.Value(row.isPending),
+        isRead: drift.Value(row.isRead),
         createdAt: drift.Value(row.createdAt),
       ),
+    );
+  }
+
+  Future<void> markOwnMessagesRead({
+    required int conversationId,
+    required int currentUserId,
+    required int throughMessageId,
+  }) {
+    return _database.markMessagesRead(
+      conversationId: conversationId,
+      senderId: currentUserId,
+      throughMessageId: throughMessageId,
     );
   }
 
@@ -162,6 +175,7 @@ class ChatLocalStore {
       clientMessageId: row.clientMessageId,
       deliveryState: _deliveryStateFromStored(row.deliveryState),
       failureReason: row.failureReason,
+      isRead: row.isRead,
     );
   }
 

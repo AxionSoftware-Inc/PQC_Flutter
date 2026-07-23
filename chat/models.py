@@ -79,6 +79,33 @@ class Message(models.Model):
         return f'{self.sender_id}:{self.body[:30]}'
 
 
+class ConversationReadState(models.Model):
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name='read_states',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='conversation_read_states',
+    )
+    last_read_message = models.ForeignKey(
+        Message,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+    read_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('conversation', 'user')
+
+    def __str__(self) -> str:
+        return f'{self.conversation_id}:{self.user_id}:{self.last_read_message_id}'
+
+
 class MessageAttachment(models.Model):
     message = models.ForeignKey(
         Message,

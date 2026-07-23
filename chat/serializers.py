@@ -10,6 +10,7 @@ from chat.models import (
     ConversationParticipant,
     Message,
     MessageAttachment,
+    ConversationReadState,
     ConversationCryptoEpoch,
 )
 
@@ -228,6 +229,7 @@ class MessageSerializer(serializers.ModelSerializer):
     sender_name = serializers.SerializerMethodField()
     client_message_id = serializers.CharField()
     delivery_state = serializers.SerializerMethodField()
+    is_read = serializers.SerializerMethodField()
     message_type = serializers.CharField()
     attachment_count = serializers.IntegerField()
     attachments = MessageAttachmentSerializer(many=True, read_only=True)
@@ -241,6 +243,7 @@ class MessageSerializer(serializers.ModelSerializer):
             'sender_name',
             'client_message_id',
             'delivery_state',
+            'is_read',
             'message_type',
             'attachment_count',
             'attachments',
@@ -253,6 +256,21 @@ class MessageSerializer(serializers.ModelSerializer):
 
     def get_delivery_state(self, _obj):
         return 'sent'
+
+    def get_is_read(self, obj):
+        request = self.context.get('request')
+        if request is None or obj.sender_id != request.user.id:
+            return False
+        read_cursors = self.context.get('read_cursors')
+        if read_cursors is None:
+            read_cursors = list(
+                ConversationReadState.objects.filter(
+                    conversation=obj.conversation,
+                )
+                .exclude(user_id=obj.sender_id)
+                .values_list('last_read_message_id', flat=True)
+            )
+        return any((cursor or 0) >= obj.id for cursor in read_cursors)
 
 
 class ConversationKeyEnvelopeSerializer(serializers.ModelSerializer):

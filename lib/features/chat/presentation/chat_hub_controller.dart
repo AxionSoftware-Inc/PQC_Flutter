@@ -31,6 +31,7 @@ class ConversationListItemState {
     this.deliveryState,
     this.trustBadge,
     this.deviceSummary = '',
+    this.avatarUrl = '',
   });
 
   final Conversation conversation;
@@ -45,6 +46,7 @@ class ConversationListItemState {
   final MessageDeliveryState? deliveryState;
   final ContactTrustBadgeState? trustBadge;
   final String deviceSummary;
+  final String avatarUrl;
 
   bool get isUnread => unreadCount > 0 || isManuallyUnread;
   bool get hasDraft => draftPreview != null && draftPreview!.trim().isNotEmpty;
@@ -744,6 +746,7 @@ class ChatHubController extends ChangeNotifier {
             deviceSummary: conversation.isGroup
                 ? 'Workspace encrypted'
                 : _deviceSummaryForUser(peerUser),
+            avatarUrl: conversation.isGroup ? '' : peerUser?.avatarUrl ?? '',
           );
         })
         .where(_matchesConversationFilter)

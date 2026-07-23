@@ -82,6 +82,7 @@ class ChatFacade {
   final Map<int, AppUser> _usersById = {};
   final Map<int, Conversation> _conversationsById = {};
   final Map<int, int> _lastMessageIdByConversation = {};
+  final Map<int, int> _lastReadReportedByConversation = {};
   DateTime? _lastConversationSyncAt;
   int? _activeCurrentUserId;
   int _activeWorkspaceId = 0;
@@ -96,6 +97,7 @@ class ChatFacade {
     _activeWorkspaceId = workspaceId;
     _conversationsById.clear();
     _lastMessageIdByConversation.clear();
+    _lastReadReportedByConversation.clear();
     _lastConversationSyncAt = null;
   }
 
@@ -174,8 +176,48 @@ class ChatFacade {
     if (syncResult.lastMessageId != null) {
       _lastMessageIdByConversation[conversation.id] = syncResult.lastMessageId!;
     }
+    var syncedMessages = syncResult.messages;
+    try {
+      final peerReadThrough = await _remoteDataSource
+          .fetchPeerReadThroughMessageId(conversation.id);
+      if (peerReadThrough > 0) {
+        await _localStore.markOwnMessagesRead(
+          conversationId: conversation.id,
+          currentUserId: currentUserId,
+          throughMessageId: peerReadThrough,
+        );
+        syncedMessages = [
+          for (final message in syncedMessages)
+            message.senderId == currentUserId &&
+                    message.id > 0 &&
+                    message.id <= peerReadThrough
+                ? message.copyWith(isRead: true)
+                : message,
+        ];
+      }
+    } on ApiException {
+      // Receipt sync is best-effort and must never hide local chat history.
+    }
     final pending = await _outboxStore.readForConversation(conversation.id);
-    final mergedMessages = _mergeMessages(syncResult.messages, pending);
+    final mergedMessages = _mergeMessages(syncedMessages, pending);
+    final latestServerMessage = mergedMessages
+        .where((message) => message.id > 0)
+        .lastOrNull;
+    if (latestServerMessage != null &&
+        _lastReadReportedByConversation[conversation.id] !=
+            latestServerMessage.id) {
+      try {
+        await _remoteDataSource.markConversationRead(
+          conversation.id,
+          latestServerMessage.id,
+        );
+        _lastReadReportedByConversation[conversation.id] =
+            latestServerMessage.id;
+      } on ApiException {
+        // A read receipt is auxiliary state. Keep the decrypted local history
+        // visible and retry naturally on the next refresh.
+      }
+    }
     final trust = conversation.isGroup
         ? null
         : await _trustService.loadConversationTrust(
