@@ -31,7 +31,18 @@ class AppScaffold extends StatelessWidget {
       drawer: drawer,
       bottomNavigationBar: bottomNavigationBar,
       body: DecoratedBox(
-        decoration: BoxDecoration(color: colors.background),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color.lerp(colors.background, colors.primarySoft, 0.06)!,
+              colors.background,
+              colors.background,
+            ],
+            stops: const [0, 0.34, 1],
+          ),
+        ),
         child: body,
       ),
     );

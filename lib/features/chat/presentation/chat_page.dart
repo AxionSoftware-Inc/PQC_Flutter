@@ -435,54 +435,65 @@ class _ChatPageState extends State<ChatPage> {
                     _buildSelectedAttachmentTray(),
                   if (_selectedAttachments.isNotEmpty)
                     SizedBox(height: spacing.xs),
-                  AppSurfaceCard(
+                  Container(
                     padding: EdgeInsets.symmetric(
-                      horizontal: spacing.xs,
-                      vertical: spacing.xs,
+                      horizontal: spacing.xs + 2,
+                      vertical: spacing.xs + 2,
                     ),
-                    backgroundColor: colors.surface.withValues(alpha: 0.96),
-                    child: Row(
-                      children: [
-                        _ComposerActionButton(
-                          icon: Icons.add_rounded,
-                          onPressed: _controller.isSending
-                              ? null
-                              : _pickAttachments,
-                        ),
-                        Expanded(
-                          child: Theme(
-                            data: Theme.of(context).copyWith(
-                              inputDecorationTheme: Theme.of(context)
-                                  .inputDecorationTheme
-                                  .copyWith(
-                                    filled: false,
-                                    fillColor: Colors.transparent,
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: spacing.sm,
-                                      vertical: spacing.xs,
+                    decoration: BoxDecoration(
+                      color: colors.surface.withValues(alpha: 0.98),
+                      borderRadius: BorderRadius.circular(context.appRadii.xl),
+                      border: Border.all(
+                        color: colors.border.withValues(alpha: 0.72),
+                      ),
+                      boxShadow: context.appShadows.floating,
+                    ),
+                    child: AnimatedSize(
+                      duration: context.appDurations.fast,
+                      curve: Curves.easeOutCubic,
+                      child: Row(
+                        children: [
+                          _ComposerActionButton(
+                            icon: Icons.add_rounded,
+                            onPressed: _controller.isSending
+                                ? null
+                                : _pickAttachments,
+                          ),
+                          Expanded(
+                            child: Theme(
+                              data: Theme.of(context).copyWith(
+                                inputDecorationTheme: Theme.of(context)
+                                    .inputDecorationTheme
+                                    .copyWith(
+                                      filled: false,
+                                      fillColor: Colors.transparent,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: spacing.sm,
+                                        vertical: spacing.xs,
+                                      ),
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      border: InputBorder.none,
                                     ),
-                                    enabledBorder: InputBorder.none,
-                                    focusedBorder: InputBorder.none,
-                                    border: InputBorder.none,
-                                  ),
-                            ),
-                            child: AppTextField(
-                              controller: _messageController,
-                              hintText: 'Message',
-                              maxLines: 4,
-                              minLines: 1,
-                              onSubmitted: (_) => _sendMessage(),
+                              ),
+                              child: AppTextField(
+                                controller: _messageController,
+                                hintText: 'Message',
+                                maxLines: 4,
+                                minLines: 1,
+                                onSubmitted: (_) => _sendMessage(),
+                              ),
                             ),
                           ),
-                        ),
-                        SizedBox(width: spacing.xs),
-                        _ComposerSendButton(
-                          isSending: _controller.isSending,
-                          onPressed: _controller.isSending
-                              ? null
-                              : _sendMessage,
-                        ),
-                      ],
+                          SizedBox(width: spacing.xs),
+                          _ComposerSendButton(
+                            isSending: _controller.isSending,
+                            onPressed: _controller.isSending
+                                ? null
+                                : _sendMessage,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -674,12 +685,10 @@ class _ChatPageState extends State<ChatPage> {
                         isMine ? context.appRadii.sm : context.appRadii.md,
                       ),
                     ),
-                    border: isImageOnly
+                    border: isImageOnly || isMine
                         ? null
                         : Border.all(
-                            color: isMine
-                                ? colors.primary.withValues(alpha: 0.16)
-                                : colors.border,
+                            color: colors.border.withValues(alpha: 0.62),
                           ),
                   ),
                   child: Column(
@@ -1291,9 +1300,10 @@ class _ComposerActionButton extends StatelessWidget {
       onPressed: onPressed,
       icon: Icon(icon, size: 18),
       style: IconButton.styleFrom(
-        minimumSize: const Size.square(36),
-        maximumSize: const Size.square(36),
+        minimumSize: const Size.square(38),
+        maximumSize: const Size.square(38),
         padding: EdgeInsets.zero,
+        backgroundColor: context.appColors.surfaceMuted,
       ),
     );
   }
@@ -1307,19 +1317,32 @@ class _ComposerSendButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FilledButton(
-      onPressed: onPressed,
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(44, 36),
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+    return AnimatedContainer(
+      duration: context.appDurations.fast,
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: isSending
+            ? context.appColors.primarySoft
+            : context.appColors.primary,
+        shape: BoxShape.circle,
+        boxShadow: isSending ? const [] : context.appShadows.card,
       ),
-      child: isSending
-          ? const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : const Icon(Icons.send_rounded, size: 18),
+      child: IconButton(
+        onPressed: onPressed,
+        padding: EdgeInsets.zero,
+        color: Colors.white,
+        icon: isSending
+            ? SizedBox(
+                width: 15,
+                height: 15,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: context.appColors.primary,
+                ),
+              )
+            : const Icon(Icons.send_rounded, size: 18),
+      ),
     );
   }
 }
@@ -1351,13 +1374,17 @@ class _ConversationHeader extends StatelessWidget {
     return Container(
       padding: EdgeInsets.fromLTRB(
         spacing.xs,
-        spacing.xs,
+        spacing.sm,
         spacing.md,
         spacing.sm,
       ),
       decoration: BoxDecoration(
-        color: context.appColors.background,
-        border: Border(bottom: BorderSide(color: context.appColors.border)),
+        color: context.appColors.surface.withValues(alpha: 0.92),
+        border: Border(
+          bottom: BorderSide(
+            color: context.appColors.border.withValues(alpha: 0.68),
+          ),
+        ),
       ),
       child: Row(
         children: [
@@ -1407,10 +1434,17 @@ class _ConversationHeader extends StatelessWidget {
             ),
           ),
           if (transferCount > 0)
-            Icon(
-              Icons.sync_rounded,
-              size: 18,
-              color: context.appColors.textMuted,
+            Container(
+              padding: EdgeInsets.all(spacing.xs + 2),
+              decoration: BoxDecoration(
+                color: context.appColors.primarySoft,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.sync_rounded,
+                size: 16,
+                color: context.appColors.primary,
+              ),
             ),
           if (onVerify != null)
             IconButton(

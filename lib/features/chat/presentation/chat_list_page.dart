@@ -618,15 +618,19 @@ class _ChatListPageState extends State<ChatListPage> {
       scaffoldKey: _scaffoldKey,
       drawer: _buildNavigationDrawer(settingsState),
       appBar: AppBar(
-        toolbarHeight: 68,
-        leading: IconButton(
-          tooltip: 'Menu',
-          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-          icon: const Icon(Icons.menu_rounded),
+        toolbarHeight: 76,
+        leadingWidth: 64,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: _PremiumIconButton(
+            tooltip: 'Menu',
+            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+            icon: Icons.menu_rounded,
+          ),
         ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.end,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
               tabs[_selectedTabIndex].title,
@@ -634,10 +638,33 @@ class _ChatListPageState extends State<ChatListPage> {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            SizedBox(height: spacing.xs),
-            Text(sessionUser.displayName, style: theme.textTheme.labelMedium),
+            const SizedBox(height: 2),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: context.appColors.success,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                SizedBox(width: spacing.xs),
+                Text(
+                  sessionUser.displayName,
+                  style: theme.textTheme.labelMedium,
+                ),
+              ],
+            ),
           ],
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: AppAvatar(label: sessionUser.displayName, radius: 18),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(
@@ -680,35 +707,51 @@ class _ChatListPageState extends State<ChatListPage> {
           ],
         ),
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: context.appColors.surface,
-          border: Border(top: BorderSide(color: context.appColors.border)),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        minimum: EdgeInsets.fromLTRB(
+          spacing.md,
+          spacing.xs,
+          spacing.md,
+          spacing.sm,
         ),
-        child: NavigationBarTheme(
-          data: NavigationBarThemeData(
-            height: 66,
-            backgroundColor: context.appColors.surface,
-            indicatorColor: context.appColors.primarySoft,
-            labelTextStyle: WidgetStatePropertyAll(
-              theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: context.appColors.surface.withValues(alpha: 0.98),
+            borderRadius: BorderRadius.circular(context.appRadii.xl),
+            border: Border.all(
+              color: context.appColors.border.withValues(alpha: 0.72),
             ),
+            boxShadow: context.appShadows.floating,
           ),
-          child: NavigationBar(
-            destinations: [
-              for (final tab in tabs)
-                NavigationDestination(
-                  icon: Icon(tab.icon),
-                  selectedIcon: Icon(tab.icon),
-                  label: tab.label,
+          child: NavigationBarTheme(
+            data: NavigationBarThemeData(
+              height: 64,
+              backgroundColor: Colors.transparent,
+              indicatorColor: context.appColors.primarySoft,
+              labelTextStyle: WidgetStatePropertyAll(
+                theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
                 ),
-            ],
-            selectedIndex: _selectedTabIndex,
-            onDestinationSelected: (index) {
-              setState(() {
-                _selectedTabIndex = index;
-              });
-            },
+              ),
+            ),
+            child: NavigationBar(
+              destinations: [
+                for (final tab in tabs)
+                  NavigationDestination(
+                    icon: Icon(tab.icon, size: 21),
+                    selectedIcon: Icon(tab.icon, size: 21),
+                    label: tab.label,
+                  ),
+              ],
+              selectedIndex: _selectedTabIndex,
+              onDestinationSelected: (index) {
+                setState(() {
+                  _selectedTabIndex = index;
+                });
+              },
+            ),
           ),
         ),
       ),
@@ -2126,153 +2169,175 @@ class _ConversationListRow extends StatelessWidget {
         ? 'Open conversation'
         : item.preview;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
+    return AnimatedContainer(
+      duration: context.appDurations.fast,
+      curve: Curves.easeOutCubic,
+      margin: EdgeInsets.only(bottom: spacing.xs),
+      decoration: BoxDecoration(
+        color: selected ? colors.primarySoft : Colors.transparent,
         borderRadius: BorderRadius.circular(context.appRadii.md),
-        child: Container(
-          padding: EdgeInsets.symmetric(vertical: spacing.md),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: colors.border.withValues(alpha: 0.72)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(context.appRadii.md),
+          child: Container(
+            padding: EdgeInsets.fromLTRB(
+              spacing.sm,
+              spacing.md,
+              spacing.xs,
+              spacing.md,
             ),
-          ),
-          child: Row(
-            children: [
-              selected
-                  ? IconButton.filledTonal(
-                      onPressed: onLongPress,
-                      icon: const Icon(Icons.check_rounded),
-                      tooltip: 'Selected',
-                    )
-                  : AppAvatar(
-                      label: item.title,
-                      icon: item.conversation.isGroup
-                          ? Icons.forum_outlined
-                          : null,
-                      radius: 25,
-                    ),
-              SizedBox(width: spacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  item.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.titleMedium
-                                      ?.copyWith(
-                                        fontWeight: item.isUnread
-                                            ? FontWeight.w700
-                                            : FontWeight.w600,
-                                      ),
+            child: Row(
+              children: [
+                selected
+                    ? IconButton.filledTonal(
+                        onPressed: onLongPress,
+                        icon: const Icon(Icons.check_rounded),
+                        tooltip: 'Selected',
+                      )
+                    : AppAvatar(
+                        label: item.title,
+                        icon: item.conversation.isGroup
+                            ? Icons.forum_outlined
+                            : null,
+                        radius: 25,
+                      ),
+                SizedBox(width: spacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    item.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(
+                                          fontWeight: item.isUnread
+                                              ? FontWeight.w700
+                                              : FontWeight.w600,
+                                        ),
+                                  ),
                                 ),
-                              ),
-                              if (item.isPinned) ...[
-                                SizedBox(width: spacing.xs),
-                                Icon(
-                                  Icons.push_pin_rounded,
-                                  size: 14,
-                                  color: colors.textMuted,
-                                ),
+                                if (item.isPinned) ...[
+                                  SizedBox(width: spacing.xs),
+                                  Icon(
+                                    Icons.push_pin_rounded,
+                                    size: 14,
+                                    color: colors.textMuted,
+                                  ),
+                                ],
+                                if (isAttention) ...[
+                                  SizedBox(width: spacing.xs),
+                                  Icon(
+                                    Icons.error_outline_rounded,
+                                    size: 15,
+                                    color: colors.warning,
+                                  ),
+                                ],
                               ],
-                              if (isAttention) ...[
-                                SizedBox(width: spacing.xs),
-                                Icon(
-                                  Icons.error_outline_rounded,
-                                  size: 15,
-                                  color: colors.warning,
-                                ),
-                              ],
-                            ],
+                            ),
                           ),
-                        ),
-                        SizedBox(width: spacing.sm),
-                        Text(
-                          relativeTime,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: item.isUnread
-                                    ? colors.primary
-                                    : colors.textMuted,
-                                fontWeight: item.isUnread
-                                    ? FontWeight.w700
-                                    : FontWeight.w400,
-                              ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: spacing.xs),
-                    Row(
-                      children: [
-                        if (item.deliveryState != null) ...[
-                          Icon(
-                            _deliveryIcon(item.deliveryState!),
-                            size: 15,
-                            color: _deliveryColor(colors, item.deliveryState!),
-                          ),
-                          SizedBox(width: spacing.xs),
-                        ],
-                        Expanded(
-                          child: Text(
-                            preview,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium
+                          SizedBox(width: spacing.sm),
+                          Text(
+                            relativeTime,
+                            style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(
-                                  color: item.hasDraft
+                                  color: item.isUnread
                                       ? colors.primary
                                       : colors.textMuted,
-                                  fontWeight: item.hasDraft
-                                      ? FontWeight.w600
+                                  fontWeight: item.isUnread
+                                      ? FontWeight.w700
                                       : FontWeight.w400,
                                 ),
                           ),
-                        ),
-                        if (item.isUnread) ...[
-                          SizedBox(width: spacing.sm),
-                          Container(
-                            constraints: const BoxConstraints(
-                              minWidth: 20,
-                              minHeight: 20,
+                        ],
+                      ),
+                      SizedBox(height: spacing.xs),
+                      Row(
+                        children: [
+                          if (item.deliveryState != null) ...[
+                            Icon(
+                              _deliveryIcon(item.deliveryState!),
+                              size: 15,
+                              color: _deliveryColor(
+                                colors,
+                                item.deliveryState!,
+                              ),
                             ),
-                            padding: const EdgeInsets.symmetric(horizontal: 5),
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: colors.primary,
-                              shape: BoxShape.circle,
-                            ),
+                            SizedBox(width: spacing.xs),
+                          ],
+                          Expanded(
                             child: Text(
-                              item.unreadCount > 0 ? '${item.unreadCount}' : '',
-                              style: Theme.of(context).textTheme.labelSmall
+                              preview,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
+                                    color: item.hasDraft
+                                        ? colors.primary
+                                        : colors.textMuted,
+                                    fontWeight: item.hasDraft
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
                                   ),
                             ),
                           ),
+                          if (item.isUnread) ...[
+                            SizedBox(width: spacing.sm),
+                            Container(
+                              constraints: const BoxConstraints(
+                                minWidth: 20,
+                                minHeight: 20,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                              ),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: colors.primary,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                item.unreadCount > 0
+                                    ? '${item.unreadCount}'
+                                    : '',
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              SizedBox(width: spacing.xs),
-              IconButton(
-                onPressed: onMorePressed,
-                visualDensity: VisualDensity.compact,
-                icon: Icon(Icons.more_horiz_rounded, color: colors.textMuted),
-              ),
-            ],
+                SizedBox(width: spacing.xs),
+                IconButton(
+                  onPressed: onMorePressed,
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                    Icons.more_horiz_rounded,
+                    color: colors.textMuted,
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -2302,6 +2367,34 @@ class _ConversationListRow extends StatelessWidget {
       case MessageDeliveryState.sent:
         return colors.primary;
     }
+  }
+}
+
+class _PremiumIconButton extends StatelessWidget {
+  const _PremiumIconButton({
+    required this.tooltip,
+    required this.onPressed,
+    required this.icon,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 21),
+      style: IconButton.styleFrom(
+        backgroundColor: context.appColors.surfaceMuted,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
+        side: BorderSide(
+          color: context.appColors.border.withValues(alpha: 0.7),
+        ),
+      ),
+    );
   }
 }
 

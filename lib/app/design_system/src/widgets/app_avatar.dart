@@ -22,12 +22,27 @@ class AppAvatar extends StatelessWidget {
         _avatarAccent(label) ??
         AppBrandScope.of(context).brand?.accentColor ??
         colors.primary;
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: Color.lerp(accent, colors.surface, 0.76),
-      foregroundColor: accent,
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.lerp(accent, colors.surface, 0.72)!,
+            Color.lerp(accent, colors.surface, 0.86)!,
+          ],
+        ),
+        border: Border.all(
+          color: Color.lerp(accent, colors.border, 0.72)!,
+          width: 0.8,
+        ),
+      ),
+      alignment: Alignment.center,
       child: icon != null
-          ? Icon(icon, size: radius)
+          ? Icon(icon, size: radius * 0.92, color: accent)
           : Text(
               label.isEmpty ? '?' : label[0].toUpperCase(),
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
