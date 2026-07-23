@@ -204,6 +204,11 @@ class UserSerializer(serializers.ModelSerializer):
         return obj.first_name or obj.username
 
     def get_avatar_url(self, obj):
+        profile = getattr(obj, 'profile', None)
+        if profile is not None and profile.avatar:
+            request = self.context.get('request')
+            url = profile.avatar.url
+            return request.build_absolute_uri(url) if request else url
         account = getattr(obj, 'google_account', None)
         return account.avatar_url if account else ''
 
@@ -361,6 +366,16 @@ class WorkspaceSwitchSerializer(serializers.Serializer):
 
 class WorkspaceRoleUpdateSerializer(serializers.Serializer):
     role = serializers.ChoiceField(choices=CorporateRole.choices)
+
+
+class ProfileUpdateSerializer(serializers.Serializer):
+    display_name = serializers.CharField(max_length=150)
+
+    def validate_display_name(self, value):
+        value = ' '.join(value.split())
+        if len(value) < 2:
+            raise serializers.ValidationError('Ism kamida 2 ta belgidan iborat bo‘lsin.')
+        return value
 
 
 class WorkspaceMemberSerializer(serializers.ModelSerializer):

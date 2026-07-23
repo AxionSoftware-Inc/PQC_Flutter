@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.db import close_old_connections, connection
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TransactionTestCase
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient, APITestCase
@@ -388,6 +389,48 @@ class AuthApiTests(APITestCase):
             format='json',
         )
         self.assertEqual(forbidden.status_code, 403)
+
+    def test_user_can_update_display_name_and_override_google_avatar(self):
+        login = self.client.post(
+            '/api/auth/login',
+            {'username': 'Old Name', 'device_id': 'profile-device'},
+            format='json',
+        )
+        user = User.objects.get(id=login.data['account_id'])
+        GoogleAccount.objects.create(
+            user=user,
+            google_subject='profile-google-subject',
+            avatar_url='https://example.com/google-avatar.jpg',
+        )
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Token {login.data['token']}",
+        )
+
+        renamed = self.client.patch(
+            '/api/users/me',
+            {'display_name': 'Yangi Ism'},
+            format='json',
+        )
+        uploaded = self.client.post(
+            '/api/users/me/avatar',
+            {
+                'avatar': SimpleUploadedFile(
+                    'avatar.png',
+                    b'profile-image-bytes',
+                    content_type='image/png',
+                ),
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(renamed.status_code, 200)
+        self.assertEqual(renamed.data['display_name'], 'Yangi Ism')
+        self.assertEqual(uploaded.status_code, 200)
+        self.assertIn('/media/profile_avatars/', uploaded.data['avatar_url'])
+        contacts = self.client.get('/api/users')
+        contact = next(item for item in contacts.data if item['id'] == user.id)
+        self.assertEqual(contact['display_name'], 'Yangi Ism')
+        self.assertIn('/media/profile_avatars/', contact['avatar_url'])
 
     def test_same_device_reuses_existing_account_binding(self):
         first = self.client.post(

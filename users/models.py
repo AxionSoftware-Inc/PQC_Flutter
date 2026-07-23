@@ -1,7 +1,16 @@
 from django.conf import settings
 from django.db import models
+from pathlib import Path
+from uuid import uuid4
 
 from users.roles import CorporateRole, DEFAULT_CORPORATE_ROLE
+
+
+def profile_avatar_upload_path(instance, filename):
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {'.jpg', '.jpeg', '.png', '.webp'}:
+        suffix = '.jpg'
+    return f'profile_avatars/{instance.user_id}/{uuid4().hex}{suffix}'
 
 
 class Organization(models.Model):
@@ -42,6 +51,20 @@ class GoogleAccount(models.Model):
 
     def __str__(self) -> str:
         return f'{self.user_id}:{self.google_subject}'
+
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='profile',
+    )
+    avatar = models.FileField(upload_to=profile_avatar_upload_path, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f'profile:{self.user_id}'
 
 
 class UserCryptoBackup(models.Model):

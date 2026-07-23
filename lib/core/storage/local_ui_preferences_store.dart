@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum ChatListFilter { all, unread, pinned, archived }
+
 enum AppThemePreference { light, dark }
 
 class ChatListPreferences {
@@ -41,7 +42,7 @@ class ChatListPreferences {
 class AppPreferencesState {
   const AppPreferencesState({
     this.showArchivedByDefault = false,
-    this.compactListMode = false,
+    this.compactListMode = true,
     this.keepDrafts = true,
     this.preferManualRefreshHints = false,
     this.themePreference = AppThemePreference.light,
@@ -151,7 +152,7 @@ class LocalUiPreferencesStore {
     return AppPreferencesState(
       showArchivedByDefault:
           preferences.getBool(_showArchivedByDefaultKey) ?? false,
-      compactListMode: preferences.getBool(_compactListModeKey) ?? false,
+      compactListMode: true,
       keepDrafts: preferences.getBool(_keepDraftsKey) ?? true,
       preferManualRefreshHints:
           preferences.getBool(_preferManualRefreshHintsKey) ?? false,
@@ -171,13 +172,16 @@ class LocalUiPreferencesStore {
       _showArchivedByDefaultKey,
       state.showArchivedByDefault,
     );
-    await preferences.setBool(_compactListModeKey, state.compactListMode);
+    await preferences.setBool(_compactListModeKey, true);
     await preferences.setBool(_keepDraftsKey, state.keepDrafts);
     await preferences.setBool(
       _preferManualRefreshHintsKey,
       state.preferManualRefreshHints,
     );
-    await preferences.setString(_themePreferenceKey, state.themePreference.name);
+    await preferences.setString(
+      _themePreferenceKey,
+      state.themePreference.name,
+    );
   }
 
   Set<int> _readIntSet(SharedPreferences preferences, String key) {

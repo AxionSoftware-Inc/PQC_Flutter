@@ -28,6 +28,8 @@ class SessionUser {
   final String token;
 
   SessionUser copyWith({
+    String? username,
+    String? displayName,
     int? activeWorkspaceId,
     List<OrganizationSummary>? organizations,
     String? deviceId,
@@ -38,8 +40,8 @@ class SessionUser {
     return SessionUser(
       id: id,
       accountId: accountId,
-      username: username,
-      displayName: displayName,
+      username: username ?? this.username,
+      displayName: displayName ?? this.displayName,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       deviceId: deviceId ?? this.deviceId,
       deviceStatus: deviceStatus ?? this.deviceStatus,

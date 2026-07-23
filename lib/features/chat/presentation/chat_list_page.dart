@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:hugeicons/hugeicons.dart';
 
 import '../../../app/design_system/app_design_system.dart';
@@ -401,6 +402,162 @@ class _ChatListPageState extends State<ChatListPage> {
     await _load();
   }
 
+  Future<void> _showEditProfile() async {
+    final session = widget.sessionController.sessionUser!;
+    final nameController = TextEditingController(text: session.displayName);
+    PlatformFile? selectedAvatar;
+    var isSaving = false;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                context.appSpacing.lg,
+                context.appSpacing.xs,
+                context.appSpacing.lg,
+                MediaQuery.viewInsetsOf(sheetContext).bottom +
+                    context.appSpacing.lg,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: isSaving
+                        ? null
+                        : () async {
+                            final result = await FilePicker.platform.pickFiles(
+                              type: FileType.custom,
+                              allowedExtensions: const [
+                                'jpg',
+                                'jpeg',
+                                'png',
+                                'webp',
+                              ],
+                              withData: true,
+                            );
+                            final file = result?.files.singleOrNull;
+                            if (file == null) {
+                              return;
+                            }
+                            if (file.size > 5 * 1024 * 1024) {
+                              if (sheetContext.mounted) {
+                                ScaffoldMessenger.of(sheetContext)
+                                  ..hideCurrentSnackBar()
+                                  ..showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Rasm hajmi 5 MB dan oshmasligi kerak.',
+                                      ),
+                                    ),
+                                  );
+                              }
+                              return;
+                            }
+                            setSheetState(() => selectedAvatar = file);
+                          },
+                    child: Stack(
+                      alignment: Alignment.bottomRight,
+                      children: [
+                        if (selectedAvatar?.bytes != null)
+                          ClipOval(
+                            child: SizedBox.square(
+                              dimension: 84,
+                              child: Image.memory(
+                                selectedAvatar!.bytes!,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          )
+                        else
+                          AppAvatar(
+                            label: session.displayName,
+                            imageUrl: session.avatarUrl,
+                            radius: 42,
+                          ),
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: context.appColors.primary,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: context.appColors.surface,
+                              width: 2,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.photo_camera_outlined,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: context.appSpacing.md),
+                  TextField(
+                    controller: nameController,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'Ism va familiya',
+                      prefixIcon: Icon(Icons.person_outline_rounded),
+                    ),
+                  ),
+                  SizedBox(height: context.appSpacing.md),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: isSaving
+                          ? null
+                          : () async {
+                              final name = nameController.text.trim();
+                              if (name.length < 2) {
+                                return;
+                              }
+                              setSheetState(() => isSaving = true);
+                              try {
+                                await widget.sessionController.updateProfile(
+                                  displayName: name,
+                                  avatarBytes: selectedAvatar?.bytes,
+                                  avatarFilename: selectedAvatar?.name ?? '',
+                                );
+                                await _controller.refresh();
+                                if (sheetContext.mounted) {
+                                  Navigator.of(sheetContext).pop();
+                                }
+                              } catch (error) {
+                                if (sheetContext.mounted) {
+                                  ScaffoldMessenger.of(sheetContext)
+                                    ..hideCurrentSnackBar()
+                                    ..showSnackBar(
+                                      SnackBar(content: Text(error.toString())),
+                                    );
+                                  setSheetState(() => isSaving = false);
+                                }
+                              }
+                            },
+                      child: isSaving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Saqlash'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    ).whenComplete(nameController.dispose);
+  }
+
   // ignore: unused_element
   Future<void> _showExportBackupSheet() async {
     final controller = TextEditingController();
@@ -632,54 +789,29 @@ class _ChatListPageState extends State<ChatListPage> {
       scaffoldKey: _scaffoldKey,
       drawer: _buildNavigationDrawer(settingsState),
       appBar: AppBar(
-        toolbarHeight: 76,
-        leadingWidth: 64,
+        toolbarHeight: 56,
+        leadingWidth: 52,
         leading: Padding(
-          padding: const EdgeInsets.only(left: 12),
+          padding: const EdgeInsets.only(left: 8),
           child: _PremiumIconButton(
             tooltip: 'Menu',
             onPressed: () => _scaffoldKey.currentState?.openDrawer(),
             icon: Icons.menu_rounded,
           ),
         ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              tabs[_selectedTabIndex].title,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: context.appColors.success,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                SizedBox(width: spacing.xs),
-                Text(
-                  sessionUser.displayName,
-                  style: theme.textTheme.labelMedium,
-                ),
-              ],
-            ),
-          ],
+        title: Text(
+          tabs[_selectedTabIndex].title,
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 16),
+            padding: const EdgeInsets.only(right: 12),
             child: AppAvatar(
               label: sessionUser.displayName,
               imageUrl: sessionUser.avatarUrl,
-              radius: 18,
+              radius: 17,
             ),
           ),
         ],
@@ -758,10 +890,10 @@ class _ChatListPageState extends State<ChatListPage> {
     final items = state.items;
     return ListView(
       padding: EdgeInsets.fromLTRB(
-        spacing.lg,
-        spacing.sm,
-        spacing.lg,
-        spacing.lg,
+        spacing.md,
+        spacing.xs,
+        spacing.md,
+        spacing.md,
       ),
       children: [
         if (_selectedConversationIds.isNotEmpty) ...[
@@ -790,14 +922,8 @@ class _ChatListPageState extends State<ChatListPage> {
           ),
           SizedBox(height: spacing.sm),
         ],
-        AppSearchField(
-          controller: _chatSearchController,
-          hintText: 'Chatlar va odamlarni qidiring',
-          onChanged: (value) => _controller.setChatSearchQuery(value),
-        ),
-        SizedBox(height: spacing.md),
-        _buildChatFilterSelector(state.preferences.selectedFilter),
-        SizedBox(height: spacing.lg),
+        _buildCompactChatToolbar(state.preferences.selectedFilter),
+        SizedBox(height: spacing.sm),
         if (_controller.isLoading && items.isEmpty)
           ..._buildChatSkeleton()
         else if (items.isEmpty)
@@ -839,15 +965,94 @@ class _ChatListPageState extends State<ChatListPage> {
                 onTap: () => _selectedConversationIds.isNotEmpty
                     ? _toggleConversationSelection(item.conversation.id)
                     : _openConversationItem(item),
-                onLongPress: () =>
+                onAvatarLongPress: () =>
                     _toggleConversationSelection(item.conversation.id),
-                onMorePressed: () => _showConversationActions(item),
+                onLongPress: () => _selectedConversationIds.isNotEmpty
+                    ? _toggleConversationSelection(item.conversation.id)
+                    : _showConversationActions(item),
                 relativeTime: _formatRelativeTime(item.updatedAt),
               ),
             ),
       ],
     );
   }
+
+  Widget _buildCompactChatToolbar(ChatListFilter selectedFilter) {
+    final spacing = context.appSpacing;
+    return Row(
+      children: [
+        Expanded(
+          child: AppSearchField(
+            controller: _chatSearchController,
+            hintText: 'Qidirish',
+            compact: true,
+            onChanged: _controller.setChatSearchQuery,
+          ),
+        ),
+        SizedBox(width: spacing.xs),
+        PopupMenuButton<ChatListFilter>(
+          tooltip: 'Chat filtri',
+          initialValue: selectedFilter,
+          onSelected: _controller.setChatFilter,
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: ChatListFilter.all, child: Text('Barchasi')),
+            PopupMenuItem(
+              value: ChatListFilter.unread,
+              child: Text('O‘qilmagan'),
+            ),
+            PopupMenuItem(
+              value: ChatListFilter.pinned,
+              child: Text('Mahkamlangan'),
+            ),
+            PopupMenuItem(value: ChatListFilter.archived, child: Text('Arxiv')),
+          ],
+          child: Container(
+            height: 42,
+            padding: EdgeInsets.symmetric(horizontal: spacing.sm),
+            decoration: BoxDecoration(
+              color: selectedFilter == ChatListFilter.all
+                  ? context.appColors.surfaceMuted
+                  : context.appColors.primarySoft,
+              borderRadius: BorderRadius.circular(context.appRadii.md),
+              border: Border.all(
+                color: selectedFilter == ChatListFilter.all
+                    ? context.appColors.border.withValues(alpha: 0.58)
+                    : context.appColors.primary.withValues(alpha: 0.22),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.tune_rounded,
+                  size: 18,
+                  color: selectedFilter == ChatListFilter.all
+                      ? context.appColors.textMuted
+                      : context.appColors.primary,
+                ),
+                if (selectedFilter != ChatListFilter.all) ...[
+                  SizedBox(width: spacing.xs),
+                  Text(
+                    _chatFilterShortLabel(selectedFilter),
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: context.appColors.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _chatFilterShortLabel(ChatListFilter filter) => switch (filter) {
+    ChatListFilter.all => 'Barchasi',
+    ChatListFilter.unread => 'Yangi',
+    ChatListFilter.pinned => 'Muhim',
+    ChatListFilter.archived => 'Arxiv',
+  };
 
   Widget _swipeActionBackground({
     required Alignment alignment,
@@ -1204,17 +1409,6 @@ class _ChatListPageState extends State<ChatListPage> {
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                value: state.appPreferences.compactListMode,
-                title: const Text('Compact list mode'),
-                subtitle: const Text('Tiles shorter va zichroq ko‘rinadi.'),
-                onChanged: (value) {
-                  _controller.updateAppPreferences(
-                    state.appPreferences.copyWith(compactListMode: value),
-                  );
-                },
-              ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
                 value: state.appPreferences.keepDrafts,
                 title: const Text('Keep drafts'),
                 subtitle: const Text('Composer draftlari avtomatik saqlansin.'),
@@ -1382,7 +1576,7 @@ class _ChatListPageState extends State<ChatListPage> {
     final spacing = context.appSpacing;
     final session = state.sessionUser;
     return ListView(
-      padding: EdgeInsets.all(spacing.lg),
+      padding: EdgeInsets.all(spacing.md),
       children: [
         AppSurfaceCard(
           backgroundColor: context.appColors.primarySoft,
@@ -1391,7 +1585,7 @@ class _ChatListPageState extends State<ChatListPage> {
               AppAvatar(
                 label: session.displayName,
                 imageUrl: session.avatarUrl,
-                radius: 42,
+                radius: 36,
               ),
               SizedBox(height: spacing.md),
               Text(
@@ -1414,7 +1608,7 @@ class _ChatListPageState extends State<ChatListPage> {
             ],
           ),
         ),
-        SizedBox(height: spacing.lg),
+        SizedBox(height: spacing.md),
         AppSurfaceCard(
           child: Column(
             children: [
@@ -1426,11 +1620,11 @@ class _ChatListPageState extends State<ChatListPage> {
             ],
           ),
         ),
-        SizedBox(height: spacing.lg),
+        SizedBox(height: spacing.md),
         AppPrimaryButton(
-          onPressed: () => setState(() => _selectedTabIndex = 3),
-          icon: const Icon(Icons.settings_outlined),
-          label: const Text('Open settings'),
+          onPressed: _showEditProfile,
+          icon: const Icon(Icons.edit_outlined),
+          label: const Text('Profilni tahrirlash'),
         ),
       ],
     );
@@ -1439,13 +1633,18 @@ class _ChatListPageState extends State<ChatListPage> {
   Widget _buildSettingsOverview(SettingsViewState state) {
     final spacing = context.appSpacing;
     return ListView(
-      padding: EdgeInsets.all(spacing.lg),
+      padding: EdgeInsets.fromLTRB(
+        spacing.md,
+        spacing.xs,
+        spacing.md,
+        spacing.md,
+      ),
       children: [
         const AppSectionHeader(
-          title: 'Settings',
-          subtitle: 'Choose a section to manage this account.',
+          title: 'Sozlamalar',
+          subtitle: 'Kerakli bo‘limni tanlang.',
         ),
-        SizedBox(height: spacing.md),
+        SizedBox(height: spacing.xs),
         _settingsSection(
           'Account',
           'Profile, workspace and session',
@@ -1499,42 +1698,54 @@ class _ChatListPageState extends State<ChatListPage> {
     Widget Function(SettingsViewState) builder,
   ) {
     final spacing = context.appSpacing;
-    return Padding(
-      padding: EdgeInsets.only(bottom: spacing.sm),
-      child: AppSurfaceCard(
-        child: ListTile(
-          contentPadding: EdgeInsets.symmetric(horizontal: spacing.md),
-          leading: Icon(icon, color: context.appColors.primary),
-          title: Text(title),
-          subtitle: Text(subtitle),
-          trailing: const Icon(Icons.chevron_right_rounded),
-          onTap: () => Navigator.of(context).push(
-            PageRouteBuilder<void>(
-              transitionDuration: const Duration(milliseconds: 220),
-              reverseTransitionDuration: const Duration(milliseconds: 180),
-              pageBuilder: (_, animation, _) {
-                final curve = CurvedAnimation(
-                  parent: animation,
-                  curve: Curves.easeOutCubic,
-                );
-                return FadeTransition(
-                  opacity: curve,
-                  child: SlideTransition(
-                    position: Tween<Offset>(
-                      begin: const Offset(0.015, 0.02),
-                      end: Offset.zero,
-                    ).animate(curve),
-                    child: _SettingsPage(
-                      title: title,
-                      child: ListenableBuilder(
-                        listenable: _controller,
-                        builder: (_, _) => builder(_controller.settingsState),
-                      ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(context.appRadii.md),
+        onTap: () => Navigator.of(context).push(
+          PageRouteBuilder<void>(
+            transitionDuration: const Duration(milliseconds: 220),
+            reverseTransitionDuration: const Duration(milliseconds: 180),
+            pageBuilder: (_, animation, _) {
+              final curve = CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              );
+              return FadeTransition(
+                opacity: curve,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0.015, 0.02),
+                    end: Offset.zero,
+                  ).animate(curve),
+                  child: _SettingsPage(
+                    title: title,
+                    child: ListenableBuilder(
+                      listenable: _controller,
+                      builder: (_, _) => builder(_controller.settingsState),
                     ),
                   ),
-                );
-              },
+                ),
+              );
+            },
+          ),
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: context.appColors.border.withValues(alpha: 0.65),
+              ),
             ),
+          ),
+          child: ListTile(
+            dense: true,
+            visualDensity: const VisualDensity(vertical: -2),
+            contentPadding: EdgeInsets.symmetric(horizontal: spacing.xs),
+            leading: Icon(icon, color: context.appColors.primary),
+            title: Text(title),
+            subtitle: Text(subtitle),
+            trailing: const Icon(Icons.chevron_right_rounded),
           ),
         ),
       ),
@@ -1542,7 +1753,7 @@ class _ChatListPageState extends State<ChatListPage> {
   }
 
   Widget _settingsList(List<Widget> children) => ListView(
-    padding: EdgeInsets.all(context.appSpacing.lg),
+    padding: EdgeInsets.all(context.appSpacing.md),
     children: children,
   );
 
@@ -1569,6 +1780,12 @@ class _ChatListPageState extends State<ChatListPage> {
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: context.appColors.textMuted,
               ),
+            ),
+            SizedBox(height: spacing.sm),
+            TextButton.icon(
+              onPressed: _showEditProfile,
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Profilni tahrirlash'),
             ),
           ],
         ),
@@ -1880,14 +2097,6 @@ class _ChatListPageState extends State<ChatListPage> {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              value: state.appPreferences.compactListMode,
-              title: const Text('Compact chat list'),
-              onChanged: (value) => _controller.updateAppPreferences(
-                state.appPreferences.copyWith(compactListMode: value),
-              ),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
               value: state.appPreferences.showArchivedByDefault,
               title: const Text('Show archived chats'),
               onChanged: (value) => _controller.updateAppPreferences(
@@ -1985,19 +2194,6 @@ class _ChatListPageState extends State<ChatListPage> {
     } catch (error) {
       if (mounted) _showMessage(error.toString(), tone: AppStatusTone.danger);
     }
-  }
-
-  Widget _buildChatFilterSelector(ChatListFilter filter) {
-    return _FilterStrip<ChatListFilter>(
-      selected: filter,
-      options: const [
-        _FilterOption(value: ChatListFilter.all, label: 'Barchasi'),
-        _FilterOption(value: ChatListFilter.unread, label: 'O‘qilmagan'),
-        _FilterOption(value: ChatListFilter.pinned, label: 'Mahkamlangan'),
-        _FilterOption(value: ChatListFilter.archived, label: 'Arxiv'),
-      ],
-      onSelected: _controller.setChatFilter,
-    );
   }
 
   Widget _buildContactsFilterSelector(ContactsTrustFilter filter) {
@@ -2149,20 +2345,23 @@ class _ChatListPageState extends State<ChatListPage> {
 
   String _formatRelativeTime(DateTime time) {
     final now = DateTime.now();
-    final difference = now.difference(time);
-    if (difference.inMinutes < 1) {
-      return 'now';
+    final local = time.toLocal();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDay = DateTime(local.year, local.month, local.day);
+    final dayDifference = today.difference(messageDay).inDays;
+    if (dayDifference <= 0) {
+      final hour = local.hour.toString().padLeft(2, '0');
+      final minute = local.minute.toString().padLeft(2, '0');
+      return '$hour:$minute';
     }
-    if (difference.inHours < 1) {
-      return '${difference.inMinutes}m';
+    if (dayDifference == 1) {
+      return 'Kecha';
     }
-    if (difference.inDays < 1) {
-      return '${difference.inHours}h';
+    if (dayDifference < 7) {
+      const weekdays = ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Ya'];
+      return weekdays[local.weekday - 1];
     }
-    if (difference.inDays < 7) {
-      return '${difference.inDays}d';
-    }
-    return '${time.day}/${time.month}';
+    return '${local.day.toString().padLeft(2, '0')}.${local.month.toString().padLeft(2, '0')}';
   }
 
   AppStatusTone _statusTone(UiStatusTone tone) {
@@ -2185,7 +2384,7 @@ class _ConversationListRow extends StatelessWidget {
     required this.selected,
     required this.onTap,
     required this.onLongPress,
-    required this.onMorePressed,
+    required this.onAvatarLongPress,
     required this.relativeTime,
   });
 
@@ -2193,7 +2392,7 @@ class _ConversationListRow extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
-  final VoidCallback onMorePressed;
+  final VoidCallback onAvatarLongPress;
   final String relativeTime;
 
   @override
@@ -2204,15 +2403,15 @@ class _ConversationListRow extends StatelessWidget {
         item.trustBadge?.tone == UiStatusTone.warning ||
         item.trustBadge?.tone == UiStatusTone.danger;
     final preview = item.hasDraft
-        ? 'Draft: ${item.draftPreview!.trim()}'
+        ? 'Qoralama: ${item.draftPreview!.trim()}'
         : item.preview.isEmpty
-        ? 'Open conversation'
+        ? 'Suhbatni ochish'
         : item.preview;
 
     return AnimatedContainer(
       duration: context.appDurations.fast,
       curve: Curves.easeOutCubic,
-      margin: EdgeInsets.only(bottom: spacing.xs),
+      margin: const EdgeInsets.only(bottom: 1),
       decoration: BoxDecoration(
         color: selected ? colors.primarySoft : Colors.transparent,
         borderRadius: BorderRadius.circular(context.appRadii.md),
@@ -2225,28 +2424,44 @@ class _ConversationListRow extends StatelessWidget {
           borderRadius: BorderRadius.circular(context.appRadii.md),
           child: Container(
             padding: EdgeInsets.fromLTRB(
-              spacing.sm,
-              spacing.md,
               spacing.xs,
-              spacing.md,
+              spacing.sm,
+              spacing.xs,
+              spacing.sm,
             ),
             child: Row(
               children: [
-                selected
-                    ? IconButton.filledTonal(
-                        onPressed: onLongPress,
-                        icon: const Icon(Icons.check_rounded),
-                        tooltip: 'Selected',
-                      )
-                    : AppAvatar(
-                        label: item.title,
-                        imageUrl: item.avatarUrl,
-                        icon: item.conversation.isGroup
-                            ? Icons.forum_outlined
-                            : null,
-                        radius: 25,
-                      ),
-                SizedBox(width: spacing.md),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onLongPress: onAvatarLongPress,
+                  child: AnimatedSwitcher(
+                    duration: context.appDurations.fast,
+                    child: selected
+                        ? Container(
+                            key: const ValueKey('selected'),
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: colors.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.check_rounded,
+                              color: Colors.white,
+                            ),
+                          )
+                        : AppAvatar(
+                            key: const ValueKey('avatar'),
+                            label: item.title,
+                            imageUrl: item.avatarUrl,
+                            icon: item.conversation.isGroup
+                                ? Icons.forum_outlined
+                                : null,
+                            radius: 22,
+                          ),
+                  ),
+                ),
+                SizedBox(width: spacing.sm),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2287,6 +2502,24 @@ class _ConversationListRow extends StatelessWidget {
                                     color: colors.warning,
                                   ),
                                 ],
+                                if (item.roleLabel.isNotEmpty &&
+                                    !item.conversation.isGroup) ...[
+                                  SizedBox(width: spacing.xs),
+                                  Flexible(
+                                    child: Text(
+                                      '• ${item.roleLabel}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelSmall
+                                          ?.copyWith(
+                                            color: colors.textMuted,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -2305,7 +2538,7 @@ class _ConversationListRow extends StatelessWidget {
                           ),
                         ],
                       ),
-                      SizedBox(height: spacing.xs),
+                      const SizedBox(height: 2),
                       Row(
                         children: [
                           if (item.deliveryState != null) ...[
@@ -2324,7 +2557,7 @@ class _ConversationListRow extends StatelessWidget {
                               preview,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodyMedium
+                              style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(
                                     color: item.hasDraft
                                         ? colors.primary
@@ -2339,8 +2572,8 @@ class _ConversationListRow extends StatelessWidget {
                             SizedBox(width: spacing.sm),
                             Container(
                               constraints: const BoxConstraints(
-                                minWidth: 20,
-                                minHeight: 20,
+                                minWidth: 18,
+                                minHeight: 18,
                               ),
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 5,
@@ -2365,16 +2598,6 @@ class _ConversationListRow extends StatelessWidget {
                         ],
                       ),
                     ],
-                  ),
-                ),
-                SizedBox(width: spacing.xs),
-                IconButton(
-                  onPressed: onMorePressed,
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(
-                    Icons.more_horiz_rounded,
-                    color: colors.textMuted,
-                    size: 20,
                   ),
                 ),
               ],

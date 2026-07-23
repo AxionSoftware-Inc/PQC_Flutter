@@ -24,6 +24,7 @@ from users.models import (
     Organization,
     OrganizationMember,
     UserDevice,
+    UserProfile,
     Workspace,
     WorkspaceMember,
     UserCryptoBackup,
@@ -43,6 +44,7 @@ from users.serializers import (
     InvitationSerializer,
     LoginSerializer,
     OrganizationSerializer,
+    ProfileUpdateSerializer,
     UserSerializer,
     WorkspaceMemberSerializer,
     WorkspaceRoleUpdateSerializer,
@@ -454,7 +456,7 @@ class LoginView(APIView):
                     ],
                     many=True,
                 ).data,
-                'user': UserSerializer(user).data,
+                'user': UserSerializer(user, context={'request': request}).data,
             }
         )
 
@@ -531,7 +533,7 @@ class GoogleLoginView(APIView):
             'profile_fingerprint': device.profile_fingerprint,
             'active_workspace_id': workspace.id,
             'organizations': _serialize_org_context(user),
-            'user': UserSerializer(user).data,
+            'user': UserSerializer(user, context={'request': request}).data,
         })
 
 
@@ -540,7 +542,10 @@ class MeView(APIView):
         workspace, error_response = _get_request_active_workspace(request)
         if error_response is not None:
             return error_response
-        user_data = UserSerializer(request.user).data
+        user_data = UserSerializer(
+            request.user,
+            context={'request': request},
+        ).data
         return Response(
             {
                 **user_data,
@@ -548,6 +553,64 @@ class MeView(APIView):
                 'organizations': _serialize_org_context(request.user),
                 'user': user_data,
             }
+        )
+
+    def patch(self, request):
+        serializer = ProfileUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        request.user.first_name = serializer.validated_data['display_name']
+        request.user.save(update_fields=['first_name'])
+        return Response(
+            UserSerializer(
+                request.user,
+                context={'request': request},
+            ).data
+        )
+
+
+class ProfileAvatarView(APIView):
+    MAX_AVATAR_BYTES = 5 * 1024 * 1024
+    ALLOWED_CONTENT_TYPES = {
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+    }
+
+    @transaction.atomic
+    def post(self, request):
+        avatar = request.FILES.get('avatar')
+        if avatar is None:
+            return Response(
+                {'detail': 'Avatar rasmi tanlanmagan.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if avatar.size <= 0 or avatar.size > self.MAX_AVATAR_BYTES:
+            return Response(
+                {'detail': 'Avatar hajmi 5 MB dan oshmasligi kerak.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if avatar.content_type not in self.ALLOWED_CONTENT_TYPES:
+            return Response(
+                {'detail': 'Faqat JPG, PNG yoki WEBP rasm qabul qilinadi.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        profile, _ = UserProfile.objects.select_for_update().get_or_create(
+            user=request.user,
+        )
+        previous_avatar = profile.avatar.name if profile.avatar else ''
+        avatar_storage = profile.avatar.storage
+        profile.avatar = avatar
+        profile.save(update_fields=['avatar', 'updated_at'])
+        if previous_avatar and previous_avatar != profile.avatar.name:
+            transaction.on_commit(
+                lambda: avatar_storage.delete(previous_avatar),
+            )
+        return Response(
+            UserSerializer(
+                request.user,
+                context={'request': request},
+            ).data
         )
 
 
@@ -874,6 +937,7 @@ class UserListView(APIView):
                 users,
                 many=True,
                 context={
+                    'request': request,
                     'workspace_roles_by_user': roles_by_user,
                     'manageable_role_user_ids': manageable_user_ids,
                 },
@@ -955,6 +1019,7 @@ class UserRoleView(APIView):
             UserSerializer(
                 target_user,
                 context={
+                    'request': request,
                     'workspace_roles_by_user': {target_user.id: target.role},
                     'manageable_role_user_ids': {target_user.id},
                 },
