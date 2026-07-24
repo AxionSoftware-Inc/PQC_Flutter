@@ -2,7 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:crypto_core/crypto_core.dart'
-    show GroupCipherMessageCodec, PqcPrivateMessageCodec;
+    show
+        AttachmentCryptoService,
+        GroupCipherMessageCodec,
+        PqcPrivateMessageCodec;
+import 'package:pqc_engine_flutter_adapter/pqc_engine_flutter_adapter.dart';
 
 import 'app/app.dart';
 import 'app/design_system/app_design_system.dart';
@@ -94,23 +98,42 @@ Future<void> main() async {
     outboxStore: outboxStore,
   );
   final chatRealtimeService = ChatRealtimeService(apiClient: apiClient);
+  final sdkMigrationPolicy = SdkV2MigrationPolicy.fromEnvironment();
+  final sdkMigrationHealth = SdkV2MigrationHealthMonitor();
+  final legacyGroupAlgorithm = GroupChatCipherAlgorithm(
+    groupKeyStore: groupKeyStore,
+    codec: GroupCipherMessageCodec(groupKeyStore: groupKeyStore),
+  );
+  final legacyPrivateAlgorithm = PqcPrivateChatAlgorithm(
+    deviceIdentityService: deviceIdentityService,
+    devicePqcKeyService: devicePqcKeyService,
+    devicePqcSigningKeyService: devicePqcSigningKeyService,
+    keyMaterialRegistry: keyMaterialRegistry,
+    codec: PqcPrivateMessageCodec(
+      deviceIdentityService: deviceIdentityService,
+      devicePqcKeyService: devicePqcKeyService,
+      devicePqcSigningKeyService: devicePqcSigningKeyService,
+      keyMaterialRegistry: keyMaterialRegistry,
+    ),
+  );
   final chatCipherService = RoutedChatCipherService(
     algorithms: [
-      GroupChatCipherAlgorithm(
-        groupKeyStore: groupKeyStore,
-        codec: GroupCipherMessageCodec(groupKeyStore: groupKeyStore),
+      SdkV2MigrationAlgorithm(
+        legacy: legacyGroupAlgorithm,
+        sdk: SdkV2GroupChatAlgorithm(groupKeyStore: groupKeyStore),
+        policy: sdkMigrationPolicy,
+        onShadowReport: sdkMigrationHealth.record,
       ),
-      PqcPrivateChatAlgorithm(
-        deviceIdentityService: deviceIdentityService,
-        devicePqcKeyService: devicePqcKeyService,
-        devicePqcSigningKeyService: devicePqcSigningKeyService,
-        keyMaterialRegistry: keyMaterialRegistry,
-        codec: PqcPrivateMessageCodec(
+      SdkV2MigrationAlgorithm(
+        legacy: legacyPrivateAlgorithm,
+        sdk: SdkV2PrivateChatAlgorithm(
           deviceIdentityService: deviceIdentityService,
           devicePqcKeyService: devicePqcKeyService,
           devicePqcSigningKeyService: devicePqcSigningKeyService,
           keyMaterialRegistry: keyMaterialRegistry,
         ),
+        policy: sdkMigrationPolicy,
+        onShadowReport: sdkMigrationHealth.record,
       ),
     ],
     outboundMessageCache: outboundMessageCache,
@@ -135,6 +158,9 @@ Future<void> main() async {
   final chatCryptoService = ChatCryptoService(
     cipherService: chatCipherService,
     cryptoCoreFacade: cryptoCoreFacade,
+    attachmentCryptoProvider: sdkMigrationPolicy.usesSdkWriter
+        ? SdkV2AttachmentCryptoAdapter()
+        : AttachmentCryptoService(),
   );
   final attachmentTransferFacade = AttachmentTransferFacade(
     remoteDataSource: remoteDataSource,

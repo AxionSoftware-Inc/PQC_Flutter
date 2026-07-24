@@ -694,15 +694,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.5.2"
+  pqc_engine_flutter_adapter:
+    dependency: "direct main"
+    description:
+      path: "packages/pqc_engine_flutter_adapter"
+      relative: true
+    source: path
+    version: "0.1.0-dev.1"
   pqc_engine_sdk:
     dependency: "direct main"
     description:
       path: "."
-      ref: "v0.1.0-dev.2"
-      resolved-ref: "4245541e8a1ac7aa2cfe1449144a9eb198530a0c"
+      ref: "v0.1.0-dev.3"
+      resolved-ref: a7dcae14f0592277fd0a3f3fcc19940a8ba7a540
       url: "https://github.com/AxionSoftware-Inc/PQC-SDK.git"
     source: git
-    version: "0.1.0-dev.2"
+    version: "0.1.0-dev.3"
   pqcrypto:
     dependency: "direct main"
     description:

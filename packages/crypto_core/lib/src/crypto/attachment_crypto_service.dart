@@ -33,7 +33,38 @@ class AttachmentFileAnalysis {
   final String plaintextSha256;
 }
 
-class AttachmentCryptoService {
+abstract interface class AttachmentCryptoProvider {
+  AttachmentEncryptionDescriptor generateDescriptor();
+
+  Future<AttachmentEncryptionDescriptor> deriveEpochBoundDescriptor({
+    required List<int> conversationEpochSecret,
+    required String conversationEpochId,
+    required String attachmentId,
+    required int manifestSequence,
+  });
+
+  Future<AttachmentFileAnalysis> analyzeFile({
+    required File file,
+    required int chunkSize,
+  });
+
+  Future<String> buildManifestSha256(EncryptedAttachmentManifest manifest);
+
+  Future<AttachmentChunkEncryptionResult> encryptChunk({
+    required File file,
+    required AttachmentEncryptionDescriptor descriptor,
+    required int chunkSize,
+    required int chunkIndex,
+  });
+
+  Future<Uint8List> decryptChunk({
+    required List<int> ciphertext,
+    required AttachmentEncryptionDescriptor descriptor,
+    required int chunkIndex,
+  });
+}
+
+class AttachmentCryptoService implements AttachmentCryptoProvider {
   AttachmentCryptoService({Cipher? cipher, Random? random})
     : _cipher = cipher ?? AesGcm.with256bits(),
       _random = random ?? Random.secure();
@@ -43,6 +74,7 @@ class AttachmentCryptoService {
   final Cipher _cipher;
   final Random _random;
 
+  @override
   AttachmentEncryptionDescriptor generateDescriptor() {
     final key = Uint8List.fromList(
       List<int>.generate(32, (_) => _random.nextInt(256)),
@@ -60,6 +92,7 @@ class AttachmentCryptoService {
   /// Deterministic attachment material bound to an immutable PQCv2 epoch.
   /// Callers must provide a recovered conversation epoch secret, never a
   /// device-local random key, when durable enterprise history is required.
+  @override
   Future<AttachmentEncryptionDescriptor> deriveEpochBoundDescriptor({
     required List<int> conversationEpochSecret,
     required String conversationEpochId,
@@ -84,6 +117,7 @@ class AttachmentCryptoService {
     );
   }
 
+  @override
   Future<AttachmentFileAnalysis> analyzeFile({
     required File file,
     required int chunkSize,
@@ -104,6 +138,7 @@ class AttachmentCryptoService {
     );
   }
 
+  @override
   Future<String> buildManifestSha256(
     EncryptedAttachmentManifest manifest,
   ) async {
@@ -123,6 +158,7 @@ class AttachmentCryptoService {
     return crypto.sha256.convert(utf8.encode(canonical)).toString();
   }
 
+  @override
   Future<AttachmentChunkEncryptionResult> encryptChunk({
     required File file,
     required AttachmentEncryptionDescriptor descriptor,
@@ -157,6 +193,7 @@ class AttachmentCryptoService {
     }
   }
 
+  @override
   Future<Uint8List> decryptChunk({
     required List<int> ciphertext,
     required AttachmentEncryptionDescriptor descriptor,

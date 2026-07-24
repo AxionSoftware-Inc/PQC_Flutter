@@ -46,10 +46,16 @@ class ChatCryptoService {
   static const decryptHistoryRecoveryPendingMarker =
       '[history-recovery-pending]';
 
-  const ChatCryptoService({required this.cipherService, this.cryptoCoreFacade});
+  ChatCryptoService({
+    required this.cipherService,
+    this.cryptoCoreFacade,
+    AttachmentCryptoProvider? attachmentCryptoProvider,
+  }) : attachmentCryptoProvider =
+           attachmentCryptoProvider ?? AttachmentCryptoService();
 
   final ChatCipherService cipherService;
   final CryptoCoreFacade? cryptoCoreFacade;
+  final AttachmentCryptoProvider attachmentCryptoProvider;
 
   Future<String> encrypt({
     required ChatCryptoRequest request,
@@ -95,7 +101,7 @@ class ChatCryptoService {
         conversation: request.conversation,
         usersById: request.usersById,
       );
-      return AttachmentCryptoService().deriveEpochBoundDescriptor(
+      return attachmentCryptoProvider.deriveEpochBoundDescriptor(
         conversationEpochSecret: epoch.secretKeyBytes,
         conversationEpochId: epoch.keyId,
         attachmentId: attachmentId,
@@ -104,7 +110,7 @@ class ChatCryptoService {
     }
     final epoch = await facade.conversationEpochKeyStore
         .getOrCreatePrivateEpoch(request.conversation.id);
-    return AttachmentCryptoService().deriveEpochBoundDescriptor(
+    return attachmentCryptoProvider.deriveEpochBoundDescriptor(
       conversationEpochSecret: epoch.secretKeyBytes,
       conversationEpochId: epoch.epochId,
       attachmentId: attachmentId,
