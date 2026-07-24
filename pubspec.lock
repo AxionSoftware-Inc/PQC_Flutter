@@ -694,6 +694,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.5.2"
+  pqc_engine_sdk:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: "v0.1.0-dev.2"
+      resolved-ref: "4245541e8a1ac7aa2cfe1449144a9eb198530a0c"
+      url: "https://github.com/AxionSoftware-Inc/PQC-SDK.git"
+    source: git
+    version: "0.1.0-dev.2"
   pqcrypto:
     dependency: "direct main"
     description:
