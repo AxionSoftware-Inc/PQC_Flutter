@@ -23,15 +23,18 @@ django_asgi_app = get_asgi_application()
 
 from chat.consumers import ChatEventsConsumer
 
+websocket_urlpatterns = [
+    path('ws/chat', ChatEventsConsumer.as_asgi()),
+    # ApiClient builds WebSocket URLs from the `/api` REST base.
+    # Keep the direct route for reverse proxies that strip it.
+    path('api/ws/chat', ChatEventsConsumer.as_asgi()),
+]
+
 application = ProtocolTypeRouter(
     {
         'http': django_asgi_app,
         'websocket': AuthMiddlewareStack(
-            URLRouter(
-                [
-                    path('ws/chat', ChatEventsConsumer.as_asgi()),
-                ]
-            )
+            URLRouter(websocket_urlpatterns)
         ),
     }
 )
