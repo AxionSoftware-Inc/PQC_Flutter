@@ -16,44 +16,50 @@ void main() {
     expect(defaultTheme.extension<AppColors>(), isNotNull);
     expect(defaultTheme.extension<AppSpacing>(), isNotNull);
     expect(enterpriseTheme.extension<AppRadii>(), isNotNull);
-    expect(defaultTheme.colorScheme.primary, isNot(equals(enterpriseTheme.colorScheme.primary)));
-  });
-
-  test('workspace brand resolver applies organization accent when available', () {
-    const session = SessionUser(
-      id: 7,
-      accountId: 9,
-      username: 'riley',
-      displayName: 'Riley',
-      deviceId: 'device-a',
-      token: 'token',
-      activeWorkspaceId: 12,
-      organizations: [
-        OrganizationSummary(
-          id: 3,
-          name: 'Atlas',
-          slug: 'atlas',
-          brandColor: '#0F766E',
-          brandLogoUrl: 'https://example.com/logo.png',
-          workspaces: [
-            WorkspaceSummary(
-              id: 12,
-              organizationId: 3,
-              name: 'Ops',
-              slug: 'ops',
-            ),
-          ],
-        ),
-      ],
+    expect(
+      defaultTheme.colorScheme.primary,
+      isNot(equals(enterpriseTheme.colorScheme.primary)),
     );
-
-    final brand = WorkspaceBrandResolver.fromSession(session);
-
-    expect(brand, isNotNull);
-    expect(brand!.accentColor, const Color(0xFF0F766E));
-    expect(brand.logoUrl, 'https://example.com/logo.png');
-    expect(brand.policy, BrandAccentPolicy.workspaceOverride);
   });
+
+  test(
+    'workspace brand resolver applies organization accent when available',
+    () {
+      const session = SessionUser(
+        id: 7,
+        accountId: 9,
+        username: 'riley',
+        displayName: 'Riley',
+        deviceId: 'device-a',
+        token: 'token',
+        activeWorkspaceId: 12,
+        organizations: [
+          OrganizationSummary(
+            id: 3,
+            name: 'Atlas',
+            slug: 'atlas',
+            brandColor: '#0F766E',
+            brandLogoUrl: 'https://example.com/logo.png',
+            workspaces: [
+              WorkspaceSummary(
+                id: 12,
+                organizationId: 3,
+                name: 'Ops',
+                slug: 'ops',
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final brand = WorkspaceBrandResolver.fromSession(session);
+
+      expect(brand, isNotNull);
+      expect(brand!.accentColor, const Color(0xFF0F766E));
+      expect(brand.logoUrl, 'https://example.com/logo.png');
+      expect(brand.policy, BrandAccentPolicy.workspaceOverride);
+    },
+  );
 
   testWidgets('login page renders under multiple skins', (tester) async {
     Future<void> pumpWithSkin(String skinId) async {
@@ -79,7 +85,7 @@ void main() {
     }
 
     await pumpWithSkin(AppSkinRegistry.defaultSkinId);
-    expect(find.text('PQC Chat'), findsOneWidget);
+    expect(find.text('antiQ'), findsOneWidget);
     expect(find.text('Empty'), findsOneWidget);
 
     await pumpWithSkin(AppSkinRegistry.enterpriseASkinId);

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/app_localization.dart';
 import '../../../app/design_system/app_design_system.dart';
 import '../session_controller.dart';
 
@@ -34,12 +35,18 @@ class _LoginPageState extends State<LoginPage> {
                   const AppBrandMark(),
                   SizedBox(height: spacing.xl),
                   Text(
-                    'Sign in to PQC Chat',
+                    context.antiQText(
+                      uz: 'antiQ akkauntiga kirish',
+                      en: 'Sign in to antiQ',
+                    ),
                     style: theme.textTheme.headlineSmall,
                   ),
                   SizedBox(height: spacing.sm),
                   Text(
-                    'Google account bilan kiring. Shu account boshqa qurilmalarda ham ishlaydi; device nomi alohida account yaratmaydi.',
+                    context.antiQText(
+                      uz: 'Google akkauntingiz bilan kiring. Shu akkaunt boshqa qurilmalarda ham xavfsiz ishlaydi.',
+                      en: 'Sign in with your Google account. The same account works securely across your devices.',
+                    ),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: colors.textMuted,
                     ),
@@ -51,7 +58,12 @@ class _LoginPageState extends State<LoginPage> {
                         ? null
                         : () => widget.sessionController.loginWithGoogle(),
                     icon: const Icon(Icons.account_circle_outlined),
-                    label: const Text('Continue with Google'),
+                    label: Text(
+                      context.antiQText(
+                        uz: 'Google orqali davom etish',
+                        en: 'Continue with Google',
+                      ),
+                    ),
                   ),
                   if (widget.sessionController.error != null) ...[
                     SizedBox(height: spacing.md),

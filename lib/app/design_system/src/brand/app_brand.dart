@@ -44,8 +44,8 @@ class AppSkinRegistry {
   static const Map<String, AppSkin> skins = {
     defaultSkinId: AppSkin(
       id: defaultSkinId,
-      appTitle: 'PQC Chat',
-      wordmark: 'PQC Chat',
+      appTitle: 'antiQ',
+      wordmark: 'antiQ',
       seedColor: Color(0xFF0A84FF),
       primaryColor: Color(0xFF0A84FF),
       secondaryColor: Color(0xFF7A8599),

@@ -1,4 +1,4 @@
-# PQC Chat App
+# antiQ
 
 Minimal `Flutter + Django REST Framework` chat prototipi.
 

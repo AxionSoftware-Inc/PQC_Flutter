@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'design_system/app_design_system.dart';
 import 'theme_controller.dart';
@@ -38,6 +39,13 @@ class PqcChatApp extends StatelessWidget {
         return MaterialApp(
           title: skin.appTitle,
           debugShowCheckedModeBanner: false,
+          locale: themeController.locale,
+          supportedLocales: const [Locale('uz'), Locale('en')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
           themeMode: themeController.themeMode,
           theme: AppThemeFactory.build(skin: skin, brand: brand),
           darkTheme: AppThemeFactory.build(

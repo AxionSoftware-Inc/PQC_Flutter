@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
 
+import '../../../app/app_localization.dart';
 import '../../../app/design_system/app_design_system.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/models/attachment.dart';
@@ -438,12 +439,14 @@ class _ChatPageState extends State<ChatPage> {
             child: _controller.isLoading && _controller.messages.isEmpty
                 ? _buildLoadingState()
                 : _controller.messages.isEmpty
-                ? const Center(
+                ? Center(
                     child: Padding(
-                      padding: EdgeInsets.all(24),
+                      padding: const EdgeInsets.all(24),
                       child: AppEmptyState(
-                        message:
-                            'Conversation hali bo‘sh. Birinchi xabarni yuboring.',
+                        message: context.antiQText(
+                          uz: 'Suhbat hali bo‘sh. Birinchi xabarni yuboring.',
+                          en: 'This conversation is empty. Send the first message.',
+                        ),
                         icon: Icons.chat_bubble_outline_rounded,
                       ),
                     ),
@@ -538,7 +541,10 @@ class _ChatPageState extends State<ChatPage> {
                               ),
                               child: AppTextField(
                                 controller: _messageController,
-                                hintText: 'Xabar',
+                                hintText: context.antiQText(
+                                  uz: 'Xabar',
+                                  en: 'Message',
+                                ),
                                 maxLines: 4,
                                 minLines: 1,
                                 onSubmitted: (_) => _sendMessage(),
@@ -568,11 +574,19 @@ class _ChatPageState extends State<ChatPage> {
   String _statusLabel(ChatMessage message) {
     switch (message.deliveryState) {
       case MessageDeliveryState.pending:
-        return 'Yuborilmoqda...';
+        return context.antiQText(uz: 'Yuborilmoqda...', en: 'Sending...');
       case MessageDeliveryState.failedRetryable:
-        return message.failureReason ?? 'Yuborilmadi. Qayta urinib ko‘ring.';
+        return message.failureReason ??
+            context.antiQText(
+              uz: 'Yuborilmadi. Qayta urinib ko‘ring.',
+              en: 'Send failed. Try again.',
+            );
       case MessageDeliveryState.failedPermanent:
-        return message.failureReason ?? 'Xabarni yuborib bo‘lmadi.';
+        return message.failureReason ??
+            context.antiQText(
+              uz: 'Xabarni yuborib bo‘lmadi.',
+              en: 'The message could not be sent.',
+            );
       case MessageDeliveryState.sent:
         return '';
     }
@@ -845,7 +859,9 @@ class _ChatPageState extends State<ChatPage> {
                 if (message.canRetry)
                   TextButton(
                     onPressed: () => _retryMessage(message),
-                    child: const Text('Qayta urinish'),
+                    child: Text(
+                      context.antiQText(uz: 'Qayta urinish', en: 'Retry'),
+                    ),
                   ),
               ],
             ),
@@ -957,7 +973,7 @@ class _ChatPageState extends State<ChatPage> {
                     const Icon(Icons.photo_outlined, size: 34),
                     SizedBox(height: context.appSpacing.xs),
                     Text(
-                      'Rasmni ochish',
+                      context.antiQText(uz: 'Rasmni ochish', en: 'Open image'),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
@@ -1010,12 +1026,25 @@ class _ChatPageState extends State<ChatPage> {
         if (isMine)
           Padding(
             padding: EdgeInsets.only(left: spacing.xs),
-            child: Icon(
-              _deliveryIcon(message),
-              size: 14,
-              color: message.isRead
-                  ? const Color(0xFFB9E6FF)
-                  : Colors.white.withValues(alpha: 0.78),
+            child: AnimatedSwitcher(
+              duration: context.appDurations.fast,
+              transitionBuilder: (child, animation) => ScaleTransition(
+                scale: CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutBack,
+                ),
+                child: FadeTransition(opacity: animation, child: child),
+              ),
+              child: Icon(
+                _deliveryIcon(message),
+                key: ValueKey(
+                  '${message.deliveryState.name}-${message.isRead}',
+                ),
+                size: 14,
+                color: message.isRead
+                    ? const Color(0xFFB9E6FF)
+                    : Colors.white.withValues(alpha: 0.78),
+              ),
             ),
           ),
       ],
@@ -1047,12 +1076,18 @@ class _ChatPageState extends State<ChatPage> {
               ),
               if (isMine) ...[
                 const SizedBox(width: 3),
-                Icon(
-                  _deliveryIcon(message),
-                  size: 13,
-                  color: message.isRead
-                      ? const Color(0xFFB9E6FF)
-                      : Colors.white.withValues(alpha: 0.92),
+                AnimatedSwitcher(
+                  duration: context.appDurations.fast,
+                  child: Icon(
+                    _deliveryIcon(message),
+                    key: ValueKey(
+                      'image-${message.deliveryState.name}-${message.isRead}',
+                    ),
+                    size: 13,
+                    color: message.isRead
+                        ? const Color(0xFFB9E6FF)
+                        : Colors.white.withValues(alpha: 0.92),
+                  ),
                 ),
               ],
             ],
@@ -1088,7 +1123,10 @@ class _ChatPageState extends State<ChatPage> {
                 alignment: Alignment.topRight,
                 child: IconButton.filledTonal(
                   onPressed: () => Navigator.of(dialogContext).pop(),
-                  tooltip: 'Rasmni yopish',
+                  tooltip: context.antiQText(
+                    uz: 'Rasmni yopish',
+                    en: 'Close image',
+                  ),
                   icon: const Icon(Icons.close_rounded),
                 ),
               ),
@@ -1144,13 +1182,19 @@ class _ChatPageState extends State<ChatPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Uzatmalar',
+                          context.antiQText(uz: 'Uzatmalar', en: 'Transfers'),
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         Text(
                           activeCount > 0
-                              ? '$activeCount faol • ${transfers.length} jami'
-                              : '${transfers.length} muvaffaqiyatsiz uzatma',
+                              ? context.antiQText(
+                                  uz: '$activeCount faol • ${transfers.length} jami',
+                                  en: '$activeCount active • ${transfers.length} total',
+                                )
+                              : context.antiQText(
+                                  uz: '${transfers.length} muvaffaqiyatsiz uzatma',
+                                  en: '${transfers.length} failed transfers',
+                                ),
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: colors.textMuted),
                         ),
@@ -1249,27 +1293,33 @@ class _ChatPageState extends State<ChatPage> {
                   transfer.status != AttachmentTransferStatus.paused)
                 AppSecondaryButton(
                   onPressed: () => _controller.pauseTransfer(transfer.localId),
-                  label: const Text('To‘xtatish'),
+                  label: Text(context.antiQText(uz: 'To‘xtatish', en: 'Pause')),
                 ),
               if (transfer.status == AttachmentTransferStatus.paused)
                 AppPrimaryButton(
                   onPressed: () => _resumeTransfer(transfer),
-                  label: const Text('Davom ettirish'),
+                  label: Text(
+                    context.antiQText(uz: 'Davom ettirish', en: 'Resume'),
+                  ),
                 ),
               if (transfer.status == AttachmentTransferStatus.failed)
                 AppPrimaryButton(
                   onPressed: () => _resumeTransfer(transfer),
-                  label: const Text('Qayta urinish'),
+                  label: Text(
+                    context.antiQText(uz: 'Qayta urinish', en: 'Retry'),
+                  ),
                 ),
               if (transfer.status == AttachmentTransferStatus.completed)
                 AppSecondaryButton(
                   onPressed: () =>
                       _controller.clearCompletedTransfer(transfer.localId),
-                  label: const Text('Tozalash'),
+                  label: Text(context.antiQText(uz: 'Tozalash', en: 'Clear')),
                 ),
               AppSecondaryButton(
                 onPressed: () => _controller.cancelTransfer(transfer.localId),
-                label: const Text('Bekor qilish'),
+                label: Text(
+                  context.antiQText(uz: 'Bekor qilish', en: 'Cancel'),
+                ),
               ),
             ],
           ),
@@ -1324,26 +1374,32 @@ class _ChatPageState extends State<ChatPage> {
     switch (transfer.status) {
       case AttachmentTransferStatus.queued:
         return transfer.direction == AttachmentTransferDirection.upload
-            ? 'Yuborish navbatida'
-            : 'Yuklab olish navbatida';
+            ? context.antiQText(
+                uz: 'Yuborish navbatida',
+                en: 'Queued for upload',
+              )
+            : context.antiQText(
+                uz: 'Yuklab olish navbatida',
+                en: 'Queued for download',
+              );
       case AttachmentTransferStatus.encrypting:
-        return 'Shifrlanmoqda';
+        return context.antiQText(uz: 'Shifrlanmoqda', en: 'Encrypting');
       case AttachmentTransferStatus.uploading:
-        return 'Yuborilmoqda';
+        return context.antiQText(uz: 'Yuborilmoqda', en: 'Uploading');
       case AttachmentTransferStatus.downloading:
-        return 'Yuklab olinmoqda';
+        return context.antiQText(uz: 'Yuklab olinmoqda', en: 'Downloading');
       case AttachmentTransferStatus.paused:
-        return 'To‘xtatilgan';
+        return context.antiQText(uz: 'To‘xtatilgan', en: 'Paused');
       case AttachmentTransferStatus.retrying:
-        return 'Qayta urinilmoqda';
+        return context.antiQText(uz: 'Qayta urinilmoqda', en: 'Retrying');
       case AttachmentTransferStatus.verifying:
-        return 'Tekshirilmoqda';
+        return context.antiQText(uz: 'Tekshirilmoqda', en: 'Verifying');
       case AttachmentTransferStatus.completed:
         return transfer.direction == AttachmentTransferDirection.upload
-            ? 'Yuborildi'
-            : 'Yuklab olindi';
+            ? context.antiQText(uz: 'Yuborildi', en: 'Uploaded')
+            : context.antiQText(uz: 'Yuklab olindi', en: 'Downloaded');
       case AttachmentTransferStatus.failed:
-        return 'Xatolik';
+        return context.antiQText(uz: 'Xatolik', en: 'Failed');
     }
   }
 
@@ -1432,16 +1488,24 @@ class _ComposerSendButton extends StatelessWidget {
         onPressed: onPressed,
         padding: EdgeInsets.zero,
         color: Colors.white,
-        icon: isSending
-            ? SizedBox(
-                width: 15,
-                height: 15,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: context.appColors.primary,
-                ),
-              )
-            : const Icon(Icons.send_rounded, size: 18),
+        icon: AnimatedSwitcher(
+          duration: context.appDurations.fast,
+          transitionBuilder: (child, animation) => ScaleTransition(
+            scale: animation,
+            child: FadeTransition(opacity: animation, child: child),
+          ),
+          child: isSending
+              ? SizedBox(
+                  key: const ValueKey('sending'),
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: context.appColors.primary,
+                  ),
+                )
+              : const Icon(Icons.send_rounded, key: ValueKey('send'), size: 18),
+        ),
       ),
     );
   }

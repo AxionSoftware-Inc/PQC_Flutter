@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:hugeicons/hugeicons.dart';
 
+import '../../../app/app_localization.dart';
 import '../../../app/design_system/app_design_system.dart';
 import '../../../core/models/app_user.dart';
 import '../../../core/models/chat_message.dart';
@@ -771,24 +772,26 @@ class _ChatListPageState extends State<ChatListPage> {
     final settingsState = _controller.settingsState;
     final tabs = [
       _TabMeta(
-        label: 'Chatlar',
+        label: context.antiQText(uz: 'Chatlar', en: 'Chats'),
         icon: HugeIcons.strokeRoundedChat,
-        title: settingsState.currentWorkspace?.name ?? 'Chatlar',
+        title:
+            settingsState.currentWorkspace?.name ??
+            context.antiQText(uz: 'Chatlar', en: 'Chats'),
       ),
-      const _TabMeta(
-        label: 'Kontaktlar',
+      _TabMeta(
+        label: context.antiQText(uz: 'Kontaktlar', en: 'Contacts'),
         icon: HugeIcons.strokeRoundedContactBook,
-        title: 'Kontaktlar',
+        title: context.antiQText(uz: 'Kontaktlar', en: 'Contacts'),
       ),
-      const _TabMeta(
-        label: 'Sozlamalar',
+      _TabMeta(
+        label: context.antiQText(uz: 'Sozlamalar', en: 'Settings'),
         icon: HugeIcons.strokeRoundedSettings02,
-        title: 'Sozlamalar',
+        title: context.antiQText(uz: 'Sozlamalar', en: 'Settings'),
       ),
-      const _TabMeta(
-        label: 'Profil',
+      _TabMeta(
+        label: context.antiQText(uz: 'Profil', en: 'Profile'),
         icon: HugeIcons.strokeRoundedUserCircle,
-        title: 'Profil',
+        title: context.antiQText(uz: 'Profil', en: 'Profile'),
       ),
     ];
 
@@ -801,7 +804,7 @@ class _ChatListPageState extends State<ChatListPage> {
         leading: Padding(
           padding: const EdgeInsets.only(left: 8),
           child: _PremiumIconButton(
-            tooltip: 'Menyu',
+            tooltip: context.antiQText(uz: 'Menyu', en: 'Menu'),
             onPressed: () => _scaffoldKey.currentState?.openDrawer(),
             icon: Icons.menu_rounded,
           ),
@@ -991,27 +994,33 @@ class _ChatListPageState extends State<ChatListPage> {
         Expanded(
           child: AppSearchField(
             controller: _chatSearchController,
-            hintText: 'Qidirish',
+            hintText: context.antiQText(uz: 'Qidirish', en: 'Search'),
             compact: true,
             onChanged: _controller.setChatSearchQuery,
           ),
         ),
         SizedBox(width: spacing.xs),
         PopupMenuButton<ChatListFilter>(
-          tooltip: 'Chat filtri',
+          tooltip: context.antiQText(uz: 'Chat filtri', en: 'Chat filter'),
           initialValue: selectedFilter,
           onSelected: _controller.setChatFilter,
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: ChatListFilter.all, child: Text('Barchasi')),
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: ChatListFilter.all,
+              child: Text(context.antiQText(uz: 'Barchasi', en: 'All')),
+            ),
             PopupMenuItem(
               value: ChatListFilter.unread,
-              child: Text('O‘qilmagan'),
+              child: Text(context.antiQText(uz: 'O‘qilmagan', en: 'Unread')),
             ),
             PopupMenuItem(
               value: ChatListFilter.pinned,
-              child: Text('Mahkamlangan'),
+              child: Text(context.antiQText(uz: 'Mahkamlangan', en: 'Pinned')),
             ),
-            PopupMenuItem(value: ChatListFilter.archived, child: Text('Arxiv')),
+            PopupMenuItem(
+              value: ChatListFilter.archived,
+              child: Text(context.antiQText(uz: 'Arxiv', en: 'Archived')),
+            ),
           ],
           child: Container(
             height: 42,
@@ -1055,10 +1064,10 @@ class _ChatListPageState extends State<ChatListPage> {
   }
 
   String _chatFilterShortLabel(ChatListFilter filter) => switch (filter) {
-    ChatListFilter.all => 'Barchasi',
-    ChatListFilter.unread => 'Yangi',
-    ChatListFilter.pinned => 'Muhim',
-    ChatListFilter.archived => 'Arxiv',
+    ChatListFilter.all => context.antiQText(uz: 'Barchasi', en: 'All'),
+    ChatListFilter.unread => context.antiQText(uz: 'Yangi', en: 'Unread'),
+    ChatListFilter.pinned => context.antiQText(uz: 'Muhim', en: 'Pinned'),
+    ChatListFilter.archived => context.antiQText(uz: 'Arxiv', en: 'Archived'),
   };
 
   Widget _swipeActionBackground({
@@ -1114,7 +1123,10 @@ class _ChatListPageState extends State<ChatListPage> {
       children: [
         AppSearchField(
           controller: _contactsSearchController,
-          hintText: 'Kontaktlarni qidiring',
+          hintText: context.antiQText(
+            uz: 'Kontaktlarni qidiring',
+            en: 'Search contacts',
+          ),
           onChanged: _controller.setContactsSearchQuery,
         ),
         SizedBox(height: spacing.md),
@@ -1123,7 +1135,12 @@ class _ChatListPageState extends State<ChatListPage> {
         if (_controller.isLoading && state.sections.isEmpty)
           ..._buildContactSkeleton()
         else if (state.sections.isEmpty)
-          _buildEmptyCard('Bu filtr bo‘yicha kontakt topilmadi.')
+          _buildEmptyCard(
+            context.antiQText(
+              uz: 'Bu filtr bo‘yicha kontakt topilmadi.',
+              en: 'No contacts match this filter.',
+            ),
+          )
         else
           for (final section in state.sections) ...[
             AppSectionHeader(title: section.label),
@@ -1530,7 +1547,7 @@ class _ChatListPageState extends State<ChatListPage> {
                 icon: HugeIcons.strokeRoundedChat,
                 size: 21,
               ),
-              title: const Text('Chatlar'),
+              title: Text(context.antiQText(uz: 'Chatlar', en: 'Chats')),
               onTap: () {
                 _scaffoldKey.currentState?.closeDrawer();
                 setState(() => _selectedTabIndex = 0);
@@ -1541,7 +1558,7 @@ class _ChatListPageState extends State<ChatListPage> {
                 icon: HugeIcons.strokeRoundedContactBook,
                 size: 21,
               ),
-              title: const Text('Kontaktlar'),
+              title: Text(context.antiQText(uz: 'Kontaktlar', en: 'Contacts')),
               onTap: () {
                 _scaffoldKey.currentState?.closeDrawer();
                 setState(() => _selectedTabIndex = 1);
@@ -1552,7 +1569,7 @@ class _ChatListPageState extends State<ChatListPage> {
                 icon: HugeIcons.strokeRoundedSettings02,
                 size: 21,
               ),
-              title: const Text('Sozlamalar'),
+              title: Text(context.antiQText(uz: 'Sozlamalar', en: 'Settings')),
               onTap: () {
                 _scaffoldKey.currentState?.closeDrawer();
                 setState(() => _selectedTabIndex = 2);
@@ -1564,7 +1581,7 @@ class _ChatListPageState extends State<ChatListPage> {
                 icon: HugeIcons.strokeRoundedUserCircle,
                 size: 21,
               ),
-              title: const Text('Profil'),
+              title: Text(context.antiQText(uz: 'Profil', en: 'Profile')),
               onTap: () {
                 _scaffoldKey.currentState?.closeDrawer();
                 setState(() => _selectedTabIndex = 3);
@@ -1572,7 +1589,7 @@ class _ChatListPageState extends State<ChatListPage> {
             ),
             ListTile(
               leading: const Icon(Icons.logout_rounded),
-              title: const Text('Chiqish'),
+              title: Text(context.antiQText(uz: 'Chiqish', en: 'Log out')),
               onTap: () async {
                 _scaffoldKey.currentState?.closeDrawer();
                 await _logout(forgetDevice: false);
@@ -1652,50 +1669,80 @@ class _ChatListPageState extends State<ChatListPage> {
         spacing.md,
       ),
       children: [
-        const AppSectionHeader(
-          title: 'Sozlamalar',
-          subtitle: 'Kerakli bo‘limni tanlang.',
+        AppSectionHeader(
+          title: context.antiQText(uz: 'Sozlamalar', en: 'Settings'),
+          subtitle: context.antiQText(
+            uz: 'Kerakli bo‘limni tanlang.',
+            en: 'Choose a section.',
+          ),
         ),
         SizedBox(height: spacing.xs),
         _settingsSection(
-          'Akkaunt',
-          'Profil, ish maydoni va seans',
+          context.antiQText(uz: 'Akkaunt', en: 'Account'),
+          context.antiQText(
+            uz: 'Profil, ish maydoni va seans',
+            en: 'Profile, workspace and session',
+          ),
           Icons.person_outline_rounded,
           _buildAccountSettings,
         ),
         _settingsSection(
-          'Xavfsizlik',
-          'Ishonch, kalitlar va shifrni ochish holati',
+          context.antiQText(uz: 'Xavfsizlik', en: 'Security'),
+          context.antiQText(
+            uz: 'Ishonch, kalitlar va shifrni ochish holati',
+            en: 'Trust, keys and decryption health',
+          ),
           Icons.shield_outlined,
           _buildSecuritySettings,
         ),
         _settingsSection(
-          'Qurilmalar',
-          'Ro‘yxatdagi qurilmalar va bekor qilish',
+          context.antiQText(uz: 'Qurilmalar', en: 'Devices'),
+          context.antiQText(
+            uz: 'Ro‘yxatdagi qurilmalar va bekor qilish',
+            en: 'Registered devices and revoke',
+          ),
           Icons.devices_outlined,
           _buildDevicesSettings,
         ),
         _settingsSection(
-          'Zaxira va tiklash',
-          'Tiklash va ko‘chma shifrlangan zaxiralar',
+          context.antiQText(uz: 'Zaxira va tiklash', en: 'Backup & Recovery'),
+          context.antiQText(
+            uz: 'Tiklash va ko‘chma shifrlangan zaxiralar',
+            en: 'Restore and portable encrypted backups',
+          ),
           Icons.backup_outlined,
           _buildBackupSettings,
         ),
         _settingsSection(
-          'Bildirishnomalar va maxfiylik',
-          'Ogohlantirishlar, yozish va faollik',
+          context.antiQText(
+            uz: 'Bildirishnomalar va maxfiylik',
+            en: 'Notifications & Privacy',
+          ),
+          context.antiQText(
+            uz: 'Ogohlantirishlar, yozish va faollik',
+            en: 'Alerts, typing and presence',
+          ),
           Icons.notifications_outlined,
           _buildNotificationsSettings,
         ),
         _settingsSection(
-          'Ko‘rinish va chatlar',
-          'Mavzu, qoralamalar va chatlar joylashuvi',
+          context.antiQText(
+            uz: 'Ko‘rinish va chatlar',
+            en: 'Appearance & Chats',
+          ),
+          context.antiQText(
+            uz: 'Mavzu, qoralamalar va chatlar joylashuvi',
+            en: 'Theme, drafts and inbox layout',
+          ),
           Icons.palette_outlined,
           _buildAppearanceSettings,
         ),
         _settingsSection(
-          'Dastur va yordam',
-          'Versiya va yordam tafsilotlari',
+          context.antiQText(uz: 'Dastur va yordam', en: 'About & Support'),
+          context.antiQText(
+            uz: 'Versiya va yordam tafsilotlari',
+            en: 'Version and support details',
+          ),
           Icons.info_outline_rounded,
           _buildAboutSettings,
         ),
@@ -2098,18 +2145,60 @@ class _ChatListPageState extends State<ChatListPage> {
   Widget _buildAppearanceSettings(SettingsViewState state) {
     final spacing = context.appSpacing;
     return _settingsList([
-      const AppSectionHeader(
-        title: 'Ko‘rinish va chatlar',
-        subtitle: 'Ko‘rinish va xabar yozishning mahalliy sozlamalari.',
+      AppSectionHeader(
+        title: context.antiQText(
+          uz: 'Ko‘rinish va chatlar',
+          en: 'Appearance & Chats',
+        ),
+        subtitle: context.antiQText(
+          uz: 'Ko‘rinish va xabar yozishning mahalliy sozlamalari.',
+          en: 'Local display and composer preferences.',
+        ),
       ),
       SizedBox(height: spacing.sm),
       AppSurfaceCard(
         child: Column(
           children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.language_rounded),
+              title: Text(
+                context.antiQText(uz: 'Dastur tili', en: 'App language'),
+              ),
+              subtitle: Text(
+                context.antiQText(
+                  uz: 'Interfeys tilini tanlang.',
+                  en: 'Choose the interface language.',
+                ),
+              ),
+              trailing: DropdownButtonHideUnderline(
+                child: DropdownButton<AppLanguagePreference>(
+                  value: widget.themeController.languagePreference,
+                  items: const [
+                    DropdownMenuItem(
+                      value: AppLanguagePreference.uzbek,
+                      child: Text('O‘zbekcha'),
+                    ),
+                    DropdownMenuItem(
+                      value: AppLanguagePreference.english,
+                      child: Text('English'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      widget.themeController.setLanguage(value);
+                    }
+                  },
+                ),
+              ),
+            ),
+            const Divider(height: 1),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: widget.themeController.themeMode == ThemeMode.dark,
-              title: const Text('Qorong‘i rejim'),
+              title: Text(
+                context.antiQText(uz: 'Qorong‘i rejim', en: 'Dark mode'),
+              ),
               onChanged: (value) => widget.themeController.setThemeMode(
                 value ? ThemeMode.dark : ThemeMode.light,
               ),
@@ -2117,7 +2206,12 @@ class _ChatListPageState extends State<ChatListPage> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: state.appPreferences.showArchivedByDefault,
-              title: const Text('Arxivlangan chatlarni ko‘rsatish'),
+              title: Text(
+                context.antiQText(
+                  uz: 'Arxivlangan chatlarni ko‘rsatish',
+                  en: 'Show archived chats',
+                ),
+              ),
               onChanged: (value) => _controller.updateAppPreferences(
                 state.appPreferences.copyWith(showArchivedByDefault: value),
               ),
@@ -2125,7 +2219,12 @@ class _ChatListPageState extends State<ChatListPage> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: state.appPreferences.keepDrafts,
-              title: const Text('Qoralamalarni saqlash'),
+              title: Text(
+                context.antiQText(
+                  uz: 'Qoralamalarni saqlash',
+                  en: 'Keep drafts',
+                ),
+              ),
               onChanged: (value) => _controller.updateAppPreferences(
                 state.appPreferences.copyWith(keepDrafts: value),
               ),
@@ -2354,13 +2453,25 @@ class _ChatListPageState extends State<ChatListPage> {
   String _emptyMessageForChatState(ChatListFilter filter) {
     switch (filter) {
       case ChatListFilter.unread:
-        return 'O‘qilmagan chat topilmadi.';
+        return context.antiQText(
+          uz: 'O‘qilmagan chat topilmadi.',
+          en: 'No unread chats.',
+        );
       case ChatListFilter.pinned:
-        return 'Mahkamlangan chatlar hali yo‘q.';
+        return context.antiQText(
+          uz: 'Mahkamlangan chatlar hali yo‘q.',
+          en: 'No pinned chats yet.',
+        );
       case ChatListFilter.archived:
-        return 'Arxivlangan chatlar hali yo‘q.';
+        return context.antiQText(
+          uz: 'Arxivlangan chatlar hali yo‘q.',
+          en: 'No archived chats.',
+        );
       case ChatListFilter.all:
-        return 'Hali chatlar yo‘q. Kontaktlar bo‘limidan suhbat boshlashingiz mumkin.';
+        return context.antiQText(
+          uz: 'Hali chatlar yo‘q. Kontaktlar bo‘limidan suhbat boshlashingiz mumkin.',
+          en: 'No chats yet. Start a conversation from Contacts.',
+        );
     }
   }
 
@@ -2376,7 +2487,7 @@ class _ChatListPageState extends State<ChatListPage> {
       return '$hour:$minute';
     }
     if (dayDifference == 1) {
-      return 'Kecha';
+      return context.antiQText(uz: 'Kecha', en: 'Yesterday');
     }
     if (dayDifference < 7) {
       const weekdays = ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Ya'];
@@ -2424,9 +2535,9 @@ class _ConversationListRow extends StatelessWidget {
         item.trustBadge?.tone == UiStatusTone.warning ||
         item.trustBadge?.tone == UiStatusTone.danger;
     final preview = item.hasDraft
-        ? 'Qoralama: ${item.draftPreview!.trim()}'
+        ? '${context.antiQText(uz: 'Qoralama', en: 'Draft')}: ${item.draftPreview!.trim()}'
         : item.preview.isEmpty
-        ? 'Suhbatni ochish'
+        ? context.antiQText(uz: 'Suhbatni ochish', en: 'Open conversation')
         : item.preview;
 
     return AnimatedContainer(

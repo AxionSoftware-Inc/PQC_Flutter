@@ -1,6 +1,6 @@
 {
-    "name": "pqc_chat_app",
-    "short_name": "pqc_chat_app",
+    "name": "antiQ",
+    "short_name": "antiQ",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

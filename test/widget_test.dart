@@ -66,7 +66,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.text('Sign in to PQC Chat'), findsOneWidget);
+    expect(find.text('Sign in to antiQ'), findsOneWidget);
     expect(find.text('Continue with Google'), findsOneWidget);
     expect(find.byType(FilledButton), findsNothing);
     expect(find.byType(OutlinedButton), findsOneWidget);
