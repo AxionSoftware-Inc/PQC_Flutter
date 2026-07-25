@@ -247,6 +247,80 @@ class WorkspaceMember(models.Model):
         return f'{self.workspace_id}:{self.organization_member.user_id}:{self.role}'
 
 
+class WorkspaceAccessRole(models.Model):
+    """A company-defined role whose permissions are scoped to one workspace."""
+
+    workspace = models.ForeignKey(
+        Workspace,
+        on_delete=models.CASCADE,
+        related_name='access_roles',
+    )
+    key = models.SlugField(max_length=64)
+    name = models.CharField(max_length=120)
+    description = models.CharField(max_length=255, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_workspace_access_roles',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name', 'id']
+        unique_together = ('workspace', 'key')
+
+    def __str__(self) -> str:
+        return f'{self.workspace_id}:{self.key}'
+
+
+class WorkspaceAccessRolePermission(models.Model):
+    role = models.ForeignKey(
+        WorkspaceAccessRole,
+        on_delete=models.CASCADE,
+        related_name='permissions',
+    )
+    permission_code = models.CharField(max_length=96)
+
+    class Meta:
+        ordering = ['permission_code']
+        unique_together = ('role', 'permission_code')
+
+    def __str__(self) -> str:
+        return f'{self.role_id}:{self.permission_code}'
+
+
+class WorkspaceAccessRoleAssignment(models.Model):
+    workspace_member = models.ForeignKey(
+        WorkspaceMember,
+        on_delete=models.CASCADE,
+        related_name='access_role_assignments',
+    )
+    role = models.ForeignKey(
+        WorkspaceAccessRole,
+        on_delete=models.CASCADE,
+        related_name='assignments',
+    )
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='workspace_access_role_assignments',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+        unique_together = ('workspace_member', 'role')
+
+    def __str__(self) -> str:
+        return f'{self.workspace_member_id}:{self.role_id}'
+
+
 class Invitation(models.Model):
     class Status(models.TextChoices):
         PENDING = 'pending', 'Pending'

@@ -61,9 +61,7 @@ class PqcChatApp extends StatelessWidget {
           home: Builder(
             builder: (context) {
               if (sessionController.isLoading) {
-                return const AppScaffold(
-                  body: Center(child: CircularProgressIndicator()),
-                );
+                return const _AntiQStartupView();
               }
 
               if (!sessionController.isAuthenticated) {
@@ -81,6 +79,38 @@ class PqcChatApp extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _AntiQStartupView extends StatelessWidget {
+  const _AntiQStartupView();
+
+  @override
+  Widget build(BuildContext context) {
+    return AppScaffold(
+      body: Center(
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.92, end: 1),
+          duration: const Duration(milliseconds: 650),
+          curve: Curves.easeOutCubic,
+          builder: (context, value, child) => Opacity(
+            opacity: ((value - 0.92) / 0.08).clamp(0, 1),
+            child: Transform.scale(scale: value, child: child),
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppBrandMark(size: 76),
+              SizedBox(height: 22),
+              SizedBox(
+                width: 112,
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

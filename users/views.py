@@ -36,6 +36,7 @@ from users.models import (
 )
 from users.escrow import EscrowEnvelope, get_key_escrow_provider
 from users.audit import append_recovery_audit_event
+from users.access_control import AccessPermission, WorkspaceAccessPolicy
 from users.serializers import (
     DeviceSerializer,
     DeviceSyncSerializer,
@@ -965,9 +966,10 @@ class UserRoleView(APIView):
             organization_member__is_active=True,
             is_active=True,
         ).first()
-        if actor is None or actor.role not in (
-            CorporateRole.OWNER,
-            CorporateRole.ADMIN,
+        if actor is None or not WorkspaceAccessPolicy.allows(
+            user=request.user,
+            workspace=workspace,
+            permission_code=AccessPermission.ROLES_MANAGE,
         ):
             return Response(
                 {'detail': 'Rolni o‘zgartirish uchun administrator huquqi kerak.'},
@@ -990,7 +992,7 @@ class UserRoleView(APIView):
             )
 
         next_role = serializer.validated_data['role']
-        if actor.role == CorporateRole.ADMIN and (
+        if actor.role != CorporateRole.OWNER and (
             target.role == CorporateRole.OWNER
             or next_role == CorporateRole.OWNER
         ):
@@ -1193,13 +1195,14 @@ class InvitationListCreateView(APIView):
         workspace = Workspace.objects.filter(
             id=serializer.validated_data['workspace_id'],
             members__organization_member__user=request.user,
-            members__role__in=[
-                OrganizationMember.Role.OWNER,
-                OrganizationMember.Role.ADMIN,
-            ],
+            members__organization_member__is_active=True,
             members__is_active=True,
         ).select_related('organization').first()
-        if workspace is None:
+        if workspace is None or not WorkspaceAccessPolicy.allows(
+            user=request.user,
+            workspace=workspace,
+            permission_code=AccessPermission.MEMBERS_INVITE,
+        ):
             return Response(
                 {'detail': 'Workspace not found or admin rights missing.'},
                 status=status.HTTP_403_FORBIDDEN,
@@ -1274,16 +1277,11 @@ class WorkspaceMemberDeactivateView(APIView):
                 {'detail': 'Workspace member not found.'},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        is_admin = WorkspaceMember.objects.filter(
+        if not WorkspaceAccessPolicy.allows(
+            user=request.user,
             workspace=membership.workspace,
-            organization_member__user=request.user,
-            role__in=[
-                OrganizationMember.Role.OWNER,
-                OrganizationMember.Role.ADMIN,
-            ],
-            is_active=True,
-        ).exists()
-        if not is_admin:
+            permission_code=AccessPermission.MEMBERS_MANAGE,
+        ):
             return Response(
                 {'detail': 'Admin rights required.'},
                 status=status.HTTP_403_FORBIDDEN,

@@ -109,6 +109,13 @@ class ApiClient {
     return _decode(response);
   }
 
+  Future<dynamic> delete(String path) async {
+    final response = await _send(
+      () => _client.delete(_buildUri(path), headers: _headers()),
+    );
+    return _decode(response);
+  }
+
   Future<dynamic> multipartPost(
     String path, {
     required List<http.MultipartFile> files,
