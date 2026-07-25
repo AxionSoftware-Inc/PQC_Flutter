@@ -142,24 +142,27 @@ class _ChatListPageState extends State<ChatListPage> {
           shrinkWrap: true,
           children: [
             const ListTile(
-              title: Text('History recovery requests'),
+              title: Text('Tarixni tiklash so‘rovlari'),
               subtitle: Text(
-                'Approve only a device you recognize. Approval expires automatically.',
+                'Faqat o‘zingiz taniydigan qurilmani tasdiqlang. Ruxsat muddati avtomatik tugaydi.',
               ),
             ),
             if (approvals.isEmpty)
-              const ListTile(title: Text('No pending requests')),
+              const ListTile(title: Text('Kutilayotgan so‘rov yo‘q')),
             for (final approval in approvals)
               ListTile(
                 leading: const Icon(Icons.devices_other_outlined),
                 title: Text(
-                  approval['requesting_device_id'] as String? ?? 'New device',
+                  approval['requesting_device_id'] as String? ??
+                      'Yangi qurilma',
                 ),
-                subtitle: Text('Requested ${approval['created_at'] ?? ''}'),
+                subtitle: Text(
+                  'So‘ralgan vaqt: ${approval['created_at'] ?? ''}',
+                ),
                 trailing: Wrap(
                   children: [
                     IconButton(
-                      tooltip: 'Deny',
+                      tooltip: 'Rad etish',
                       icon: const Icon(Icons.close_rounded),
                       onPressed: () async {
                         await _controller.decideRecoveryApproval(
@@ -170,7 +173,7 @@ class _ChatListPageState extends State<ChatListPage> {
                       },
                     ),
                     IconButton(
-                      tooltip: 'Approve',
+                      tooltip: 'Tasdiqlash',
                       icon: const Icon(Icons.check_rounded),
                       onPressed: () async {
                         await _controller.decideRecoveryApproval(
@@ -197,7 +200,9 @@ class _ChatListPageState extends State<ChatListPage> {
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
         title: Text(
-          hasServerBackup ? 'Restore chat history' : 'Protect chat history',
+          hasServerBackup
+              ? 'Chat tarixini tiklash'
+              : 'Chat tarixini himoyalash',
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -205,8 +210,8 @@ class _ChatListPageState extends State<ChatListPage> {
           children: [
             Text(
               hasServerBackup
-                  ? 'This account has an encrypted recovery backup. Enter your recovery PIN to open older messages on this device.'
-                  : 'Create a recovery PIN. It protects your chat keys and lets you restore history after reinstalling or changing devices.',
+                  ? 'Bu akkauntda shifrlangan tiklash nusxasi mavjud. Eski xabarlarni ochish uchun tiklash PIN kodini kiriting.'
+                  : 'Tiklash PIN kodini yarating. U chat kalitlarini himoyalaydi va qayta o‘rnatishdan keyin tarixni tiklashga yordam beradi.',
             ),
             const SizedBox(height: 16),
             TextField(
@@ -215,7 +220,7 @@ class _ChatListPageState extends State<ChatListPage> {
               obscureText: true,
               keyboardType: TextInputType.number,
               maxLength: 12,
-              decoration: const InputDecoration(labelText: 'Recovery PIN'),
+              decoration: const InputDecoration(labelText: 'Tiklash PIN kodi'),
             ),
           ],
         ),
@@ -223,7 +228,7 @@ class _ChatListPageState extends State<ChatListPage> {
           if (hasServerBackup)
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Later'),
+              child: const Text('Keyinroq'),
             ),
           FilledButton(
             onPressed: () {
@@ -231,7 +236,7 @@ class _ChatListPageState extends State<ChatListPage> {
               if (pin.length < 6) return;
               Navigator.of(dialogContext).pop(pin);
             },
-            child: Text(hasServerBackup ? 'Restore' : 'Save backup'),
+            child: Text(hasServerBackup ? 'Tiklash' : 'Zaxirani saqlash'),
           ),
         ],
       ),
@@ -320,7 +325,9 @@ class _ChatListPageState extends State<ChatListPage> {
                   leading: Icon(
                     item.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
                   ),
-                  title: Text(item.isPinned ? 'Unpin chat' : 'Pin chat'),
+                  title: Text(
+                    item.isPinned ? 'Chatni bo‘shatish' : 'Chatni mahkamlash',
+                  ),
                   onTap: () async {
                     Navigator.of(context).pop();
                     await _controller.togglePinned(item.conversation.id);
@@ -333,7 +340,7 @@ class _ChatListPageState extends State<ChatListPage> {
                         : Icons.archive_outlined,
                   ),
                   title: Text(
-                    item.isArchived ? 'Unarchive chat' : 'Archive chat',
+                    item.isArchived ? 'Arxivdan chiqarish' : 'Arxivlash',
                   ),
                   onTap: () async {
                     Navigator.of(context).pop();
@@ -347,7 +354,7 @@ class _ChatListPageState extends State<ChatListPage> {
                         : Icons.mark_chat_unread_outlined,
                   ),
                   title: Text(
-                    item.isUnread ? 'Mark as read' : 'Mark as unread',
+                    item.isUnread ? 'O‘qilgan qilish' : 'O‘qilmagan qilish',
                   ),
                   onTap: () async {
                     Navigator.of(context).pop();
@@ -381,7 +388,7 @@ class _ChatListPageState extends State<ChatListPage> {
                     return;
                   }
                   _showMessage(
-                    'Contact key verified.',
+                    'Kontakt kaliti tasdiqlandi.',
                     tone: AppStatusTone.success,
                   );
                 }
@@ -580,14 +587,14 @@ class _ChatListPageState extends State<ChatListPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const AppSectionHeader(
-                  title: 'Export encrypted backup',
+                  title: 'Shifrlangan zaxirani eksport qilish',
                   subtitle:
                       'Recovery passphrase bilan historical decrypt backup yaratiladi.',
                 ),
                 SizedBox(height: spacing.lg),
                 AppTextField(
                   controller: controller,
-                  labelText: 'Recovery passphrase',
+                  labelText: 'Tiklash maxfiy iborasi',
                 ),
                 SizedBox(height: spacing.lg),
                 AppPrimaryButton(
@@ -606,7 +613,7 @@ class _ChatListPageState extends State<ChatListPage> {
                       blob: blob,
                     );
                   },
-                  label: const Text('Generate backup'),
+                  label: const Text('Zaxira yaratish'),
                 ),
               ],
             ),
@@ -639,19 +646,19 @@ class _ChatListPageState extends State<ChatListPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const AppSectionHeader(
-                  title: 'Import encrypted backup',
+                  title: 'Shifrlangan zaxirani import qilish',
                   subtitle:
                       'Old historical decrypt capability qayta tiklanadi.',
                 ),
                 SizedBox(height: spacing.lg),
                 AppTextField(
                   controller: passphraseController,
-                  labelText: 'Recovery passphrase',
+                  labelText: 'Tiklash maxfiy iborasi',
                 ),
                 SizedBox(height: spacing.md),
                 AppTextField(
                   controller: blobController,
-                  labelText: 'Encrypted backup blob',
+                  labelText: 'Shifrlangan zaxira ma’lumoti',
                   maxLines: 8,
                   minLines: 6,
                 ),
@@ -671,7 +678,7 @@ class _ChatListPageState extends State<ChatListPage> {
                     }
                     blobController.text = blob;
                   },
-                  label: const Text('Load backup from server'),
+                  label: const Text('Serverdan zaxirani yuklash'),
                 ),
                 SizedBox(height: spacing.lg),
                 AppPrimaryButton(
@@ -687,7 +694,7 @@ class _ChatListPageState extends State<ChatListPage> {
                       encryptedBlob: blob,
                     );
                   },
-                  label: const Text('Restore backup'),
+                  label: const Text('Zaxirani tiklash'),
                 ),
               ],
             ),
@@ -794,7 +801,7 @@ class _ChatListPageState extends State<ChatListPage> {
         leading: Padding(
           padding: const EdgeInsets.only(left: 8),
           child: _PremiumIconButton(
-            tooltip: 'Menu',
+            tooltip: 'Menyu',
             onPressed: () => _scaffoldKey.currentState?.openDrawer(),
             icon: Icons.menu_rounded,
           ),
@@ -902,7 +909,7 @@ class _ChatListPageState extends State<ChatListPage> {
             child: Row(
               children: [
                 IconButton(
-                  tooltip: 'Clear selection',
+                  tooltip: 'Tanlovni bekor qilish',
                   onPressed: () => setState(_selectedConversationIds.clear),
                   icon: const Icon(Icons.close_rounded),
                 ),
@@ -1149,26 +1156,29 @@ class _ChatListPageState extends State<ChatListPage> {
               const AppBrandMark(size: 48),
               SizedBox(height: spacing.lg),
               Text(
-                'Profile and workspace',
+                'Profil va ish maydoni',
                 style: theme.textTheme.headlineSmall,
               ),
               SizedBox(height: spacing.md),
-              _buildInfoRow('Display name', sessionUser.displayName),
-              _buildInfoRow('Username', sessionUser.username),
+              _buildInfoRow('Ko‘rinadigan ism', sessionUser.displayName),
+              _buildInfoRow('Foydalanuvchi nomi', sessionUser.username),
               _buildInfoRow(
-                'Workspace',
-                state.currentWorkspace?.name ?? 'None',
+                'Ish maydoni',
+                state.currentWorkspace?.name ?? 'Mavjud emas',
               ),
-              _buildInfoRow('Workspace ID', '${sessionUser.activeWorkspaceId}'),
-              _buildInfoRow('Device ID', sessionUser.deviceId),
-              _buildInfoRow('Skin', state.appSkinId),
+              _buildInfoRow(
+                'Ish maydoni ID',
+                '${sessionUser.activeWorkspaceId}',
+              ),
+              _buildInfoRow('Qurilma ID', sessionUser.deviceId),
+              _buildInfoRow('Ko‘rinish', state.appSkinId),
             ],
           ),
         ),
         SizedBox(height: spacing.lg),
         const AppSectionHeader(
-          title: 'Security Center',
-          subtitle: 'Trust, device readiness and historical decrypt health.',
+          title: 'Xavfsizlik markazi',
+          subtitle: 'Ishonch, qurilma tayyorligi va eski xabarlar holati.',
         ),
         SizedBox(height: spacing.sm),
         AppSurfaceCard(
@@ -1180,16 +1190,16 @@ class _ChatListPageState extends State<ChatListPage> {
                 runSpacing: spacing.sm,
                 children: [
                   AppBadge(
-                    label: '${state.security.verifiedPeersCount} verified',
+                    label: '${state.security.verifiedPeersCount} tasdiqlangan',
                     tone: AppStatusTone.success,
                   ),
                   AppBadge(
                     label:
-                        '${state.security.needsAttentionCount} need attention',
+                        '${state.security.needsAttentionCount} e’tibor talab qiladi',
                     tone: AppStatusTone.warning,
                   ),
                   AppBadge(
-                    label: '${state.security.notReadyCount} not ready',
+                    label: '${state.security.notReadyCount} tayyor emas',
                     tone: AppStatusTone.danger,
                   ),
                 ],
@@ -1197,8 +1207,8 @@ class _ChatListPageState extends State<ChatListPage> {
               SizedBox(height: spacing.md),
               AppStatusBanner(
                 message: state.security.hasHistoricalDecryptCapability
-                    ? 'Historical decrypt ready. ${state.security.availableHistoricalKeysets} keysets available.'
-                    : 'Historical decrypt limited. Backup restore tavsiya qilinadi.',
+                    ? 'Eski xabarlarni ochish tayyor. ${state.security.availableHistoricalKeysets} ta kalitlar to‘plami mavjud.'
+                    : 'Eski xabarlarni ochish cheklangan. Zaxirani tiklash tavsiya etiladi.',
                 tone: state.security.hasHistoricalDecryptCapability
                     ? AppStatusTone.success
                     : AppStatusTone.warning,
@@ -1206,8 +1216,8 @@ class _ChatListPageState extends State<ChatListPage> {
               SizedBox(height: spacing.md),
               AppStatusBanner(
                 message: state.security.isCurrentDeviceReady
-                    ? 'Current device PQC ready.'
-                    : 'Current device to‘liq ready emas.',
+                    ? 'Joriy qurilma PQC uchun tayyor.'
+                    : 'Joriy qurilma hali to‘liq tayyor emas.',
                 tone: state.security.isCurrentDeviceReady
                     ? AppStatusTone.success
                     : AppStatusTone.warning,
@@ -1217,8 +1227,8 @@ class _ChatListPageState extends State<ChatListPage> {
         ),
         SizedBox(height: spacing.lg),
         const AppSectionHeader(
-          title: 'Backup & Recovery',
-          subtitle: 'Automatic encrypted recovery linked to this account.',
+          title: 'Zaxira va tiklash',
+          subtitle: 'Akkauntga bog‘langan avtomatik shifrlangan tiklash.',
         ),
         SizedBox(height: spacing.sm),
         if (state.backup.statusMessage != null) ...[
@@ -1233,19 +1243,19 @@ class _ChatListPageState extends State<ChatListPage> {
             children: [
               ListTile(
                 leading: const Icon(Icons.admin_panel_settings_outlined),
-                title: const Text('Enterprise history recovery'),
+                title: const Text('Korporativ tarixni tiklash'),
                 subtitle: const Text(
                   'AWS KMS escrow manifestini faqat siz Restore history tugmasini bosganingizda import qilamiz.',
                 ),
                 trailing: Wrap(
                   children: [
                     IconButton(
-                      tooltip: 'Recovery requests',
+                      tooltip: 'Tiklash so‘rovlari',
                       icon: const Icon(Icons.verified_user_outlined),
                       onPressed: _showPendingRecoveryApprovals,
                     ),
                     IconButton(
-                      tooltip: 'Restore history',
+                      tooltip: 'Tarixni tiklash',
                       icon: const Icon(Icons.restore_rounded),
                       onPressed: () async {
                         try {
@@ -1266,8 +1276,8 @@ class _ChatListPageState extends State<ChatListPage> {
         ),
         SizedBox(height: spacing.lg),
         const AppSectionHeader(
-          title: 'Devices & Sessions',
-          subtitle: 'Current device and visible registered devices.',
+          title: 'Qurilmalar va seanslar',
+          subtitle: 'Joriy va ro‘yxatdan o‘tgan qurilmalar.',
         ),
         SizedBox(height: spacing.sm),
         if (state.currentDevice != null)
@@ -1287,13 +1297,13 @@ class _ChatListPageState extends State<ChatListPage> {
                     children: [
                       Text(
                         state.currentDevice!.deviceName.isEmpty
-                            ? 'Current device'
+                            ? 'Joriy qurilma'
                             : state.currentDevice!.deviceName,
                         style: theme.textTheme.titleMedium,
                       ),
                       SizedBox(height: spacing.xs),
                       Text(
-                        '${state.currentDevice!.platform.isEmpty ? 'unknown' : state.currentDevice!.platform} • ${state.currentDevice!.status}',
+                        '${state.currentDevice!.platform.isEmpty ? 'noma’lum' : state.currentDevice!.platform} • ${state.currentDevice!.status}',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: context.appColors.textMuted,
                         ),
@@ -1305,8 +1315,8 @@ class _ChatListPageState extends State<ChatListPage> {
                   label:
                       state.currentDevice!.hasUsableMlKemKey &&
                           state.currentDevice!.hasUsableMlDsaKey
-                      ? 'PQC ready'
-                      : 'Needs setup',
+                      ? 'PQC tayyor'
+                      : 'Sozlash kerak',
                   tone:
                       state.currentDevice!.hasUsableMlKemKey &&
                           state.currentDevice!.hasUsableMlDsaKey
@@ -1317,7 +1327,7 @@ class _ChatListPageState extends State<ChatListPage> {
             ),
           )
         else
-          _buildEmptyCard('Current device information is not available.'),
+          _buildEmptyCard('Joriy qurilma ma’lumoti mavjud emas.'),
         SizedBox(height: spacing.sm),
         for (final device in state.devices)
           Padding(
@@ -1343,7 +1353,7 @@ class _ChatListPageState extends State<ChatListPage> {
                         ),
                         SizedBox(height: spacing.xs),
                         Text(
-                          '${device.platform.isEmpty ? 'unknown' : device.platform} • ${device.status} • fingerprint ${device.profileFingerprint.isEmpty ? 'missing' : 'present'}',
+                          '${device.platform.isEmpty ? 'noma’lum' : device.platform} • ${device.status} • barmoq izi ${device.profileFingerprint.isEmpty ? 'yo‘q' : 'mavjud'}',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: context.appColors.textMuted,
                           ),
@@ -1351,7 +1361,7 @@ class _ChatListPageState extends State<ChatListPage> {
                         if (device.lastSeenAt != null) ...[
                           SizedBox(height: spacing.xs),
                           Text(
-                            'Last seen ${_formatRelativeTime(device.lastSeenAt!)}',
+                            'Oxirgi faollik: ${_formatRelativeTime(device.lastSeenAt!)}',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: context.appColors.textMuted,
                             ),
@@ -1362,8 +1372,8 @@ class _ChatListPageState extends State<ChatListPage> {
                   ),
                   AppBadge(
                     label: device.hasUsableMlKemKey && device.hasUsableMlDsaKey
-                        ? 'Ready'
-                        : 'Not ready',
+                        ? 'Tayyor'
+                        : 'Tayyor emas',
                     tone: device.hasUsableMlKemKey && device.hasUsableMlDsaKey
                         ? AppStatusTone.success
                         : AppStatusTone.warning,
@@ -1374,8 +1384,8 @@ class _ChatListPageState extends State<ChatListPage> {
           ),
         SizedBox(height: spacing.lg),
         const AppSectionHeader(
-          title: 'Preferences',
-          subtitle: 'Local product settings for inbox behavior.',
+          title: 'Afzalliklar',
+          subtitle: 'Chatlar oynasi uchun mahalliy sozlamalar.',
         ),
         SizedBox(height: spacing.sm),
         AppSurfaceCard(
@@ -1384,7 +1394,7 @@ class _ChatListPageState extends State<ChatListPage> {
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: widget.themeController.themeMode == ThemeMode.dark,
-                title: const Text('Dark mode'),
+                title: const Text('Qorong‘i rejim'),
                 subtitle: const Text(
                   'Light va dark ko‘rinish o‘rtasida almashish.',
                 ),
@@ -1397,7 +1407,7 @@ class _ChatListPageState extends State<ChatListPage> {
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: state.appPreferences.showArchivedByDefault,
-                title: const Text('Show archived in main inbox'),
+                title: const Text('Arxivni asosiy ro‘yxatda ko‘rsatish'),
                 subtitle: const Text(
                   'Archived chats “All” ichida ham ko‘rinsin.',
                 ),
@@ -1410,7 +1420,7 @@ class _ChatListPageState extends State<ChatListPage> {
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: state.appPreferences.keepDrafts,
-                title: const Text('Keep drafts'),
+                title: const Text('Qoralamalarni saqlash'),
                 subtitle: const Text('Composer draftlari avtomatik saqlansin.'),
                 onChanged: (value) {
                   _controller.updateAppPreferences(
@@ -1421,7 +1431,9 @@ class _ChatListPageState extends State<ChatListPage> {
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: state.appPreferences.preferManualRefreshHints,
-                title: const Text('Prefer manual refresh hints'),
+                title: const Text(
+                  'Qo‘lda yangilash ko‘rsatmalarini afzal ko‘rish',
+                ),
                 subtitle: const Text(
                   'Auto refresh o‘rniga ko‘proq manual affordance.',
                 ),
@@ -1438,16 +1450,16 @@ class _ChatListPageState extends State<ChatListPage> {
         ),
         SizedBox(height: spacing.lg),
         const AppSectionHeader(
-          title: 'About & Support',
-          subtitle: 'Build identity and support contact.',
+          title: 'Dastur va yordam',
+          subtitle: 'Versiya ma’lumoti va yordam aloqasi.',
         ),
         SizedBox(height: spacing.sm),
         AppSurfaceCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildInfoRow('Version', state.appVersion),
-              _buildInfoRow('Support', state.supportEmail),
+              _buildInfoRow('Versiya', state.appVersion),
+              _buildInfoRow('Yordam', state.supportEmail),
               _buildInfoRow('API', state.apiBaseUrl),
             ],
           ),
@@ -1459,7 +1471,7 @@ class _ChatListPageState extends State<ChatListPage> {
               child: AppSecondaryButton(
                 onPressed: () => _logout(forgetDevice: false),
                 icon: const Icon(Icons.logout_rounded),
-                label: const Text('Logout'),
+                label: const Text('Chiqish'),
               ),
             ),
             SizedBox(width: spacing.sm),
@@ -1467,7 +1479,7 @@ class _ChatListPageState extends State<ChatListPage> {
               child: AppPrimaryButton(
                 onPressed: () => _logout(forgetDevice: true),
                 icon: const Icon(Icons.delete_outline_rounded),
-                label: const Text('Forget device'),
+                label: const Text('Qurilmani unutish'),
               ),
             ),
           ],
@@ -1613,10 +1625,10 @@ class _ChatListPageState extends State<ChatListPage> {
           child: Column(
             children: [
               _buildInfoRow(
-                'Workspace',
-                state.currentWorkspace?.name ?? 'None',
+                'Ish maydoni',
+                state.currentWorkspace?.name ?? 'Mavjud emas',
               ),
-              _buildInfoRow('Device', session.deviceId),
+              _buildInfoRow('Qurilma', session.deviceId),
             ],
           ),
         ),
@@ -1646,44 +1658,44 @@ class _ChatListPageState extends State<ChatListPage> {
         ),
         SizedBox(height: spacing.xs),
         _settingsSection(
-          'Account',
-          'Profile, workspace and session',
+          'Akkaunt',
+          'Profil, ish maydoni va seans',
           Icons.person_outline_rounded,
           _buildAccountSettings,
         ),
         _settingsSection(
-          'Security',
-          'Trust, keys and decrypt health',
+          'Xavfsizlik',
+          'Ishonch, kalitlar va shifrni ochish holati',
           Icons.shield_outlined,
           _buildSecuritySettings,
         ),
         _settingsSection(
-          'Devices',
-          'Registered devices and revoke',
+          'Qurilmalar',
+          'Ro‘yxatdagi qurilmalar va bekor qilish',
           Icons.devices_outlined,
           _buildDevicesSettings,
         ),
         _settingsSection(
-          'Backup & Recovery',
-          'Restore and portable encrypted backups',
+          'Zaxira va tiklash',
+          'Tiklash va ko‘chma shifrlangan zaxiralar',
           Icons.backup_outlined,
           _buildBackupSettings,
         ),
         _settingsSection(
-          'Notifications & Privacy',
-          'Alerts, typing and presence',
+          'Bildirishnomalar va maxfiylik',
+          'Ogohlantirishlar, yozish va faollik',
           Icons.notifications_outlined,
           _buildNotificationsSettings,
         ),
         _settingsSection(
-          'Appearance & Chats',
-          'Theme, drafts and inbox layout',
+          'Ko‘rinish va chatlar',
+          'Mavzu, qoralamalar va chatlar joylashuvi',
           Icons.palette_outlined,
           _buildAppearanceSettings,
         ),
         _settingsSection(
-          'About & Support',
-          'Version and support details',
+          'Dastur va yordam',
+          'Versiya va yordam tafsilotlari',
           Icons.info_outline_rounded,
           _buildAboutSettings,
         ),
@@ -1791,12 +1803,15 @@ class _ChatListPageState extends State<ChatListPage> {
         ),
       ),
       SizedBox(height: spacing.lg),
-      const AppSectionHeader(title: 'Workspace'),
+      const AppSectionHeader(title: 'Ish maydoni'),
       SizedBox(height: spacing.sm),
       AppSurfaceCard(
         child: Column(
           children: [
-            _buildInfoRow('Current', state.currentWorkspace?.name ?? 'None'),
+            _buildInfoRow(
+              'Joriy',
+              state.currentWorkspace?.name ?? 'Mavjud emas',
+            ),
             for (final organization in session.organizations)
               for (final workspace in organization.workspaces)
                 ListTile(
@@ -1821,8 +1836,8 @@ class _ChatListPageState extends State<ChatListPage> {
           children: [
             ListTile(
               leading: const Icon(Icons.logout_rounded),
-              title: const Text('Log out'),
-              subtitle: const Text('Keep this device registered.'),
+              title: const Text('Akkauntdan chiqish'),
+              subtitle: const Text('Bu qurilma ro‘yxatda qoladi.'),
               onTap: () => _logout(forgetDevice: false),
             ),
             ListTile(
@@ -1830,9 +1845,9 @@ class _ChatListPageState extends State<ChatListPage> {
                 Icons.delete_outline_rounded,
                 color: context.appColors.danger,
               ),
-              title: const Text('Forget this device'),
+              title: const Text('Bu qurilmani unutish'),
               subtitle: const Text(
-                'Remove this local session and local history.',
+                'Mahalliy seans va mahalliy tarix o‘chiriladi.',
               ),
               onTap: () => _logout(forgetDevice: true),
             ),
@@ -1846,8 +1861,8 @@ class _ChatListPageState extends State<ChatListPage> {
     final spacing = context.appSpacing;
     return _settingsList([
       const AppSectionHeader(
-        title: 'Security Center',
-        subtitle: 'Trust and historical decrypt readiness.',
+        title: 'Xavfsizlik markazi',
+        subtitle: 'Ishonch va eski xabarlarni ochish tayyorligi.',
       ),
       SizedBox(height: spacing.sm),
       AppSurfaceCard(
@@ -1859,15 +1874,16 @@ class _ChatListPageState extends State<ChatListPage> {
               runSpacing: spacing.sm,
               children: [
                 AppBadge(
-                  label: '${state.security.verifiedPeersCount} verified',
+                  label: '${state.security.verifiedPeersCount} tasdiqlangan',
                   tone: AppStatusTone.success,
                 ),
                 AppBadge(
-                  label: '${state.security.needsAttentionCount} need attention',
+                  label:
+                      '${state.security.needsAttentionCount} e’tibor talab qiladi',
                   tone: AppStatusTone.warning,
                 ),
                 AppBadge(
-                  label: '${state.security.notReadyCount} not ready',
+                  label: '${state.security.notReadyCount} tayyor emas',
                   tone: AppStatusTone.danger,
                 ),
               ],
@@ -1875,8 +1891,8 @@ class _ChatListPageState extends State<ChatListPage> {
             SizedBox(height: spacing.md),
             AppStatusBanner(
               message: state.security.hasHistoricalDecryptCapability
-                  ? 'Historical decrypt ready. ${state.security.availableHistoricalKeysets} keysets available.'
-                  : 'Historical decrypt is limited. Restore a backup for older messages.',
+                  ? 'Eski xabarlarni ochish tayyor. ${state.security.availableHistoricalKeysets} ta kalitlar to‘plami mavjud.'
+                  : 'Eski xabarlarni ochish cheklangan. Eski xabarlar uchun zaxirani tiklang.',
               tone: state.security.hasHistoricalDecryptCapability
                   ? AppStatusTone.success
                   : AppStatusTone.warning,
@@ -1884,8 +1900,8 @@ class _ChatListPageState extends State<ChatListPage> {
             SizedBox(height: spacing.sm),
             AppStatusBanner(
               message: state.security.isCurrentDeviceReady
-                  ? 'This device is ready for secure messaging.'
-                  : 'This device needs key setup.',
+                  ? 'Bu qurilma xavfsiz xabar almashishga tayyor.'
+                  : 'Bu qurilmada kalitlarni sozlash kerak.',
               tone: state.security.isCurrentDeviceReady
                   ? AppStatusTone.success
                   : AppStatusTone.warning,
@@ -1900,8 +1916,8 @@ class _ChatListPageState extends State<ChatListPage> {
     final spacing = context.appSpacing;
     return _settingsList([
       const AppSectionHeader(
-        title: 'Devices & Sessions',
-        subtitle: 'Revoke only devices you do not recognize.',
+        title: 'Qurilmalar va seanslar',
+        subtitle: 'Faqat o‘zingiz tanimaydigan qurilmalarni bekor qiling.',
       ),
       SizedBox(height: spacing.sm),
       for (final device in state.devices)
@@ -1918,15 +1934,15 @@ class _ChatListPageState extends State<ChatListPage> {
                 device.deviceName.isEmpty ? device.deviceId : device.deviceName,
               ),
               subtitle: Text(
-                '${device.platform.isEmpty ? 'Unknown platform' : device.platform} • ${device.status}',
+                '${device.platform.isEmpty ? 'Noma’lum platforma' : device.platform} • ${device.status}',
               ),
               trailing: device.deviceId == state.sessionUser.deviceId
                   ? const AppBadge(
-                      label: 'This device',
+                      label: 'Bu qurilma',
                       tone: AppStatusTone.info,
                     )
                   : IconButton(
-                      tooltip: 'Revoke device',
+                      tooltip: 'Qurilmani bekor qilish',
                       icon: Icon(
                         Icons.remove_circle_outline_rounded,
                         color: context.appColors.danger,
@@ -1937,7 +1953,7 @@ class _ChatListPageState extends State<ChatListPage> {
           ),
         ),
       if (state.devices.isEmpty)
-        _buildEmptyCard('No registered devices found.'),
+        _buildEmptyCard('Ro‘yxatdan o‘tgan qurilma topilmadi.'),
     ]);
   }
 
@@ -1945,8 +1961,9 @@ class _ChatListPageState extends State<ChatListPage> {
     final spacing = context.appSpacing;
     return _settingsList([
       const AppSectionHeader(
-        title: 'Backup & Recovery',
-        subtitle: 'Recover encrypted history after reinstall or device switch.',
+        title: 'Zaxira va tiklash',
+        subtitle:
+            'Qayta o‘rnatish yoki qurilma almashtirishdan keyin tarixni tiklash.',
       ),
       SizedBox(height: spacing.sm),
       if (state.backup.statusMessage != null)
@@ -1959,26 +1976,28 @@ class _ChatListPageState extends State<ChatListPage> {
           children: [
             ListTile(
               leading: const Icon(Icons.restore_rounded),
-              title: const Text('Restore encrypted history'),
+              title: const Text('Shifrlangan tarixni tiklash'),
               subtitle: const Text(
-                'Import the account recovery manifest after approval.',
+                'Tasdiqlangandan keyin akkaunt tiklash ma’lumotini import qiling.',
               ),
               onTap: _restoreEnterpriseRecovery,
             ),
             ListTile(
               leading: const Icon(Icons.verified_user_outlined),
-              title: const Text('Recovery approvals'),
-              subtitle: const Text('Review requests from your other devices.'),
+              title: const Text('Tiklash ruxsatlari'),
+              subtitle: const Text(
+                'Boshqa qurilmalaringiz so‘rovlarini ko‘ring.',
+              ),
               onTap: _showPendingRecoveryApprovals,
             ),
             ListTile(
               leading: const Icon(Icons.upload_file_outlined),
-              title: const Text('Export encrypted backup'),
+              title: const Text('Shifrlangan zaxirani eksport qilish'),
               onTap: _showExportBackupSheet,
             ),
             ListTile(
               leading: const Icon(Icons.download_for_offline_outlined),
-              title: const Text('Import encrypted backup'),
+              title: const Text('Shifrlangan zaxirani import qilish'),
               onTap: _showImportBackupSheet,
             ),
           ],
@@ -1991,8 +2010,8 @@ class _ChatListPageState extends State<ChatListPage> {
     final spacing = context.appSpacing;
     return _settingsList([
       const AppSectionHeader(
-        title: 'Notifications',
-        subtitle: 'These preferences synchronize with your account.',
+        title: 'Bildirishnomalar',
+        subtitle: 'Bu sozlamalar akkauntingiz bilan sinxronlanadi.',
       ),
       SizedBox(height: spacing.sm),
       AppSurfaceCard(
@@ -2001,39 +2020,39 @@ class _ChatListPageState extends State<ChatListPage> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _notificationsEnabled,
-              title: const Text('Notifications'),
+              title: const Text('Bildirishnomalar'),
               onChanged: (value) =>
                   _setAccountBool('notifications_enabled', value),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _notificationPreviewsEnabled,
-              title: const Text('Notification previews'),
-              subtitle: const Text('Include message text in alerts.'),
+              title: const Text('Bildirishnoma matni'),
+              subtitle: const Text('Ogohlantirishda xabar matnini ko‘rsatish.'),
               onChanged: (value) =>
                   _setAccountBool('notification_previews', value),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _readReceiptsEnabled,
-              title: const Text('Read receipts'),
+              title: const Text('O‘qilganlik belgisi'),
               onChanged: (value) =>
                   _setAccountBool('read_receipts_enabled', value),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _typingIndicatorsEnabled,
-              title: const Text('Typing indicators'),
+              title: const Text('Yozayotganlik belgisi'),
               onChanged: (value) =>
                   _setAccountBool('typing_indicators_enabled', value),
             ),
             _visibilitySetting(
-              'Last seen visibility',
+              'Oxirgi faollik ko‘rinishi',
               _lastSeenVisibility,
               _setLastSeenVisibility,
             ),
             _visibilitySetting(
-              'Online visibility',
+              'Onlayn holati ko‘rinishi',
               _onlineVisibility,
               _setOnlineVisibility,
             ),
@@ -2044,9 +2063,9 @@ class _ChatListPageState extends State<ChatListPage> {
       const AppSurfaceCard(
         child: ListTile(
           leading: Icon(Icons.lock_outline_rounded),
-          title: Text('Message content'),
+          title: Text('Xabar mazmuni'),
           subtitle: Text(
-            'Message content remains end-to-end encrypted and is not readable by the server.',
+            'Xabar mazmuni boshidan oxirigacha shifrlanadi va server uni o‘qiy olmaydi.',
           ),
         ),
       ),
@@ -2065,9 +2084,9 @@ class _ChatListPageState extends State<ChatListPage> {
         value: value,
         isExpanded: true,
         items: const [
-          DropdownMenuItem(value: 'everyone', child: Text('Everyone')),
-          DropdownMenuItem(value: 'contacts', child: Text('Contacts')),
-          DropdownMenuItem(value: 'nobody', child: Text('Nobody')),
+          DropdownMenuItem(value: 'everyone', child: Text('Hamma')),
+          DropdownMenuItem(value: 'contacts', child: Text('Kontaktlar')),
+          DropdownMenuItem(value: 'nobody', child: Text('Hech kim')),
         ],
         onChanged: (next) {
           if (next != null) onChanged(next);
@@ -2080,8 +2099,8 @@ class _ChatListPageState extends State<ChatListPage> {
     final spacing = context.appSpacing;
     return _settingsList([
       const AppSectionHeader(
-        title: 'Appearance & Chats',
-        subtitle: 'Local display and composer preferences.',
+        title: 'Ko‘rinish va chatlar',
+        subtitle: 'Ko‘rinish va xabar yozishning mahalliy sozlamalari.',
       ),
       SizedBox(height: spacing.sm),
       AppSurfaceCard(
@@ -2090,7 +2109,7 @@ class _ChatListPageState extends State<ChatListPage> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: widget.themeController.themeMode == ThemeMode.dark,
-              title: const Text('Dark mode'),
+              title: const Text('Qorong‘i rejim'),
               onChanged: (value) => widget.themeController.setThemeMode(
                 value ? ThemeMode.dark : ThemeMode.light,
               ),
@@ -2098,7 +2117,7 @@ class _ChatListPageState extends State<ChatListPage> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: state.appPreferences.showArchivedByDefault,
-              title: const Text('Show archived chats'),
+              title: const Text('Arxivlangan chatlarni ko‘rsatish'),
               onChanged: (value) => _controller.updateAppPreferences(
                 state.appPreferences.copyWith(showArchivedByDefault: value),
               ),
@@ -2106,7 +2125,7 @@ class _ChatListPageState extends State<ChatListPage> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: state.appPreferences.keepDrafts,
-              title: const Text('Keep drafts'),
+              title: const Text('Qoralamalarni saqlash'),
               onChanged: (value) => _controller.updateAppPreferences(
                 state.appPreferences.copyWith(keepDrafts: value),
               ),
@@ -2118,14 +2137,14 @@ class _ChatListPageState extends State<ChatListPage> {
   }
 
   Widget _buildAboutSettings(SettingsViewState state) => _settingsList([
-    const AppSectionHeader(title: 'About & Support'),
+    const AppSectionHeader(title: 'Dastur va yordam'),
     SizedBox(height: context.appSpacing.sm),
     AppSurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildInfoRow('Version', state.appVersion),
-          _buildInfoRow('Support', state.supportEmail),
+          _buildInfoRow('Versiya', state.appVersion),
+          _buildInfoRow('Yordam', state.supportEmail),
           _buildInfoRow('API', state.apiBaseUrl),
         ],
       ),
@@ -2173,16 +2192,16 @@ class _ChatListPageState extends State<ChatListPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Revoke device?'),
-        content: Text('$label will no longer access this account.'),
+        title: const Text('Qurilma bekor qilinsinmi?'),
+        content: Text('$label endi bu akkauntga kira olmaydi.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: const Text('Bekor qilish'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Revoke'),
+            child: const Text('Bekor qilishni tasdiqlash'),
           ),
         ],
       ),
@@ -2190,7 +2209,9 @@ class _ChatListPageState extends State<ChatListPage> {
     if (confirmed != true) return;
     try {
       await _controller.revokeDevice(device.deviceId);
-      if (mounted) _showMessage('Device revoked.', tone: AppStatusTone.success);
+      if (mounted) {
+        _showMessage('Qurilma bekor qilindi.', tone: AppStatusTone.success);
+      }
     } catch (error) {
       if (mounted) _showMessage(error.toString(), tone: AppStatusTone.danger);
     }
@@ -3018,13 +3039,13 @@ class _ContactDetailPage extends StatelessWidget {
           ),
           SizedBox(height: spacing.lg),
           const AppSectionHeader(
-            title: 'Devices',
-            subtitle: 'Current visible multi-device roster.',
+            title: 'Qurilmalar',
+            subtitle: 'Kontaktning ko‘rinadigan qurilmalari.',
           ),
           SizedBox(height: spacing.sm),
           if (detail.devices.isEmpty)
             const AppEmptyState(
-              message: 'No visible devices for this contact.',
+              message: 'Bu kontakt uchun ko‘rinadigan qurilma yo‘q.',
               icon: Icons.devices_outlined,
             )
           else
@@ -3052,7 +3073,7 @@ class _ContactDetailPage extends StatelessWidget {
                             ),
                             SizedBox(height: spacing.xs),
                             Text(
-                              '${device.platform.isEmpty ? 'unknown' : device.platform} • ${device.isActive ? 'active' : device.status} • ${device.hasUsableMlKemKey && device.hasUsableMlDsaKey ? 'ready' : 'not ready'}',
+                              '${device.platform.isEmpty ? 'noma’lum' : device.platform} • ${device.isActive ? 'faol' : device.status} • ${device.hasUsableMlKemKey && device.hasUsableMlDsaKey ? 'tayyor' : 'tayyor emas'}',
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     color: context.appColors.textMuted,
@@ -3079,7 +3100,9 @@ class _ContactDetailPage extends StatelessWidget {
                           }
                         },
                   label: Text(
-                    detail.hasExistingConversation ? 'Open chat' : 'Start chat',
+                    detail.hasExistingConversation
+                        ? 'Chatni ochish'
+                        : 'Chat boshlash',
                   ),
                 ),
               ),
@@ -3094,7 +3117,7 @@ class _ContactDetailPage extends StatelessWidget {
                             Navigator.of(context).maybePop();
                           }
                         },
-                  label: const Text('Verify key'),
+                  label: const Text('Kalitni tasdiqlash'),
                 ),
               ),
             ],

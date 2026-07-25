@@ -83,6 +83,7 @@ class ChatFacade {
   final Map<int, Conversation> _conversationsById = {};
   final Map<int, int> _lastMessageIdByConversation = {};
   final Map<int, int> _lastReadReportedByConversation = {};
+  final ValueNotifier<int> realtimeRevision = ValueNotifier<int>(0);
   DateTime? _lastConversationSyncAt;
   int? _activeCurrentUserId;
   int _activeWorkspaceId = 0;
@@ -479,5 +480,6 @@ class ChatFacade {
     if (updatedConversation != null) {
       _conversationsById[updatedConversation.id] = updatedConversation;
     }
+    realtimeRevision.value++;
   }
 }

@@ -94,6 +94,7 @@ class ChatConversationController extends ChangeNotifier {
 
   Future<void> initialize() async {
     chatFacade.attachmentTransfers?.addListener(_handleTransferUpdates);
+    chatFacade.realtimeRevision.addListener(_handleRealtimeUpdate);
     try {
       _attachmentTransfers = await chatFacade.loadAttachmentTransfers();
     } catch (_) {
@@ -234,9 +235,14 @@ class ChatConversationController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _handleRealtimeUpdate() {
+    unawaited(refresh(showLoader: false).catchError((_) {}));
+  }
+
   @override
   void dispose() {
     chatFacade.attachmentTransfers?.removeListener(_handleTransferUpdates);
+    chatFacade.realtimeRevision.removeListener(_handleRealtimeUpdate);
     _pollingTimer?.cancel();
     super.dispose();
   }

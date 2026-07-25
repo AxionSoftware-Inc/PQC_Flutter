@@ -61,6 +61,9 @@ class _ChatPageState extends State<ChatPage> {
   bool _showSecurityDetails = false;
   bool _showTransferDetails = false;
   final Map<int, String> _downloadedAttachmentPaths = <int, String>{};
+  final Set<int> _imagePreviewDownloadsInFlight = <int>{};
+  final Set<int> _imagePreviewDownloadFailures = <int>{};
+  bool _isImagePreviewQueueRunning = false;
   int _lastMessageCount = 0;
   bool _hasRenderedMessages = false;
 
@@ -140,10 +143,61 @@ class _ChatPageState extends State<ChatPage> {
       }
     }
     setState(() {});
+    _queueMissingImagePreviews();
     if (shouldJump) {
       _jumpToBottom();
     }
   }
+
+  void _queueMissingImagePreviews() {
+    if (_isImagePreviewQueueRunning) {
+      return;
+    }
+    _isImagePreviewQueueRunning = true;
+    unawaited(_drainImagePreviewQueue());
+  }
+
+  Future<void> _drainImagePreviewQueue() async {
+    final recentImages = _controller.messages.reversed
+        .expand((message) => message.attachments)
+        .where((attachment) => attachment.mimeType.startsWith('image/'))
+        .take(24);
+    try {
+      for (final attachment in recentImages) {
+        if (_downloadedAttachmentPaths.containsKey(attachment.id) ||
+            _imagePreviewDownloadFailures.contains(attachment.id) ||
+            !_imagePreviewDownloadsInFlight.add(attachment.id)) {
+          continue;
+        }
+        await _downloadImagePreview(attachment);
+      }
+    } finally {
+      _isImagePreviewQueueRunning = false;
+    }
+  }
+
+  Future<void> _downloadImagePreview(ChatAttachment attachment) async {
+    try {
+      final path = await _controller.downloadAttachment(attachment);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _downloadedAttachmentPaths[attachment.id] = path;
+      });
+    } catch (_) {
+      _imagePreviewDownloadFailures.add(attachment.id);
+      // Preview loading is best-effort. Tapping the placeholder retries and
+      // surfaces the actual download error to the user.
+    } finally {
+      _imagePreviewDownloadsInFlight.remove(attachment.id);
+    }
+  }
+
+  List<AttachmentTransferState> get _visibleAttachmentTransfers => _controller
+      .attachmentTransfers
+      .where((item) => item.status != AttachmentTransferStatus.completed)
+      .toList(growable: false);
 
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
@@ -221,7 +275,7 @@ class _ChatPageState extends State<ChatPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '${file.name} too large. Max ${TransferPolicy.formatBytes(TransferPolicy.maxAttachmentBytes)} per file.',
+              '${file.name} juda katta. Har bir fayl uchun limit: ${TransferPolicy.formatBytes(TransferPolicy.maxAttachmentBytes)}.',
             ),
           ),
         );
@@ -276,7 +330,7 @@ class _ChatPageState extends State<ChatPage> {
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Current key verified.')));
+      ).showSnackBar(const SnackBar(content: Text('Joriy kalit tasdiqlandi.')));
     } catch (error) {
       if (error is UnauthorizedApiException) {
         await widget.onUnauthorized();
@@ -338,7 +392,7 @@ class _ChatPageState extends State<ChatPage> {
                     conversationTrust?.isAvailable == true
                 ? _verifyCurrentKey
                 : null,
-            transferCount: _controller.attachmentTransfers.length,
+            transferCount: _visibleAttachmentTransfers.length,
           ),
           if (_controller.isLoading) const LinearProgressIndicator(),
           if (_controller.error != null)
@@ -376,7 +430,7 @@ class _ChatPageState extends State<ChatPage> {
               ),
               child: const AppStatusBanner(
                 message:
-                    'Ba’zi eski xabarlar uchun backup restore kerak bo‘lishi mumkin. Settings > Backup & Recovery bo‘limidan tiklash mumkin.',
+                    'Ba’zi eski xabarlarni ochish uchun tiklash talab qilinadi. Sozlamalar > Zaxira va tiklash bo‘limidan foydalaning.',
                 tone: AppStatusTone.warning,
               ),
             ),
@@ -426,7 +480,7 @@ class _ChatPageState extends State<ChatPage> {
               ),
               child: Column(
                 children: [
-                  if (_controller.attachmentTransfers.isNotEmpty)
+                  if (_visibleAttachmentTransfers.isNotEmpty)
                     _buildTransferSection(
                       expanded: _showTransferDetails,
                       onToggleExpanded: () {
@@ -435,7 +489,7 @@ class _ChatPageState extends State<ChatPage> {
                         });
                       },
                     ),
-                  if (_controller.attachmentTransfers.isNotEmpty)
+                  if (_visibleAttachmentTransfers.isNotEmpty)
                     SizedBox(height: spacing.sm),
                   if (_selectedAttachments.isNotEmpty)
                     _buildSelectedAttachmentTray(),
@@ -708,7 +762,9 @@ class _ChatPageState extends State<ChatPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (!isMine && !isImageOnly) ...[
+                      if (widget.conversation.isGroup &&
+                          !isMine &&
+                          !isImageOnly) ...[
                         Text(
                           message.senderName,
                           style: Theme.of(context).textTheme.labelMedium
@@ -739,7 +795,7 @@ class _ChatPageState extends State<ChatPage> {
                       ],
                       if (isDecryptNeedsRestore)
                         Text(
-                          'Historical decrypt unavailable on this device. Restore backup to read this message.',
+                          'Bu qurilmada eski xabar kaliti topilmadi. Xabarni o‘qish uchun tarixni tiklang.',
                           style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(
                                 color: isMine ? Colors.white : null,
@@ -748,7 +804,7 @@ class _ChatPageState extends State<ChatPage> {
                         )
                       else if (isDecryptError)
                         Text(
-                          'Unable to decrypt this message.',
+                          'Bu xabarni shifrdan chiqarib bo‘lmadi.',
                           style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(
                                 color: isMine ? Colors.white : null,
@@ -756,25 +812,28 @@ class _ChatPageState extends State<ChatPage> {
                               ),
                         )
                       else if (message.body.trim().isNotEmpty)
-                        Wrap(
-                          spacing: spacing.sm,
-                          runSpacing: 2,
-                          alignment: WrapAlignment.end,
-                          crossAxisAlignment: WrapCrossAlignment.end,
-                          children: [
-                            Text(
-                              message.body,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(
-                                    color: isMine ? Colors.white : null,
-                                    height: 1.28,
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(text: message.body),
+                              WidgetSpan(
+                                alignment: PlaceholderAlignment.baseline,
+                                baseline: TextBaseline.alphabetic,
+                                child: Padding(
+                                  padding: EdgeInsets.only(left: spacing.sm),
+                                  child: _buildMessageFooter(
+                                    message: message,
+                                    isMine: isMine,
                                   ),
-                            ),
-                            _buildMessageFooter(
-                              message: message,
-                              isMine: isMine,
-                            ),
-                          ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: isMine ? Colors.white : null,
+                                height: 1.28,
+                              ),
                         ),
                       if (!isImageOnly && !hasInlineFooter) ...[
                         SizedBox(height: spacing.xs),
@@ -830,7 +889,7 @@ class _ChatPageState extends State<ChatPage> {
               }
               if (kIsWeb) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Attachment downloaded to $path')),
+                  SnackBar(content: Text('Fayl $path manziliga yuklandi')),
                 );
                 return;
               }
@@ -843,7 +902,7 @@ class _ChatPageState extends State<ChatPage> {
                   SnackBar(
                     content: Text(
                       result.message.isEmpty
-                          ? 'Downloaded, but no app can open this file.'
+                          ? 'Fayl yuklandi, lekin uni ochadigan dastur topilmadi.'
                           : result.message,
                     ),
                   ),
@@ -924,14 +983,14 @@ class _ChatPageState extends State<ChatPage> {
   }) {
     final colors = context.appColors;
     final spacing = context.appSpacing;
-    return Align(
-      alignment: Alignment.centerRight,
-      child: Wrap(
-        spacing: spacing.xs,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          if (message.deliveryState != MessageDeliveryState.sent)
-            Text(
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (message.deliveryState != MessageDeliveryState.sent)
+          Padding(
+            padding: EdgeInsets.only(right: spacing.xs),
+            child: Text(
               _statusLabel(message),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: isMine
@@ -939,24 +998,27 @@ class _ChatPageState extends State<ChatPage> {
                     : colors.textMuted,
               ),
             ),
-          Text(
-            _formatMessageTime(message.createdAt),
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: isMine
-                  ? Colors.white.withValues(alpha: 0.68)
-                  : colors.textMuted,
-            ),
           ),
-          if (isMine)
-            Icon(
+        Text(
+          _formatMessageTime(message.createdAt),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: isMine
+                ? Colors.white.withValues(alpha: 0.68)
+                : colors.textMuted,
+          ),
+        ),
+        if (isMine)
+          Padding(
+            padding: EdgeInsets.only(left: spacing.xs),
+            child: Icon(
               _deliveryIcon(message),
               size: 14,
               color: message.isRead
                   ? const Color(0xFFB9E6FF)
                   : Colors.white.withValues(alpha: 0.78),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 
@@ -1055,8 +1117,9 @@ class _ChatPageState extends State<ChatPage> {
   }) {
     final spacing = context.appSpacing;
     final colors = context.appColors;
-    final activeCount = _controller.attachmentTransfers
-        .where((item) => item.status != AttachmentTransferStatus.completed)
+    final transfers = _visibleAttachmentTransfers;
+    final activeCount = transfers
+        .where((item) => item.status != AttachmentTransferStatus.failed)
         .length;
     return AppSurfaceCard(
       padding: EdgeInsets.all(spacing.md),
@@ -1081,13 +1144,13 @@ class _ChatPageState extends State<ChatPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Transfers',
+                          'Uzatmalar',
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         Text(
                           activeCount > 0
-                              ? '$activeCount active • ${_controller.attachmentTransfers.length} total'
-                              : '${_controller.attachmentTransfers.length} recent transfers',
+                              ? '$activeCount faol • ${transfers.length} jami'
+                              : '${transfers.length} muvaffaqiyatsiz uzatma',
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: colors.textMuted),
                         ),
@@ -1106,7 +1169,7 @@ class _ChatPageState extends State<ChatPage> {
           ),
           if (expanded) ...[
             SizedBox(height: spacing.sm),
-            ..._controller.attachmentTransfers.map(
+            ...transfers.map(
               (transfer) => Padding(
                 padding: EdgeInsets.only(bottom: spacing.sm),
                 child: _buildTransferTile(transfer),
@@ -1186,27 +1249,27 @@ class _ChatPageState extends State<ChatPage> {
                   transfer.status != AttachmentTransferStatus.paused)
                 AppSecondaryButton(
                   onPressed: () => _controller.pauseTransfer(transfer.localId),
-                  label: const Text('Pause'),
+                  label: const Text('To‘xtatish'),
                 ),
               if (transfer.status == AttachmentTransferStatus.paused)
                 AppPrimaryButton(
                   onPressed: () => _resumeTransfer(transfer),
-                  label: const Text('Resume'),
+                  label: const Text('Davom ettirish'),
                 ),
               if (transfer.status == AttachmentTransferStatus.failed)
                 AppPrimaryButton(
                   onPressed: () => _resumeTransfer(transfer),
-                  label: const Text('Retry'),
+                  label: const Text('Qayta urinish'),
                 ),
               if (transfer.status == AttachmentTransferStatus.completed)
                 AppSecondaryButton(
                   onPressed: () =>
                       _controller.clearCompletedTransfer(transfer.localId),
-                  label: const Text('Clear'),
+                  label: const Text('Tozalash'),
                 ),
               AppSecondaryButton(
                 onPressed: () => _controller.cancelTransfer(transfer.localId),
-                label: const Text('Cancel'),
+                label: const Text('Bekor qilish'),
               ),
             ],
           ),
@@ -1261,26 +1324,26 @@ class _ChatPageState extends State<ChatPage> {
     switch (transfer.status) {
       case AttachmentTransferStatus.queued:
         return transfer.direction == AttachmentTransferDirection.upload
-            ? 'Queued for upload'
-            : 'Queued for download';
+            ? 'Yuborish navbatida'
+            : 'Yuklab olish navbatida';
       case AttachmentTransferStatus.encrypting:
-        return 'Encrypting';
+        return 'Shifrlanmoqda';
       case AttachmentTransferStatus.uploading:
-        return 'Uploading';
+        return 'Yuborilmoqda';
       case AttachmentTransferStatus.downloading:
-        return 'Downloading';
+        return 'Yuklab olinmoqda';
       case AttachmentTransferStatus.paused:
-        return 'Paused';
+        return 'To‘xtatilgan';
       case AttachmentTransferStatus.retrying:
-        return 'Retrying';
+        return 'Qayta urinilmoqda';
       case AttachmentTransferStatus.verifying:
-        return 'Verifying';
+        return 'Tekshirilmoqda';
       case AttachmentTransferStatus.completed:
         return transfer.direction == AttachmentTransferDirection.upload
-            ? 'Uploaded'
-            : 'Downloaded';
+            ? 'Yuborildi'
+            : 'Yuklab olindi';
       case AttachmentTransferStatus.failed:
-        return 'Failed';
+        return 'Xatolik';
     }
   }
 
@@ -1535,14 +1598,14 @@ class _ConversationProfilePage extends StatelessWidget {
     final colors = context.appColors;
     final isGroup = conversation.isGroup;
     final securityLabel = trust == null
-        ? (isGroup ? 'Protected group conversation' : 'Security unavailable')
+        ? (isGroup ? 'Himoyalangan guruh suhbati' : 'Xavfsizlik mavjud emas')
         : trust!.isEnterpriseVerified
-        ? 'Verified security'
+        ? 'Xavfsizlik tasdiqlangan'
         : trust!.isEnterpriseReady
-        ? 'Secure channel ready'
+        ? 'Xavfsiz kanal tayyor'
         : trust!.isVerified
-        ? 'Verified device key'
-        : 'Key verification pending';
+        ? 'Qurilma kaliti tasdiqlangan'
+        : 'Kalit tasdiqlanishi kutilmoqda';
     return AppScaffold(
       appBar: AppBar(
         title: Text(isGroup ? 'Guruh ma’lumotlari' : 'Kontakt ma’lumotlari'),
@@ -1610,8 +1673,9 @@ class _ConversationProfilePage extends StatelessWidget {
           if (trust != null && !isGroup) ...[
             SizedBox(height: spacing.lg),
             const AppSectionHeader(
-              title: 'Key status',
-              subtitle: 'This device uses the current protected keyset.',
+              title: 'Kalit holati',
+              subtitle:
+                  'Bu qurilma joriy himoyalangan kalitlar to‘plamidan foydalanadi.',
             ),
             SizedBox(height: spacing.sm),
             AppStatusBanner(
@@ -1625,7 +1689,7 @@ class _ConversationProfilePage extends StatelessWidget {
           AppPrimaryButton(
             onPressed: () => Navigator.of(context).pop(),
             icon: const Icon(Icons.chat_bubble_outline_rounded),
-            label: const Text('Open chat'),
+            label: const Text('Suhbatni ochish'),
           ),
         ],
       ),
@@ -1687,16 +1751,16 @@ class _SecurityBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final summary = !trust.isAvailable
-        ? 'Peer device key hali tayyor emas.'
+        ? 'Suhbatdosh qurilmasining kaliti hali tayyor emas.'
         : trust.hasEnterpriseKeyChanged
-        ? 'Security material changed. Re-verify recommended.'
+        ? 'Xavfsizlik kalitlari o‘zgargan. Qayta tasdiqlash tavsiya etiladi.'
         : trust.isEnterpriseVerified
-        ? 'Enterprise trust verified.'
+        ? 'Korporativ ishonch tasdiqlangan.'
         : trust.isEnterpriseReady
-        ? 'PQC ready. First secure send can proceed.'
+        ? 'PQC tayyor. Xavfsiz xabar yuborish mumkin.'
         : trust.isVerified
-        ? 'Classical trust verified.'
-        : 'Key not verified yet.';
+        ? 'Qurilma ishonchi tasdiqlangan.'
+        : 'Kalit hali tasdiqlanmagan.';
 
     final tone = !trust.isAvailable
         ? AppStatusTone.warning
@@ -1728,13 +1792,15 @@ class _SecurityBanner extends StatelessWidget {
                     onPressed: onVerify,
                     child: Text(
                       trust.isEnterpriseVerified || trust.isVerified
-                          ? 'Re-verify'
-                          : 'Verify',
+                          ? 'Qayta tasdiqlash'
+                          : 'Tasdiqlash',
                     ),
                   ),
                   TextButton(
                     onPressed: onToggleExpanded,
-                    child: Text(isExpanded ? 'Hide details' : 'Details'),
+                    child: Text(
+                      isExpanded ? 'Tafsilotni yashirish' : 'Tafsilotlar',
+                    ),
                   ),
                 ],
               )
@@ -1766,7 +1832,7 @@ class _SecurityDetailCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Security details',
+              'Xavfsizlik tafsilotlari',
               style: Theme.of(
                 context,
               ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),

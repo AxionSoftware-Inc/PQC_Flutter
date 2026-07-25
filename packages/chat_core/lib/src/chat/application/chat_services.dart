@@ -879,6 +879,21 @@ class ChatRealtimeCoordinator {
     if (event.event == 'conversation.updated') {
       return null;
     }
+    if (event.event == 'receipt.read') {
+      final readerId = event.payload['user_id'] as int?;
+      final throughMessageId = event.payload['message_id'] as int?;
+      if (readerId != null &&
+          readerId != currentUserId &&
+          throughMessageId != null &&
+          throughMessageId > 0) {
+        await localStore.markOwnMessagesRead(
+          conversationId: knownConversation.id,
+          currentUserId: currentUserId,
+          throughMessageId: throughMessageId,
+        );
+      }
+      return null;
+    }
     if (event.event != 'message.created') {
       return null;
     }
