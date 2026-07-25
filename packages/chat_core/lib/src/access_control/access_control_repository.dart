@@ -6,6 +6,12 @@ class AccessControlRepository {
 
   final ApiClient apiClient;
 
+  Future<AccessControlCatalog> fetchCatalog() async {
+    final response =
+        await apiClient.get('/rbac/catalog') as Map<String, dynamic>;
+    return AccessControlCatalog.fromJson(response);
+  }
+
   Future<WorkspaceAccessSnapshot> fetchMyAccess() async {
     final response = await apiClient.get('/rbac/me') as Map<String, dynamic>;
     return WorkspaceAccessSnapshot.fromJson(response);
@@ -16,6 +22,17 @@ class AccessControlRepository {
     return response
         .map(
           (item) => WorkspaceAccessRole.fromJson(item as Map<String, dynamic>),
+        )
+        .toList(growable: false);
+  }
+
+  Future<List<WorkspaceAccessRoleAssignment>> fetchAssignments() async {
+    final response = await apiClient.get('/rbac/assignments') as List<dynamic>;
+    return response
+        .map(
+          (item) => WorkspaceAccessRoleAssignment.fromJson(
+            item as Map<String, dynamic>,
+          ),
         )
         .toList(growable: false);
   }
@@ -45,14 +62,17 @@ class AccessControlRepository {
     await apiClient.delete('/rbac/roles/$roleId');
   }
 
-  Future<void> assignRole({
+  Future<WorkspaceAccessRoleAssignment> assignRole({
     required int workspaceMemberId,
     required int roleId,
   }) async {
-    await apiClient.post('/rbac/assignments', {
+    final response = await apiClient.post('/rbac/assignments', {
       'workspace_member_id': workspaceMemberId,
       'role_id': roleId,
     });
+    return WorkspaceAccessRoleAssignment.fromJson(
+      response as Map<String, dynamic>,
+    );
   }
 
   Future<void> removeAssignment(int assignmentId) async {

@@ -1,4 +1,8 @@
+from io import StringIO
+
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from rest_framework.test import APITestCase
 
 from users.access_control.catalog import AccessPermission
@@ -177,3 +181,30 @@ class WorkspaceAccessControlTests(APITestCase):
             **self._workspace_headers(),
         )
         self.assertEqual(response.status_code, 201)
+
+    def test_owner_grant_command_is_scoped_to_existing_memberships(self):
+        self.member_user.email = 'axionsoftwareindustries@gmail.com'
+        self.member_user.save(update_fields=['email'])
+        output = StringIO()
+
+        call_command(
+            'grant_workspace_owner',
+            email='axionsoftwareindustries@gmail.com',
+            stdout=output,
+        )
+
+        self.member_membership.refresh_from_db()
+        self.member_membership.organization_member.refresh_from_db()
+        self.assertEqual(self.member_membership.role, CorporateRole.OWNER)
+        self.assertEqual(
+            self.member_membership.organization_member.role,
+            CorporateRole.OWNER,
+        )
+        self.assertIn('Granted Owner', output.getvalue())
+
+    def test_owner_grant_command_rejects_an_unknown_account(self):
+        with self.assertRaises(CommandError):
+            call_command(
+                'grant_workspace_owner',
+                email='missing@example.com',
+            )

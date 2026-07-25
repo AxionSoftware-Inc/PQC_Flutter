@@ -181,6 +181,7 @@ class UserSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     role_label = serializers.SerializerMethodField()
     can_manage_role = serializers.SerializerMethodField()
+    workspace_member_id = serializers.SerializerMethodField()
     account_id = serializers.IntegerField(source='id')
 
     class Meta:
@@ -194,6 +195,7 @@ class UserSerializer(serializers.ModelSerializer):
             'role',
             'role_label',
             'can_manage_role',
+            'workspace_member_id',
             'devices',
         ]
 
@@ -238,6 +240,9 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_can_manage_role(self, obj):
         return obj.id in self.context.get('manageable_role_user_ids', set())
+
+    def get_workspace_member_id(self, obj):
+        return self.context.get('workspace_member_ids_by_user', {}).get(obj.id)
 
     def get_devices(self, obj):
         device_rows = [

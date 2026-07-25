@@ -918,9 +918,17 @@ class UserListView(APIView):
             membership.organization_member.user_id: membership.role
             for membership in memberships
         }
+        member_ids_by_user = {
+            membership.organization_member.user_id: membership.id
+            for membership in memberships
+        }
         current_role = roles_by_user.get(request.user.id)
         manageable_user_ids = set()
-        if current_role in (CorporateRole.OWNER, CorporateRole.ADMIN):
+        if WorkspaceAccessPolicy.allows(
+            user=request.user,
+            workspace=workspace,
+            permission_code=AccessPermission.ROLES_MANAGE,
+        ):
             manageable_user_ids = {
                 user_id
                 for user_id, role in roles_by_user.items()
@@ -940,6 +948,7 @@ class UserListView(APIView):
                 context={
                     'request': request,
                     'workspace_roles_by_user': roles_by_user,
+                    'workspace_member_ids_by_user': member_ids_by_user,
                     'manageable_role_user_ids': manageable_user_ids,
                 },
             ).data

@@ -14,12 +14,14 @@ void main() {
       'role': 'manager',
       'role_label': 'Menejer',
       'can_manage_role': true,
+      'workspace_member_id': 41,
       'devices': <dynamic>[],
     });
 
     expect(user.role, 'manager');
     expect(user.roleLabel, 'Menejer');
     expect(user.canManageRole, isTrue);
+    expect(user.workspaceMemberId, 41);
   });
 
   test(

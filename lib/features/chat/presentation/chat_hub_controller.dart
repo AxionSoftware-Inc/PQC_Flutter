@@ -253,6 +253,7 @@ class ChatHubController extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
   String? get error => _error;
+  List<AppUser> get users => List<AppUser>.unmodifiable(_users);
   ChatListViewState get chatState => ChatListViewState(
     preferences: _chatPreferences,
     items: _conversationItems,

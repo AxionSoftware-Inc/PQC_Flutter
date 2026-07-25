@@ -13,6 +13,7 @@ import '../../../app/theme_controller.dart';
 import '../../auth/session_controller.dart';
 import '../../chat/application/chat_facade.dart';
 import '../../crypto/durability/crypto_core_facade.dart';
+import 'access_control_settings_page.dart';
 import 'chat_hub_controller.dart';
 import 'chat_page.dart';
 
@@ -1685,6 +1686,21 @@ class _ChatListPageState extends State<ChatListPage> {
           ),
           Icons.person_outline_rounded,
           _buildAccountSettings,
+        ),
+        _settingsSection(
+          context.antiQText(
+            uz: 'Rollar va ruxsatlar',
+            en: 'Roles & permissions',
+          ),
+          context.antiQText(
+            uz: 'Xodimlar vakolati va maxsus rollar',
+            en: 'Member access and custom roles',
+          ),
+          Icons.admin_panel_settings_outlined,
+          (_) => AccessControlSettingsPage(
+            apiClient: widget.apiClient,
+            users: _controller.users,
+          ),
         ),
         _settingsSection(
           context.antiQText(uz: 'Xavfsizlik', en: 'Security'),

@@ -30,4 +30,41 @@ void main() {
 
     expect(role.permissions, {'members.view', 'groups.manage'});
   });
+
+  test('catalog and assignment retain workspace authorization identities', () {
+    final catalog = AccessControlCatalog.fromJson({
+      'workspace_id': 7,
+      'permissions': [
+        {
+          'code': 'roles.manage',
+          'label': 'Rollarni boshqarish',
+          'description': 'Rollarni boshqaradi.',
+          'category': 'roles',
+        },
+      ],
+      'built_in_roles': [
+        {
+          'key': 'owner',
+          'name': 'Egasi',
+          'description': 'Barcha ruxsatlar.',
+          'permissions': ['roles.manage'],
+        },
+      ],
+    });
+    final assignment = WorkspaceAccessRoleAssignment.fromJson({
+      'id': 19,
+      'workspace_member_id': 12,
+      'user_id': 5,
+      'role_id': 3,
+      'role_key': 'security-auditor',
+      'role_name': 'Xavfsizlik auditori',
+    });
+
+    expect(catalog.workspaceId, 7);
+    expect(catalog.permissions.single.category, 'roles');
+    expect(catalog.builtInRoles.single.permissions, {'roles.manage'});
+    expect(assignment.workspaceMemberId, 12);
+    expect(assignment.userId, 5);
+    expect(assignment.roleKey, 'security-auditor');
+  });
 }

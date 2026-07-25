@@ -162,6 +162,7 @@ class AppUser {
     this.role = 'member',
     this.roleLabel = 'Xodim',
     this.canManageRole = false,
+    this.workspaceMemberId,
   });
 
   final int id;
@@ -172,6 +173,7 @@ class AppUser {
   final String role;
   final String roleLabel;
   final bool canManageRole;
+  final int? workspaceMemberId;
 
   bool get hasUsableDeviceKey => preferredX25519Device != null;
 
@@ -211,6 +213,7 @@ class AppUser {
       role: json['role'] as String? ?? 'member',
       roleLabel: json['role_label'] as String? ?? 'Xodim',
       canManageRole: json['can_manage_role'] as bool? ?? false,
+      workspaceMemberId: json['workspace_member_id'] as int?,
       devices: (json['devices'] as List<dynamic>? ?? const [])
           .map((item) => AppUserDevice.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -226,6 +229,7 @@ class AppUser {
     String? role,
     String? roleLabel,
     bool? canManageRole,
+    int? workspaceMemberId,
   }) {
     return AppUser(
       id: id ?? this.id,
@@ -236,6 +240,7 @@ class AppUser {
       role: role ?? this.role,
       roleLabel: roleLabel ?? this.roleLabel,
       canManageRole: canManageRole ?? this.canManageRole,
+      workspaceMemberId: workspaceMemberId ?? this.workspaceMemberId,
     );
   }
 }
