@@ -85,6 +85,7 @@ class AuthRepository {
         code: 'google_response_invalid',
       );
     }
+    apiClient.setRecoveryGrant(response['recovery_grant'] as String?);
     return _sessionFromResponse(response, identity.id);
   }
 
@@ -157,6 +158,8 @@ class AuthRepository {
     await _resetLocalStateIfServerChanged();
     final session = await sessionStorage.read();
     apiClient.setToken(session?.token);
+    apiClient.setRecoveryGrant(null);
+    apiClient.setRecoveryDeviceCredential(session?.recoveryDeviceCredential);
     final deviceState = await deviceStateManager.resolveCurrentDeviceProfile();
     apiClient.setDeviceId(deviceState.deviceIdentity.id);
     apiClient.setWorkspaceId(
@@ -231,12 +234,15 @@ class AuthRepository {
       deviceId: response['device_id'] as String? ?? deviceIdentity.id,
       deviceStatus: response['device_status'] as String? ?? 'active',
       profileFingerprint: response['profile_fingerprint'] as String? ?? '',
+      recoveryDeviceCredential:
+          response['recovery_device_credential'] as String? ?? '',
       activeWorkspaceId: response['active_workspace_id'] as int? ?? 0,
       organizations: _parseOrganizations(response),
       token: response['token'] as String,
     );
 
     apiClient.setToken(session.token);
+    apiClient.setRecoveryDeviceCredential(session.recoveryDeviceCredential);
     apiClient.setWorkspaceId(
       session.activeWorkspaceId <= 0 ? null : '${session.activeWorkspaceId}',
     );
@@ -298,11 +304,14 @@ class AuthRepository {
         deviceId: response['device_id'] as String? ?? deviceIdentity.id,
         deviceStatus: response['device_status'] as String? ?? 'active',
         profileFingerprint: response['profile_fingerprint'] as String? ?? '',
+        recoveryDeviceCredential:
+            response['recovery_device_credential'] as String? ?? '',
         activeWorkspaceId: response['active_workspace_id'] as int? ?? 0,
         organizations: _parseOrganizations(response),
         token: response['token'] as String,
       );
       apiClient.setToken(session.token);
+      apiClient.setRecoveryDeviceCredential(session.recoveryDeviceCredential);
       apiClient.setWorkspaceId(
         session.activeWorkspaceId <= 0 ? null : '${session.activeWorkspaceId}',
       );
@@ -337,12 +346,15 @@ class AuthRepository {
       deviceId: response['device_id'] as String? ?? fallbackDeviceId,
       deviceStatus: response['device_status'] as String? ?? 'active',
       profileFingerprint: response['profile_fingerprint'] as String? ?? '',
+      recoveryDeviceCredential:
+          response['recovery_device_credential'] as String? ?? '',
       activeWorkspaceId: response['active_workspace_id'] as int? ?? 0,
       organizations: _parseOrganizations(response),
       token: response['token'] as String,
     );
     apiClient.setToken(session.token);
     apiClient.setDeviceId(session.deviceId);
+    apiClient.setRecoveryDeviceCredential(session.recoveryDeviceCredential);
     apiClient.setWorkspaceId(
       session.activeWorkspaceId <= 0 ? null : '${session.activeWorkspaceId}',
     );
@@ -418,6 +430,8 @@ class AuthRepository {
     apiClient.setToken(null);
     apiClient.setDeviceId(null);
     apiClient.setWorkspaceId(null);
+    apiClient.setRecoveryGrant(null);
+    apiClient.setRecoveryDeviceCredential(null);
     await sessionStorage.clear(
       clearRememberedIdentity: clearRememberedIdentity,
     );

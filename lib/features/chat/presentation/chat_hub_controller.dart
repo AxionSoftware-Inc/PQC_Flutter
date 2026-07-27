@@ -504,7 +504,11 @@ class ChatHubController extends ChangeNotifier {
   }
 
   Future<void> syncEnterpriseRecoveryManifest() async {
-    final response = await apiClient.get('/users/me/crypto-recovery');
+    final response = await apiClient.get(
+      '/users/me/crypto-recovery',
+      queryParameters: const {'metadata_only': 'true'},
+      includeRecoveryCredentials: true,
+    );
     final sequence = response is Map && response['available'] == true
         ? response['sequence'] as int? ?? 0
         : 0;
@@ -530,13 +534,14 @@ class ChatHubController extends ChangeNotifier {
       response = await apiClient.get(
         '/users/me/crypto-recovery',
         queryParameters: queryParameters,
+        includeRecoveryCredentials: true,
       );
     } on ApiException catch (error) {
       if (error.code != 'recovery_approval_required') rethrow;
       final approval =
           await apiClient.post('/users/me/crypto-recovery/approvals', {
                 'requester_device_id': sessionUserProvider().deviceId,
-              })
+              }, includeRecoveryCredentials: true)
               as Map<String, dynamic>;
       _recoveryApprovalChallenge = approval['challenge'] as String?;
       _backupState = _backupState.copyWith(
@@ -574,7 +579,10 @@ class ChatHubController extends ChangeNotifier {
   }
 
   Future<List<Map<String, dynamic>>> pendingRecoveryApprovals() async {
-    final response = await apiClient.get('/users/me/crypto-recovery/approvals');
+    final response = await apiClient.get(
+      '/users/me/crypto-recovery/approvals',
+      includeRecoveryCredentials: true,
+    );
     if (response is! Map) return const [];
     return (response['approvals'] as List<dynamic>? ?? const [])
         .whereType<Map>()
@@ -586,10 +594,14 @@ class ChatHubController extends ChangeNotifier {
     required int approvalId,
     required bool approved,
   }) {
-    return apiClient.post('/users/me/crypto-recovery/approvals/$approvalId', {
-      'approver_device_id': sessionUserProvider().deviceId,
-      'approved': approved,
-    });
+    return apiClient.post(
+      '/users/me/crypto-recovery/approvals/$approvalId',
+      {
+        'approver_device_id': sessionUserProvider().deviceId,
+        'approved': approved,
+      },
+      includeRecoveryCredentials: true,
+    );
   }
 
   Future<void> _publishEnterpriseRecoverySnapshot({
@@ -603,17 +615,21 @@ class ChatHubController extends ChangeNotifier {
         'payload': payload,
         'source_device_id': deviceId,
         'expected_sequence': expectedSequence,
-      });
+      }, includeRecoveryCredentials: true);
     } on ApiException catch (error) {
       if (error.code != 'recovery_manifest_conflict') rethrow;
-      final latest = await apiClient.get('/users/me/crypto-recovery');
+      final latest = await apiClient.get(
+        '/users/me/crypto-recovery',
+        queryParameters: const {'metadata_only': 'true'},
+        includeRecoveryCredentials: true,
+      );
       if (latest is! Map || latest['available'] != true) rethrow;
       await apiClient.put('/users/me/crypto-recovery', {
         'schema_version': 2,
         'payload': payload,
         'source_device_id': deviceId,
         'expected_sequence': latest['sequence'] as int? ?? 0,
-      });
+      }, includeRecoveryCredentials: true);
     }
   }
 

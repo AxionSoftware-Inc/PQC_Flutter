@@ -3,6 +3,8 @@ import socket
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+from django.core.exceptions import ImproperlyConfigured
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -10,11 +12,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-dev-only-change-me',
-)
+DEPLOYMENT_ENV = os.environ.get('DJANGO_ENV', 'development').strip().lower()
+if DEPLOYMENT_ENV not in {'development', 'test', 'production'}:
+    raise ImproperlyConfigured(
+        'DJANGO_ENV must be one of: development, test, production.'
+    )
+IS_PRODUCTION = DEPLOYMENT_ENV == 'production'
+
+# Development has an explicit, recognizable placeholder. Production refuses
+# to boot unless a strong secret is supplied through the environment.
+_development_secret = 'django-insecure-dev-only-change-me'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', _development_secret).strip()
 GOOGLE_ANDROID_CLIENT_ID = os.environ.get(
     'GOOGLE_ANDROID_CLIENT_ID',
     '937305477350-n9h2s4e6ra9rvs6s1s95gel6p4ldl5tg.apps.googleusercontent.com',
@@ -23,14 +31,56 @@ GOOGLE_ANDROID_CLIENT_ID = os.environ.get(
 # adapter is intentionally allowed only outside a production deployment.
 AWS_REGION = os.environ.get('AWS_REGION', '')
 AWS_KMS_ESCROW_KEY_ID = os.environ.get('AWS_KMS_ESCROW_KEY_ID', '')
-CRYPTO_ESCROW_REQUIRE_KMS = os.environ.get('DJANGO_ENV', '').lower() == 'production'
+CRYPTO_ESCROW_REQUIRE_KMS = IS_PRODUCTION
 CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL = os.environ.get(
-    'CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL', 'false'
+    'CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL', 'true'
 ).lower() == 'true'
+CRYPTO_RECOVERY_REQUIRE_REGISTERED_DEVICE = os.environ.get(
+    'CRYPTO_RECOVERY_REQUIRE_REGISTERED_DEVICE', 'true'
+).lower() == 'true'
+CRYPTO_RECOVERY_GRANT_TTL_SECONDS = int(
+    os.environ.get('CRYPTO_RECOVERY_GRANT_TTL_SECONDS', '300')
+)
 LOCAL_ESCROW_TEST_SECRET = os.environ.get('LOCAL_ESCROW_TEST_SECRET', SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', '').lower() == 'true'
+
+if IS_PRODUCTION:
+    errors = []
+    if DEBUG:
+        errors.append('DJANGO_DEBUG must be false')
+    if SECRET_KEY == _development_secret or len(SECRET_KEY) < 50:
+        errors.append('DJANGO_SECRET_KEY must be a unique value of at least 50 characters')
+    if not AWS_REGION:
+        errors.append('AWS_REGION is required')
+    if not AWS_KMS_ESCROW_KEY_ID:
+        errors.append('AWS_KMS_ESCROW_KEY_ID is required')
+    if not CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL:
+        errors.append('CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL must be true')
+    if not CRYPTO_RECOVERY_REQUIRE_REGISTERED_DEVICE:
+        errors.append('CRYPTO_RECOVERY_REQUIRE_REGISTERED_DEVICE must be true')
+    if not os.environ.get('DJANGO_ALLOWED_HOSTS', '').strip():
+        errors.append('DJANGO_ALLOWED_HOSTS must be explicitly configured')
+    if not (os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_DB')):
+        errors.append('PostgreSQL DATABASE_URL or POSTGRES_DB is required')
+    if not (os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_PASSWORD')):
+        errors.append('POSTGRES_PASSWORD is required')
+    if errors:
+        raise ImproperlyConfigured(
+            'Unsafe production configuration: ' + '; '.join(errors)
+        )
+
+# TLS is mandatory in production. A reverse proxy may terminate TLS, but it
+# must pass X-Forwarded-Proto so Django can enforce the same policy.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = IS_PRODUCTION
+SESSION_COOKIE_SECURE = IS_PRODUCTION
+CSRF_COOKIE_SECURE = IS_PRODUCTION
+SECURE_HSTS_SECONDS = 31536000 if IS_PRODUCTION else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = IS_PRODUCTION
+SECURE_HSTS_PRELOAD = IS_PRODUCTION
+SECURE_REFERRER_POLICY = 'same-origin'
 
 def _default_allowed_hosts():
     hosts = {
@@ -165,6 +215,9 @@ def _database_config():
 DATABASES = {
     'default': _database_config(),
 }
+
+if IS_PRODUCTION and DATABASES['default']['ENGINE'] != 'django.db.backends.postgresql':
+    raise ImproperlyConfigured('Production must use PostgreSQL.')
 
 
 # Password validation

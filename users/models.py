@@ -157,6 +157,7 @@ class RecoveryDeviceApproval(models.Model):
         APPROVED = 'approved', 'Approved'
         DENIED = 'denied', 'Denied'
         EXPIRED = 'expired', 'Expired'
+        USED = 'used', 'Used'
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     requester_device_id = models.CharField(max_length=255)
@@ -166,6 +167,20 @@ class RecoveryDeviceApproval(models.Model):
     expires_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
     approved_at = models.DateTimeField(null=True, blank=True)
+
+
+class RecoveryAccessGrant(models.Model):
+    """One-use grant issued only after a fresh federated login."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    device_id = models.CharField(max_length=255)
+    token_sha256 = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-id']
 
 
 class Workspace(models.Model):
@@ -400,6 +415,7 @@ class UserDevice(models.Model):
     )
     revoked_reason = models.CharField(max_length=255, blank=True)
     profile_fingerprint = models.CharField(max_length=128, blank=True)
+    recovery_credential_sha256 = models.CharField(max_length=64, blank=True)
     first_seen_at = models.DateTimeField(auto_now_add=True)
     last_seen_at = models.DateTimeField(auto_now_add=True)
     created_at = models.DateTimeField(auto_now_add=True)

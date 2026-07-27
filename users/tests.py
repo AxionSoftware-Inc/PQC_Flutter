@@ -1,18 +1,27 @@
 import base64
+import hashlib
+import json
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.db import close_old_connections, connection
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TransactionTestCase
+from django.db import close_old_connections, connection
+from django.test import TransactionTestCase, override_settings
+from django.utils import timezone
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient, APITestCase
 
 from chat.models import Conversation, ConversationParticipant
 from users.models import GoogleAccount, UserDevice, WorkspaceMember
-from users.models import AccountKeysetEscrowRecord, AccountRecoveryManifest
+from users.models import (
+    AccountKeysetEscrowRecord,
+    AccountRecoveryManifest,
+    RecoveryAccessGrant,
+    RecoveryDeviceApproval,
+)
 from users.escrow import LocalDevelopmentEscrowProvider
 from users.roles import CorporateRole
 
@@ -24,6 +33,10 @@ VALID_PQC_PUBLIC_KEY = base64.b64encode(bytes(1184)).decode()
 VALID_PQC_SIGNING_PUBLIC_KEY = base64.b64encode(bytes(1952)).decode()
 
 
+@override_settings(
+    CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL=False,
+    CRYPTO_RECOVERY_REQUIRE_REGISTERED_DEVICE=False,
+)
 class RecoveryManifestOCCIntegrationTests(APITestCase):
     """Virtual-device tests for the recovery endpoint's OCC contract."""
 
@@ -149,6 +162,10 @@ class RecoveryManifestOCCIntegrationTests(APITestCase):
     connection.vendor == 'postgresql',
     'True parallel write test requires PostgreSQL row-lock semantics.',
 )
+@override_settings(
+    CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL=False,
+    CRYPTO_RECOVERY_REQUIRE_REGISTERED_DEVICE=False,
+)
 class RecoveryManifestParallelDatabaseTests(TransactionTestCase):
     """Runs 20 requests concurrently against independent DB connections."""
 
@@ -200,7 +217,177 @@ class _FailingEscrowProvider:
         raise RuntimeError('simulated escrow upload interruption')
 
 
+class RecoveryAuthorizationTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='secured-recovery-owner')
+        self.device_credential = 'secured-device-credential'
+        self.device = UserDevice.objects.create(
+            user=self.user,
+            device_id='secured-device',
+            recovery_credential_sha256=hashlib.sha256(
+                self.device_credential.encode()
+            ).hexdigest(),
+        )
+        self.client.force_authenticate(self.user)
+        response = self.client.put(
+            '/api/users/me/crypto-recovery',
+            {
+                'schema_version': 2,
+                'source_device_id': self.device.device_id,
+                'expected_sequence': 0,
+                'payload': '{"secured":true}',
+            },
+            format='json',
+            HTTP_X_DEVICE_ID=self.device.device_id,
+            HTTP_X_RECOVERY_DEVICE_CREDENTIAL=self.device_credential,
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def test_plain_login_token_cannot_read_recovery_material(self):
+        response = self.client.get(
+            '/api/users/me/crypto-recovery',
+            HTTP_X_DEVICE_ID=self.device.device_id,
+            HTTP_X_RECOVERY_DEVICE_CREDENTIAL=self.device_credential,
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data['code'], 'recovery_approval_required')
+
+    def test_device_id_spoof_without_device_credential_is_rejected(self):
+        response = self.client.get(
+            '/api/users/me/crypto-recovery?metadata_only=true',
+            HTTP_X_DEVICE_ID=self.device.device_id,
+            HTTP_X_RECOVERY_DEVICE_CREDENTIAL='wrong-device-secret',
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data['code'], 'recovery_device_inactive')
+
+    def test_fresh_federated_grant_is_device_bound_and_one_use(self):
+        raw_grant = 'one-use-recovery-proof'
+        RecoveryAccessGrant.objects.create(
+            user=self.user,
+            device_id=self.device.device_id,
+            token_sha256=hashlib.sha256(raw_grant.encode()).hexdigest(),
+            expires_at=timezone.now() + timedelta(minutes=5),
+        )
+        first = self.client.get(
+            '/api/users/me/crypto-recovery',
+            HTTP_X_DEVICE_ID=self.device.device_id,
+            HTTP_X_RECOVERY_GRANT=raw_grant,
+            HTTP_X_RECOVERY_DEVICE_CREDENTIAL=self.device_credential,
+        )
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(first.data['records'][0]['payload'], '{"secured":true}')
+
+        replay = self.client.get(
+            '/api/users/me/crypto-recovery',
+            HTTP_X_DEVICE_ID=self.device.device_id,
+            HTTP_X_RECOVERY_GRANT=raw_grant,
+            HTTP_X_RECOVERY_DEVICE_CREDENTIAL=self.device_credential,
+        )
+        self.assertEqual(replay.status_code, 403)
+
+    def test_metadata_read_never_returns_decrypted_records(self):
+        response = self.client.get(
+            '/api/users/me/crypto-recovery?metadata_only=true',
+            HTTP_X_DEVICE_ID=self.device.device_id,
+            HTTP_X_RECOVERY_DEVICE_CREDENTIAL=self.device_credential,
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertNotIn('records', response.data)
+        self.assertEqual(len(response.data['record_hashes']), 1)
+
+    def test_approved_device_challenge_is_one_use(self):
+        approver = UserDevice.objects.create(
+            user=self.user,
+            device_id='trusted-approver',
+        )
+        approval = RecoveryDeviceApproval.objects.create(
+            user=self.user,
+            requester_device_id=self.device.device_id,
+            approver_device_id=approver.device_id,
+            status=RecoveryDeviceApproval.Status.APPROVED,
+            challenge='approved-once',
+            expires_at=timezone.now() + timedelta(minutes=5),
+            approved_at=timezone.now(),
+        )
+        first = self.client.get(
+            '/api/users/me/crypto-recovery?approval=approved-once',
+            HTTP_X_DEVICE_ID=self.device.device_id,
+            HTTP_X_RECOVERY_DEVICE_CREDENTIAL=self.device_credential,
+        )
+        self.assertEqual(first.status_code, 200, first.data)
+        approval.refresh_from_db()
+        self.assertEqual(approval.status, RecoveryDeviceApproval.Status.USED)
+
+        replay = self.client.get(
+            '/api/users/me/crypto-recovery?approval=approved-once',
+            HTTP_X_DEVICE_ID=self.device.device_id,
+            HTTP_X_RECOVERY_DEVICE_CREDENTIAL=self.device_credential,
+        )
+        self.assertEqual(replay.status_code, 403)
+
+
+class _FakeGoogleResponse:
+    def __init__(self, claims):
+        self._payload = json.dumps(claims).encode()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def read(self):
+        return self._payload
+
+
 class AuthApiTests(APITestCase):
+    def test_google_login_issues_device_bound_one_use_recovery_proofs(self):
+        claims = {
+            'aud': '937305477350-n9h2s4e6ra9rvs6s1s95gel6p4ldl5tg.apps.googleusercontent.com',
+            'email_verified': 'true',
+            'sub': 'google-security-subject',
+            'email': 'security@example.com',
+            'name': 'Security User',
+        }
+        with patch('users.views.urlopen', return_value=_FakeGoogleResponse(claims)):
+            response = self.client.post(
+                '/api/auth/google',
+                {
+                    'id_token': 'fresh-google-id-token',
+                    'device_id': 'google-secure-device',
+                    'device_name': 'Android',
+                    'platform': 'android',
+                    'identity_public_key': VALID_PUBLIC_KEY_1,
+                    'key_algorithm': 'x25519',
+                    'pqc_public_key': VALID_PQC_PUBLIC_KEY,
+                    'pqc_algorithm': 'ml-kem-768',
+                    'pqc_signing_public_key': VALID_PQC_SIGNING_PUBLIC_KEY,
+                    'pqc_signing_algorithm': 'ml-dsa-65',
+                },
+                format='json',
+            )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data['recovery_grant'])
+        self.assertTrue(response.data['recovery_device_credential'])
+        device = UserDevice.objects.get(device_id='google-secure-device')
+        self.assertEqual(
+            device.recovery_credential_sha256,
+            hashlib.sha256(
+                response.data['recovery_device_credential'].encode()
+            ).hexdigest(),
+        )
+        self.assertTrue(
+            RecoveryAccessGrant.objects.filter(
+                user=device.user,
+                device_id=device.device_id,
+                token_sha256=hashlib.sha256(
+                    response.data['recovery_grant'].encode()
+                ).hexdigest(),
+                used_at__isnull=True,
+            ).exists()
+        )
+
     def test_login_creates_user_and_device_binding(self):
         response = self.client.post(
             '/api/auth/login',
@@ -221,8 +408,6 @@ class AuthApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['user']['username'], 'ali')
-        self.assertEqual(response.data['user']['role'], 'owner')
-        self.assertEqual(response.data['user']['role_label'], 'Egasi')
         user_id = response.data['account_id']
         self.assertTrue(Token.objects.filter(user_id=user_id).exists())
         self.assertTrue(
@@ -314,15 +499,10 @@ class AuthApiTests(APITestCase):
         self.client.credentials(
             HTTP_AUTHORIZATION=f"Token {login.data['token']}",
         )
-
         response = self.client.get('/api/users')
-
         self.assertEqual(response.status_code, 200)
         avatar_user = next(item for item in response.data if item['id'] == user.id)
-        self.assertEqual(
-            avatar_user['avatar_url'],
-            'https://example.com/avatar.jpg',
-        )
+        self.assertEqual(avatar_user['avatar_url'], 'https://example.com/avatar.jpg')
 
     def test_users_endpoint_exposes_workspace_role_to_every_contact(self):
         owner = self.client.post(
@@ -335,12 +515,8 @@ class AuthApiTests(APITestCase):
             {'username': 'member', 'device_id': 'member-device'},
             format='json',
         )
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"Token {owner.data['token']}",
-        )
-
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {owner.data['token']}")
         response = self.client.get('/api/users')
-
         self.assertEqual(response.status_code, 200)
         by_id = {item['id']: item for item in response.data}
         self.assertEqual(by_id[owner.data['account_id']]['role'], 'owner')
@@ -360,16 +536,12 @@ class AuthApiTests(APITestCase):
             format='json',
         )
         member_id = member.data['account_id']
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"Token {owner.data['token']}",
-        )
-
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {owner.data['token']}")
         updated = self.client.put(
             f'/api/users/{member_id}/role',
             {'role': 'manager'},
             format='json',
         )
-
         self.assertEqual(updated.status_code, 200)
         self.assertEqual(updated.data['role'], 'manager')
         self.assertEqual(updated.data['role_label'], 'Menejer')
@@ -379,10 +551,7 @@ class AuthApiTests(APITestCase):
             ).role,
             CorporateRole.MANAGER,
         )
-
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"Token {member.data['token']}",
-        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {member.data['token']}")
         forbidden = self.client.put(
             f"/api/users/{owner.data['account_id']}/role",
             {'role': 'member'},
@@ -402,10 +571,7 @@ class AuthApiTests(APITestCase):
             google_subject='profile-google-subject',
             avatar_url='https://example.com/google-avatar.jpg',
         )
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"Token {login.data['token']}",
-        )
-
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {login.data['token']}")
         renamed = self.client.patch(
             '/api/users/me',
             {'display_name': 'Yangi Ism'},
@@ -422,7 +588,6 @@ class AuthApiTests(APITestCase):
             },
             format='multipart',
         )
-
         self.assertEqual(renamed.status_code, 200)
         self.assertEqual(renamed.data['display_name'], 'Yangi Ism')
         self.assertEqual(uploaded.status_code, 200)

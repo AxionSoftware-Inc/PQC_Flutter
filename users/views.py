@@ -1,6 +1,7 @@
 import hashlib
 import json
 import base64
+import secrets
 from datetime import timedelta
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -31,6 +32,7 @@ from users.models import (
     AccountRecoveryManifest,
     AccountKeysetEscrowRecord,
     RecoveryDeviceApproval,
+    RecoveryAccessGrant,
     CryptoRecoveryAuditEvent,
     HistoricalDeviceKey,
 )
@@ -56,6 +58,73 @@ from users.roles import CorporateRole, DEFAULT_CORPORATE_ROLE, role_catalog
 
 
 User = get_user_model()
+
+
+def _issue_recovery_access_grant(*, user, device_id):
+    """Issue a short-lived bearer that is valid only for one recovery read."""
+    raw_token = secrets.token_urlsafe(32)
+    RecoveryAccessGrant.objects.filter(
+        user=user,
+        device_id=device_id,
+        used_at__isnull=True,
+    ).delete()
+    RecoveryAccessGrant.objects.create(
+        user=user,
+        device_id=device_id,
+        token_sha256=hashlib.sha256(raw_token.encode('utf-8')).hexdigest(),
+        expires_at=timezone.now()
+        + timedelta(seconds=settings.CRYPTO_RECOVERY_GRANT_TTL_SECONDS),
+    )
+    return raw_token
+
+
+def _rotate_recovery_device_credential(device):
+    raw_token = secrets.token_urlsafe(32)
+    device.recovery_credential_sha256 = hashlib.sha256(
+        raw_token.encode('utf-8')
+    ).hexdigest()
+    device.save(update_fields=['recovery_credential_sha256', 'updated_at'])
+    return raw_token
+
+
+def _active_recovery_device(request, *, claimed_device_id=''):
+    header_device_id = str(request.headers.get('X-Device-Id', '')).strip()
+    if not settings.CRYPTO_RECOVERY_REQUIRE_REGISTERED_DEVICE:
+        return header_device_id or claimed_device_id, None
+    if not header_device_id:
+        return '', Response(
+            {'detail': 'A registered device binding is required.', 'code': 'recovery_device_required'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    if claimed_device_id and claimed_device_id != header_device_id:
+        return '', Response(
+            {'detail': 'Recovery device binding mismatch.', 'code': 'recovery_device_mismatch'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    raw_credential = str(
+        request.headers.get('X-Recovery-Device-Credential', '')
+    ).strip()
+    if not raw_credential:
+        return '', Response(
+            {
+                'detail': 'Recovery device credential is required.',
+                'code': 'recovery_device_credential_required',
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    credential_hash = hashlib.sha256(raw_credential.encode('utf-8')).hexdigest()
+    exists = UserDevice.objects.filter(
+        user=request.user,
+        device_id=header_device_id,
+        status=UserDevice.Status.ACTIVE,
+        recovery_credential_sha256=credential_hash,
+    ).exists()
+    if not exists:
+        return '', Response(
+            {'detail': 'Recovery device is not active.', 'code': 'recovery_device_inactive'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    return header_device_id, None
 
 
 def create_account_for_display_name(display_name):
@@ -424,9 +493,11 @@ class LoginView(APIView):
         )
 
         token, _ = Token.objects.get_or_create(user=user)
+        recovery_device_credential = _rotate_recovery_device_credential(device)
         return Response(
             {
                 'token': token.key,
+                'recovery_device_credential': recovery_device_credential,
                 'account_id': user.id,
                 'device_id': device.device_id,
                 'device_status': device.status,
@@ -526,8 +597,15 @@ class GoogleLoginView(APIView):
         )
         ConversationParticipant.objects.get_or_create(conversation=group, user=user)
         token, _ = Token.objects.get_or_create(user=user)
+        recovery_device_credential = _rotate_recovery_device_credential(device)
+        recovery_grant = _issue_recovery_access_grant(
+            user=user,
+            device_id=device.device_id,
+        )
         return Response({
             'token': token.key,
+            'recovery_device_credential': recovery_device_credential,
+            'recovery_grant': recovery_grant,
             'account_id': user.id,
             'device_id': device.device_id,
             'device_status': device.status,
@@ -658,14 +736,35 @@ class CryptoBackupView(APIView):
 class AccountRecoveryManifestView(APIView):
     MAX_PAYLOAD_LENGTH = 10 * 1024 * 1024
 
+    @transaction.atomic
     def get(self, request):
+        requester_device_id, error_response = _active_recovery_device(request)
+        if error_response is not None:
+            return error_response
+        manifest = AccountRecoveryManifest.objects.filter(user=request.user).first()
+        if manifest is None:
+            return Response({'available': False})
+
+        if str(request.query_params.get('metadata_only', '')).lower() == 'true':
+            return Response({
+                'available': True,
+                'schema_version': manifest.schema_version,
+                'sequence': manifest.sequence,
+                'vector_clock': manifest.vector_clock,
+                'merkle_root': manifest.merkle_root,
+                'record_hashes': list(
+                    AccountKeysetEscrowRecord.objects.filter(
+                        user=request.user,
+                        state='active',
+                    ).values_list('payload_sha256', flat=True)
+                ),
+                'updated_at': manifest.updated_at,
+            })
+
         challenge = str(request.query_params.get('approval', '')).strip()
-        requester_device_id = str(request.headers.get('X-Device-Id', '')).strip()
-        active_other_devices = UserDevice.objects.filter(
-            user=request.user,
-            status=UserDevice.Status.ACTIVE,
-        ).exclude(device_id=requester_device_id).exists()
-        if settings.CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL and active_other_devices:
+        approval = None
+        access_grant = None
+        if settings.CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL:
             approval = RecoveryDeviceApproval.objects.filter(
                 user=request.user,
                 challenge=challenge,
@@ -673,14 +772,23 @@ class AccountRecoveryManifestView(APIView):
                 status=RecoveryDeviceApproval.Status.APPROVED,
                 expires_at__gt=timezone.now(),
             ).first()
-            if approval is None:
+            raw_grant = str(request.headers.get('X-Recovery-Grant', '')).strip()
+            if raw_grant:
+                access_grant = RecoveryAccessGrant.objects.select_for_update().filter(
+                    user=request.user,
+                    device_id=requester_device_id,
+                    token_sha256=hashlib.sha256(raw_grant.encode('utf-8')).hexdigest(),
+                    used_at__isnull=True,
+                    expires_at__gt=timezone.now(),
+                ).first()
+            if approval is None and access_grant is None:
                 return Response(
-                    {'detail': 'Step-up MFA and approval from another active device are required.', 'code': 'recovery_approval_required'},
+                    {
+                        'detail': 'Fresh Google verification or approval from another active device is required.',
+                        'code': 'recovery_approval_required',
+                    },
                     status=status.HTTP_403_FORBIDDEN,
                 )
-        manifest = AccountRecoveryManifest.objects.filter(user=request.user).first()
-        if manifest is None:
-            return Response({'available': False})
         records = []
         provider = get_key_escrow_provider()
         try:
@@ -715,6 +823,12 @@ class AccountRecoveryManifestView(APIView):
             device_id=str(request.headers.get('X-Device-Id', '')),
             metadata={'sequence': manifest.sequence, 'record_count': len(records)},
         )
+        if approval is not None:
+            approval.status = RecoveryDeviceApproval.Status.USED
+            approval.save(update_fields=['status'])
+        if access_grant is not None:
+            access_grant.used_at = timezone.now()
+            access_grant.save(update_fields=['used_at'])
         return Response({
             'available': True,
             'schema_version': manifest.schema_version,
@@ -727,6 +841,13 @@ class AccountRecoveryManifestView(APIView):
 
     @transaction.atomic
     def put(self, request):
+        source_device_id = str(request.data.get('source_device_id', '')).strip()
+        _, error_response = _active_recovery_device(
+            request,
+            claimed_device_id=source_device_id,
+        )
+        if error_response is not None:
+            return error_response
         return _write_recovery_manifest(request, self.MAX_PAYLOAD_LENGTH)
 
 
@@ -834,7 +955,9 @@ def _write_recovery_manifest(request, max_payload_length):
 
 class RecoveryApprovalRequestView(APIView):
     def get(self, request):
-        device_id = str(request.headers.get('X-Device-Id', '')).strip()
+        device_id, error_response = _active_recovery_device(request)
+        if error_response is not None:
+            return error_response
         approvals = RecoveryDeviceApproval.objects.filter(
             user=request.user,
             status=RecoveryDeviceApproval.Status.PENDING,
@@ -848,9 +971,13 @@ class RecoveryApprovalRequestView(APIView):
 
     @transaction.atomic
     def post(self, request):
-        requester_device_id = str(request.data.get('requester_device_id', '')).strip() or str(request.headers.get('X-Device-Id', '')).strip()
-        if not requester_device_id:
-            return Response({'detail': 'requester_device_id is required.'}, status=400)
+        claimed_device_id = str(request.data.get('requester_device_id', '')).strip()
+        requester_device_id, error_response = _active_recovery_device(
+            request,
+            claimed_device_id=claimed_device_id,
+        )
+        if error_response is not None:
+            return error_response
         RecoveryDeviceApproval.objects.filter(
             user=request.user,
             requester_device_id=requester_device_id,
@@ -872,10 +999,21 @@ class RecoveryApprovalRequestView(APIView):
 class RecoveryApprovalDecisionView(APIView):
     @transaction.atomic
     def post(self, request, approval_id):
-        approver_device_id = str(request.data.get('approver_device_id', '')).strip() or str(request.headers.get('X-Device-Id', '')).strip()
+        claimed_device_id = str(request.data.get('approver_device_id', '')).strip()
+        approver_device_id, error_response = _active_recovery_device(
+            request,
+            claimed_device_id=claimed_device_id,
+        )
+        if error_response is not None:
+            return error_response
         approval = RecoveryDeviceApproval.objects.select_for_update().filter(user=request.user, id=approval_id).first()
         if approval is None:
             return Response({'detail': 'Recovery approval not found.'}, status=404)
+        if approval.status != RecoveryDeviceApproval.Status.PENDING:
+            return Response(
+                {'detail': 'Recovery approval is no longer pending.'},
+                status=status.HTTP_409_CONFLICT,
+            )
         if approval.expires_at <= timezone.now():
             approval.status = RecoveryDeviceApproval.Status.EXPIRED
             approval.save(update_fields=['status'])

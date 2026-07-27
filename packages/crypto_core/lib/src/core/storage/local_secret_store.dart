@@ -7,24 +7,43 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+class SecureStorageUnavailableException implements Exception {
+  const SecureStorageUnavailableException(this.operation, this.cause);
+
+  final String operation;
+  final Object cause;
+
+  @override
+  String toString() =>
+      'Secure storage is unavailable during $operation. Refusing insecure fallback.';
+}
+
 class LocalSecretStore {
   static const _managedKeysRegistry = 'local_secret_store_managed_keys';
   static const _fallbackMasterKey = 'local_secret_store_fallback_master_key';
   static const _fallbackPrefix = 'local_secret:v1';
   static final _random = Random.secure();
 
-  LocalSecretStore({FlutterSecureStorage? secureStorage, AesGcm? cipher})
-    : _secureStorage =
-          secureStorage ??
-          const FlutterSecureStorage(
-            // Do not wipe chat keys after a transient keystore error. Recovery
-            // must be explicit and account-scoped.
-            aOptions: AndroidOptions(resetOnError: false),
-          ),
-      _cipher = cipher ?? AesGcm.with256bits();
+  LocalSecretStore({
+    FlutterSecureStorage? secureStorage,
+    AesGcm? cipher,
+    bool allowInsecureFallbackForTesting = false,
+  }) : _secureStorage =
+           secureStorage ??
+           // Never wipe the keystore automatically after a transient platform
+           // error. A reset here destroys historical chat keys and makes old
+           // ciphertext fail authentication after relogin. Recovery must be
+           // explicit and account-scoped instead.
+           const FlutterSecureStorage(
+             aOptions: AndroidOptions(resetOnError: false),
+           ),
+       _cipher = cipher ?? AesGcm.with256bits(),
+       _allowInsecureFallbackForTesting =
+           allowInsecureFallbackForTesting && !kReleaseMode;
 
   final FlutterSecureStorage _secureStorage;
   final AesGcm _cipher;
+  final bool _allowInsecureFallbackForTesting;
 
   bool get _shouldMigrateLegacyAndroidSharedPrefs =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -43,7 +62,10 @@ class LocalSecretStore {
   }
 
   Future<void> write({required String key, required String value}) async {
-    final wroteToSecureStorage = await _writeSecureValue(key: key, value: value);
+    final wroteToSecureStorage = await _writeSecureValue(
+      key: key,
+      value: value,
+    );
     await _registerManagedKey(key);
 
     if (_shouldMigrateLegacyAndroidSharedPrefs && wroteToSecureStorage) {
@@ -91,10 +113,31 @@ class LocalSecretStore {
       return null;
     }
 
-    await _writeSecureValue(key: key, value: legacyValue);
+    final clearValue = await _readFallbackValue(key);
+    if (clearValue == null || clearValue.isEmpty) {
+      throw const FormatException('Legacy secret storage entry is corrupted.');
+    }
+    final migrated = await _writeSecureValue(key: key, value: clearValue);
+    if (!migrated) return clearValue;
     await preferences.remove(key);
+    await _removeFallbackMasterKeyIfUnused(preferences);
     await _registerManagedKey(key);
-    return legacyValue;
+    return clearValue;
+  }
+
+  Future<void> _removeFallbackMasterKeyIfUnused(
+    SharedPreferences preferences,
+  ) async {
+    final managedKeys =
+        preferences.getStringList(_managedKeysRegistry) ?? const <String>[];
+    final hasFallbackEntries = managedKeys.any(
+      (managedKey) =>
+          preferences.getString(managedKey)?.startsWith('$_fallbackPrefix:') ??
+          false,
+    );
+    if (!hasFallbackEntries) {
+      await preferences.remove(_fallbackMasterKey);
+    }
   }
 
   Future<void> _registerManagedKey(String key) async {
@@ -135,10 +178,12 @@ class LocalSecretStore {
   Future<String?> _readSecureValue(String key) async {
     try {
       return await _secureStorage.read(key: key);
-    } on MissingPluginException {
-      return _readFallbackValue(key);
-    } on PlatformException {
-      return _readFallbackValue(key);
+    } on MissingPluginException catch (error) {
+      if (_allowInsecureFallbackForTesting) return _readFallbackValue(key);
+      throw SecureStorageUnavailableException('read', error);
+    } on PlatformException catch (error) {
+      if (_allowInsecureFallbackForTesting) return _readFallbackValue(key);
+      throw SecureStorageUnavailableException('read', error);
     }
   }
 
@@ -149,24 +194,38 @@ class LocalSecretStore {
     try {
       await _secureStorage.write(key: key, value: value);
       return true;
-    } on MissingPluginException {
-      await _writeFallbackValue(key: key, value: value);
-      return false;
-    } on PlatformException {
-      await _writeFallbackValue(key: key, value: value);
-      return false;
+    } on MissingPluginException catch (error) {
+      if (_allowInsecureFallbackForTesting) {
+        await _writeFallbackValue(key: key, value: value);
+        return false;
+      }
+      throw SecureStorageUnavailableException('write', error);
+    } on PlatformException catch (error) {
+      if (_allowInsecureFallbackForTesting) {
+        await _writeFallbackValue(key: key, value: value);
+        return false;
+      }
+      throw SecureStorageUnavailableException('write', error);
     }
   }
 
   Future<void> _deleteSecureValue(String key) async {
     try {
       await _secureStorage.delete(key: key);
-    } on MissingPluginException {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.remove(key);
-    } on PlatformException {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.remove(key);
+    } on MissingPluginException catch (error) {
+      if (_allowInsecureFallbackForTesting) {
+        final preferences = await SharedPreferences.getInstance();
+        await preferences.remove(key);
+        return;
+      }
+      throw SecureStorageUnavailableException('delete', error);
+    } on PlatformException catch (error) {
+      if (_allowInsecureFallbackForTesting) {
+        final preferences = await SharedPreferences.getInstance();
+        await preferences.remove(key);
+        return;
+      }
+      throw SecureStorageUnavailableException('delete', error);
     }
   }
 

@@ -10,6 +10,7 @@ class SessionUser {
     this.deviceId = '',
     this.deviceStatus = 'active',
     this.profileFingerprint = '',
+    this.recoveryDeviceCredential = '',
     this.activeWorkspaceId = 0,
     this.organizations = const [],
     required this.token,
@@ -23,6 +24,7 @@ class SessionUser {
   final String deviceId;
   final String deviceStatus;
   final String profileFingerprint;
+  final String recoveryDeviceCredential;
   final int activeWorkspaceId;
   final List<OrganizationSummary> organizations;
   final String token;
@@ -35,6 +37,7 @@ class SessionUser {
     String? deviceId,
     String? deviceStatus,
     String? profileFingerprint,
+    String? recoveryDeviceCredential,
     String? avatarUrl,
   }) {
     return SessionUser(
@@ -46,6 +49,8 @@ class SessionUser {
       deviceId: deviceId ?? this.deviceId,
       deviceStatus: deviceStatus ?? this.deviceStatus,
       profileFingerprint: profileFingerprint ?? this.profileFingerprint,
+      recoveryDeviceCredential:
+          recoveryDeviceCredential ?? this.recoveryDeviceCredential,
       activeWorkspaceId: activeWorkspaceId ?? this.activeWorkspaceId,
       organizations: organizations ?? this.organizations,
       token: token,
