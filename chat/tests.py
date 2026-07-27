@@ -138,7 +138,7 @@ class ChatApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('group:v2', str(response.data))
+        self.assertIn('supported encrypted payload', str(response.data))
 
     def test_non_participant_cannot_post(self):
         self.client.post(
@@ -333,7 +333,7 @@ class ChatApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('pqc:v2', str(response.data))
+        self.assertIn('supported encrypted payload', str(response.data))
 
     def test_repeated_polling_reads_remain_stable_after_many_messages(self):
         for index in range(90):
