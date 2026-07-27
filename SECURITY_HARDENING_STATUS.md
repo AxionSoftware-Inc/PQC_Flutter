@@ -1,34 +1,66 @@
-# Security Hardening Status
+# Security hardening status
 
-## Implemented in this pass
-- Device-bound login now reuses the same account only for the same `device_id`
-- Same display name on different devices creates distinct accounts
-- `account_id` and `device_id` are returned from login
-- Device metadata now includes `created_at` and `updated_at`
-- Structured JSON API errors are enabled
-- Backend defaults to `DEBUG=False`
-- Health endpoint added at `/health/`
-- Message send idempotency added through `client_message_id`
-- Incremental sync added for conversations and messages
-- Persistent outbox queue added on Flutter side
-- Retryable vs permanent send failures added to UI
-- macOS secret store no longer uses SharedPreferences as the primary secret store
-- Fallback secret persistence now stores wrapped values instead of plaintext
-- Legacy plaintext fallback values are auto-migrated on read
-- Backend now rejects plaintext private payloads and requires `pqc:v1`
-- Backend now rejects plaintext group payloads and requires `group:v1`
-- Backend group key sync now accepts only PQC envelope algorithm/prefixes
-- Local message previews, message plaintext cache, and outbox plaintext are now protected at rest
-- Private send now requires enterprise-ready verified peer trust
+Last reviewed: 2026-07-27
 
-## Still not fully closed
-- Full HTTPS/TLS termination is not complete until the live server is served over HTTPS with a valid certificate/domain
-- Key verification is still primarily peer/device-selection based, not a full multi-device trust center UX
-- Group trust summary UI is still minimal
-- Full ratcheted private transport migration is not complete
-- Detailed threat transparency and ops alerting are still minimal
+## Enforced controls
 
-## Current Product State
-- Stronger than the earlier prototype
-- Suitable as a much safer internal baseline for continuing toward production
-- Not yet final “production secure messenger” level before the remaining TLS + trust-center + full rotation work is finished
+- Production settings are fail-closed. Production refuses to boot without a
+  strong Django secret, explicit hosts, PostgreSQL, AWS region and KMS key.
+- HTTPS redirect, secure cookies and one-year HSTS are enabled automatically in
+  production.
+- Recovery reads require all of the following:
+  - an authenticated account token;
+  - an active device ID;
+  - a separate device-bound recovery credential;
+  - either a one-use grant from fresh Google verification or a one-use
+    approval from another active device.
+- A login token by itself cannot fetch decrypted escrow records.
+- Recovery metadata sync never returns decrypted recovery payloads.
+- Mobile secret-storage failures are fail-closed. SharedPreferences fallback is
+  disabled by default and cannot be enabled in release builds.
+- Legacy SharedPreferences secrets are migrated into platform secure storage
+  only after authenticated decryption; the fallback master key is removed when
+  migration is complete.
+- Recovery records use AES-256-GCM envelope encryption and production requires
+  AWS KMS for DEK wrapping.
+- Complete Git history is checked for high-confidence committed credentials by
+  `python tools/security_audit.py`.
+- Python dependencies are checked by `pip-audit`; known vulnerabilities fail
+  the gate.
+- Dependabot monitors Python, Dart and GitHub Actions dependencies.
+- Django `check --deploy`, backend tests, Flutter analysis and Flutter tests are
+  part of the security gate.
+
+Run locally:
+
+```bash
+python -m pip install -r backend/requirements.txt
+python -m pip install -r backend/requirements-security.txt
+tools/run_security_gate.sh
+```
+
+## Trust-model limitation
+
+Enterprise recovery is server-managed escrow. A database dump without KMS
+permissions cannot decrypt recovery records, but the live backend with KMS
+decrypt permission can recover private keysets. This is intentionally not a
+zero-knowledge recovery design.
+
+Moving to a server-blind recovery design requires a separate user-held secret,
+passkey, trusted-device secret, or threshold key split. That choice changes the
+product recovery contract and must not be represented as a small configuration
+change.
+
+## Mandatory external release gate
+
+Internal tests cannot certify that no vulnerability exists. Before commercial
+production, an independent party must complete and sign off:
+
+- mobile application storage and runtime testing against OWASP MASVS;
+- API authorization and recovery-flow penetration testing;
+- KMS/IAM and deployment review;
+- cryptographic protocol/design review;
+- Android/iOS release binary and supply-chain review.
+
+Production security approval remains incomplete until those external reports
+exist and all critical/high findings are closed.

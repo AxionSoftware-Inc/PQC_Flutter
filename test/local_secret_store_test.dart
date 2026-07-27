@@ -7,27 +7,34 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('fallback storage does not leave plaintext in shared preferences', () async {
-    SharedPreferences.setMockInitialValues({});
-    final store = LocalSecretStore(secureStorage: _ThrowingSecureStorage());
+  test(
+    'fallback storage does not leave plaintext in shared preferences',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = LocalSecretStore(
+        secureStorage: _ThrowingSecureStorage(),
+        allowInsecureFallbackForTesting: true,
+      );
 
-    await store.write(key: 'secret_key', value: 'super-secret-value');
+      await store.write(key: 'secret_key', value: 'super-secret-value');
 
-    final preferences = await SharedPreferences.getInstance();
-    final rawStored = preferences.getString('secret_key');
-    final restored = await store.read('secret_key');
+      final preferences = await SharedPreferences.getInstance();
+      final rawStored = preferences.getString('secret_key');
+      final restored = await store.read('secret_key');
 
-    expect(rawStored, isNotNull);
-    expect(rawStored, isNot('super-secret-value'));
-    expect(rawStored, startsWith('local_secret:v1:'));
-    expect(restored, 'super-secret-value');
-  });
+      expect(rawStored, isNotNull);
+      expect(rawStored, isNot('super-secret-value'));
+      expect(rawStored, startsWith('local_secret:v1:'));
+      expect(restored, 'super-secret-value');
+    },
+  );
 
   test('fallback storage migrates old plaintext preference entries', () async {
-    SharedPreferences.setMockInitialValues({
-      'legacy_secret': 'legacy-value',
-    });
-    final store = LocalSecretStore(secureStorage: _ThrowingSecureStorage());
+    SharedPreferences.setMockInitialValues({'legacy_secret': 'legacy-value'});
+    final store = LocalSecretStore(
+      secureStorage: _ThrowingSecureStorage(),
+      allowInsecureFallbackForTesting: true,
+    );
 
     final restored = await store.read('legacy_secret');
     final preferences = await SharedPreferences.getInstance();
@@ -36,6 +43,23 @@ void main() {
     expect(restored, 'legacy-value');
     expect(rawStored, isNot('legacy-value'));
     expect(rawStored, startsWith('local_secret:v1:'));
+  });
+
+  test('secure storage failure is fail-closed by default', () async {
+    SharedPreferences.setMockInitialValues({});
+    final store = LocalSecretStore(secureStorage: _ThrowingSecureStorage());
+
+    await expectLater(
+      store.write(key: 'secret_key', value: 'must-not-fallback'),
+      throwsA(isA<SecureStorageUnavailableException>()),
+    );
+
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getString('secret_key'), isNull);
+    expect(
+      preferences.getString('local_secret_store_fallback_master_key'),
+      isNull,
+    );
   });
 }
 

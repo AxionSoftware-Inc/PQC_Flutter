@@ -34,7 +34,10 @@ class EnterpriseRecoverySyncService {
   /// separate settings action. Existing local keysets are never overwritten.
   Future<bool> restoreIfAvailable() async {
     try {
-      final response = await apiClient.get('/users/me/crypto-recovery');
+      final response = await apiClient.get(
+        '/users/me/crypto-recovery',
+        includeRecoveryCredentials: true,
+      );
       if (response is! Map || response['available'] != true) return false;
       final records = response['records'] as List<dynamic>? ?? const [];
       final payloads = records
@@ -60,6 +63,10 @@ class EnterpriseRecoverySyncService {
       // Recovery is best-effort during login; ordinary login must still work
       // when an account has no manifest yet or the service is unavailable.
       return false;
+    } finally {
+      // The federated recovery grant is one-use and must not ride along with
+      // unrelated API calls after the initial restore attempt.
+      apiClient.setRecoveryGrant(null);
     }
   }
 
@@ -67,7 +74,11 @@ class EnterpriseRecoverySyncService {
     if (_lastPublishedPayloadHash == snapshot.payloadHash) {
       return;
     }
-    final index = await apiClient.get('/users/me/crypto-recovery');
+    final index = await apiClient.get(
+      '/users/me/crypto-recovery',
+      queryParameters: const {'metadata_only': 'true'},
+      includeRecoveryCredentials: true,
+    );
     var sequence = index is Map && index['available'] == true
         ? index['sequence'] as int? ?? 0
         : 0;
@@ -78,12 +89,16 @@ class EnterpriseRecoverySyncService {
           'payload': snapshot.payload,
           'source_device_id': snapshot.deviceId,
           'expected_sequence': sequence,
-        });
+        }, includeRecoveryCredentials: true);
         _lastPublishedPayloadHash = snapshot.payloadHash;
         return;
       } on ApiException catch (error) {
         if (error.statusCode != 412 || attempt == 1) rethrow;
-        final latest = await apiClient.get('/users/me/crypto-recovery');
+        final latest = await apiClient.get(
+          '/users/me/crypto-recovery',
+          queryParameters: const {'metadata_only': 'true'},
+          includeRecoveryCredentials: true,
+        );
         sequence = latest is Map ? latest['sequence'] as int? ?? 0 : 0;
       }
     }
@@ -103,33 +118,19 @@ class EnterpriseRecoverySyncService {
       return;
     }
     await _publish(snapshot);
-    final response = await apiClient.get('/users/me/crypto-recovery');
+    final response = await apiClient.get(
+      '/users/me/crypto-recovery',
+      queryParameters: const {'metadata_only': 'true'},
+      includeRecoveryCredentials: true,
+    );
     if (response is! Map || response['available'] != true) {
       throw StateError('Recovery vault did not retain the current keyset.');
     }
-    final records = response['records'] as List<dynamic>? ?? const [];
-    final payloads = records
-        .whereType<Map>()
-        .map((record) => record['payload'])
-        .whereType<String>()
-        .where((payload) => payload.isNotEmpty)
-        .toList(growable: false);
-    await RecoveryManifestIntegrity.verify(
-      payloads: payloads,
-      expectedMerkleRoot: response['merkle_root'] as String? ?? '',
-    );
-    final containsCurrent = payloads.any((payload) {
-      try {
-        final document = jsonDecode(payload) as Map<String, dynamic>;
-        final keysets = document['keysets'] as List<dynamic>? ?? const [];
-        return keysets.whereType<Map>().any(
-          (keyset) => keyset['keyset_id'] == snapshot.keysetId,
-        );
-      } catch (_) {
-        return false;
-      }
-    });
-    if (!containsCurrent) {
+    final recordHashes =
+        (response['record_hashes'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .toSet();
+    if (!recordHashes.contains(snapshot.payloadHash)) {
       throw StateError('Recovery vault is missing the current keyset.');
     }
     _lastVerifiedPayloadHash = snapshot.payloadHash;

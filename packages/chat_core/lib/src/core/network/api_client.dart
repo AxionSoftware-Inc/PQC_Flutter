@@ -45,6 +45,8 @@ class ApiClient {
   String? _token;
   String? _deviceId;
   String? _workspaceId;
+  String? _recoveryGrant;
+  String? _recoveryDeviceCredential;
 
   void setToken(String? token) {
     _token = token;
@@ -58,6 +60,16 @@ class ApiClient {
     _workspaceId = workspaceId;
   }
 
+  /// Short-lived, one-use proof issued after a fresh federated login.
+  /// It is deliberately memory-only and is never persisted with the session.
+  void setRecoveryGrant(String? recoveryGrant) {
+    _recoveryGrant = recoveryGrant;
+  }
+
+  void setRecoveryDeviceCredential(String? credential) {
+    _recoveryDeviceCredential = credential;
+  }
+
   String websocketUrl(String path, {Map<String, String>? queryParameters}) {
     final uri = _buildUri(path, queryParameters: queryParameters);
     return uri.replace(scheme: uri.scheme == 'https' ? 'wss' : 'ws').toString();
@@ -66,32 +78,47 @@ class ApiClient {
   Future<dynamic> get(
     String path, {
     Map<String, String>? queryParameters,
+    bool includeRecoveryCredentials = false,
   }) async {
     final response = await _send(
       () => _client.get(
         _buildUri(path, queryParameters: queryParameters),
-        headers: _headers(),
+        headers: _headers(
+          includeRecoveryCredentials: includeRecoveryCredentials,
+        ),
       ),
     );
     return _decode(response);
   }
 
-  Future<dynamic> post(String path, Map<String, dynamic> body) async {
+  Future<dynamic> post(
+    String path,
+    Map<String, dynamic> body, {
+    bool includeRecoveryCredentials = false,
+  }) async {
     final response = await _send(
       () => _client.post(
         _buildUri(path),
-        headers: _headers(),
+        headers: _headers(
+          includeRecoveryCredentials: includeRecoveryCredentials,
+        ),
         body: jsonEncode(body),
       ),
     );
     return _decode(response);
   }
 
-  Future<dynamic> put(String path, Map<String, dynamic> body) async {
+  Future<dynamic> put(
+    String path,
+    Map<String, dynamic> body, {
+    bool includeRecoveryCredentials = false,
+  }) async {
     final response = await _send(
       () => _client.put(
         _buildUri(path),
-        headers: _headers(),
+        headers: _headers(
+          includeRecoveryCredentials: includeRecoveryCredentials,
+        ),
         body: jsonEncode(body),
       ),
     );
@@ -186,7 +213,7 @@ class ApiClient {
     );
   }
 
-  Map<String, String> _headers() {
+  Map<String, String> _headers({bool includeRecoveryCredentials = false}) {
     return {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
@@ -194,6 +221,14 @@ class ApiClient {
       if (_deviceId != null && _deviceId!.isNotEmpty) 'X-Device-Id': _deviceId!,
       if (_workspaceId != null && _workspaceId!.isNotEmpty)
         'X-Workspace-Id': _workspaceId!,
+      if (includeRecoveryCredentials &&
+          _recoveryGrant != null &&
+          _recoveryGrant!.isNotEmpty)
+        'X-Recovery-Grant': _recoveryGrant!,
+      if (includeRecoveryCredentials &&
+          _recoveryDeviceCredential != null &&
+          _recoveryDeviceCredential!.isNotEmpty)
+        'X-Recovery-Device-Credential': _recoveryDeviceCredential!,
     };
   }
 

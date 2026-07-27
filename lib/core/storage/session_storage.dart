@@ -37,6 +37,8 @@ class SessionStorage {
   static const _deviceIdKey = 'session_device_id';
   static const _deviceStatusKey = 'session_device_status';
   static const _profileFingerprintKey = 'session_profile_fingerprint';
+  static const _recoveryDeviceCredentialKey =
+      'session_recovery_device_credential';
   static const _activeWorkspaceIdKey = 'session_active_workspace_id';
   static const _organizationsKey = 'session_organizations';
   static const _apiBaseUrlKey = 'session_api_base_url';
@@ -56,6 +58,9 @@ class SessionStorage {
     final deviceId = await _secretStore.read(_deviceIdKey);
     final deviceStatus = await _secretStore.read(_deviceStatusKey);
     final profileFingerprint = await _secretStore.read(_profileFingerprintKey);
+    final recoveryDeviceCredential = await _secretStore.read(
+      _recoveryDeviceCredentialKey,
+    );
     final activeWorkspaceIdValue = await _secretStore.read(
       _activeWorkspaceIdKey,
     );
@@ -89,6 +94,7 @@ class SessionStorage {
       deviceId: deviceId,
       deviceStatus: deviceStatus ?? 'active',
       profileFingerprint: profileFingerprint ?? '',
+      recoveryDeviceCredential: recoveryDeviceCredential ?? '',
       activeWorkspaceId: activeWorkspaceId,
       organizations: organizations,
       token: token,
@@ -110,6 +116,10 @@ class SessionStorage {
     await _secretStore.write(
       key: _profileFingerprintKey,
       value: user.profileFingerprint,
+    );
+    await _secretStore.write(
+      key: _recoveryDeviceCredentialKey,
+      value: user.recoveryDeviceCredential,
     );
     await _secretStore.write(
       key: _activeWorkspaceIdKey,
@@ -186,10 +196,7 @@ class SessionStorage {
       await preferences.remove(_rememberedUsernameKey);
     }
 
-    return RememberedIdentity(
-      displayName: displayName,
-      username: username,
-    );
+    return RememberedIdentity(displayName: displayName, username: username);
   }
 
   Future<LocalHistoryOwner?> readLocalHistoryOwner() async {
@@ -197,7 +204,9 @@ class SessionStorage {
     final accountIdValue = preferences.getString(_historyOwnerAccountIdKey);
     final username = preferences.getString(_historyOwnerUsernameKey);
     final displayName = preferences.getString(_historyOwnerDisplayNameKey);
-    final accountId = accountIdValue == null ? null : int.tryParse(accountIdValue);
+    final accountId = accountIdValue == null
+        ? null
+        : int.tryParse(accountIdValue);
     if (accountId == null || username == null || displayName == null) {
       return null;
     }
@@ -235,6 +244,7 @@ class SessionStorage {
     await _secretStore.delete(_deviceIdKey);
     await _secretStore.delete(_deviceStatusKey);
     await _secretStore.delete(_profileFingerprintKey);
+    await _secretStore.delete(_recoveryDeviceCredentialKey);
     await _secretStore.delete(_activeWorkspaceIdKey);
     await _secretStore.delete(_apiBaseUrlKey);
     await preferences.remove(_organizationsKey);
