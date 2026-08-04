@@ -121,7 +121,9 @@ class RecoveryManifestOCCIntegrationTests(APITestCase):
                 payload='{"chaos":"network-or-kms-failure"}',
                 expected_sequence=0,
             )
-        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.data['code'], 'recovery_escrow_unavailable')
+        self.assertTrue(response.data['retryable'])
         self.assertFalse(AccountRecoveryManifest.objects.filter(user=self.user).exists())
         self.assertFalse(AccountKeysetEscrowRecord.objects.filter(user=self.user).exists())
 

@@ -5,6 +5,8 @@ from urllib.parse import unquote, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
 
+from config.plugins import enabled_plugin_app_configs
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -125,7 +127,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'users.apps.UsersConfig',
     'chat',
-]
+] + enabled_plugin_app_configs()
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -256,7 +258,9 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR.parent / 'shared' / 'media'
+MEDIA_ROOT = Path(
+    os.environ.get('DJANGO_MEDIA_ROOT', str(BASE_DIR.parent / 'shared' / 'media'))
+)
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 
 # Resumable attachments are uploaded chunk-by-chunk, so the product-level file
