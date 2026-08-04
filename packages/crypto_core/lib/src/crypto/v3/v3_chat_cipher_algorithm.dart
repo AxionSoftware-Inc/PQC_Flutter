@@ -7,6 +7,7 @@ import '../../core/device/device_pqc_key_service.dart';
 import '../../core/device/device_pqc_signing_key_service.dart';
 import 'pqc_v3_crypto_adapter.dart';
 import 'v3_message_codecs.dart';
+import 'v3_envelope.dart';
 
 /// Adapter from the app's chat context to the isolated V3 codec.
 class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
@@ -49,7 +50,13 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
     final current = await keyMaterialRegistry.ensureCurrentKeysetRegistered();
     final identity = await identityService.getIdentity();
     final recipients = <V3DeviceRecipient>[];
-    for (final user in context.usersById.values) {
+    // A private envelope must only ever contain the participants' device
+    // wraps.  Using the workspace-wide directory here would give unrelated
+    // users a valid content-key wrap.
+    final participantIds = context.conversation.participantIds.toSet();
+    for (final userId in participantIds) {
+      final user = context.usersById[userId];
+      if (user == null) continue;
       for (final device in user.activeDevices) {
         if (!device.hasUsableMlKemKey || device.keysetId.isEmpty) continue;
         recipients.add(
@@ -92,6 +99,10 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
     required String payload,
   }) async {
     try {
+      final envelope = V3Envelope.decode(payload);
+      if (!_isTrustedSender(context: context, envelope: envelope)) {
+        throw StateError('V3 sender keyset is not trusted for this message.');
+      }
       final current = await keyMaterialRegistry.ensureCurrentKeysetRegistered();
       final candidates = <dynamic>[
         current,
@@ -131,5 +142,25 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
       // aborting the entire conversation sync with a SecretBox MAC error.
       return '[decrypt-error]';
     }
+  }
+
+  static bool _isTrustedSender({
+    required ChatCryptoContext context,
+    required V3Envelope envelope,
+  }) {
+    final senderId = context.senderId;
+    // Legacy conversation previews do not expose a sender id.  Full message
+    // sync and realtime events always do, and therefore enforce this binding.
+    if (senderId == null) return true;
+    if (!context.conversation.participantIds.contains(senderId)) return false;
+    final sender = context.usersById[senderId];
+    if (sender == null) return false;
+    return sender.devices.any(
+      (device) =>
+          device.deviceId == envelope.senderDeviceId &&
+          device.keysetId == envelope.senderKeysetId &&
+          device.pqcSigningAlgorithm == 'ml-dsa-65' &&
+          device.pqcSigningPublicKey == envelope.signingPublicKey,
+    );
   }
 }

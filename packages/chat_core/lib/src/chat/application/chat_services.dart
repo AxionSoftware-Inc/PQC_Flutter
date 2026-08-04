@@ -30,12 +30,14 @@ class ChatCryptoRequest {
     required this.conversation,
     required this.usersById,
     this.messageId = '',
+    this.senderId,
   });
 
   final int currentUserId;
   final Conversation conversation;
   final Map<int, AppUser> usersById;
   final String messageId;
+  final int? senderId;
 }
 
 class ChatCryptoService {
@@ -75,6 +77,7 @@ class ChatCryptoService {
         conversation: request.conversation,
         usersById: request.usersById,
         messageId: request.messageId,
+        senderId: request.senderId,
       ),
       plaintext: plaintext,
     );
@@ -159,6 +162,7 @@ class ChatCryptoService {
         conversation: request.conversation,
         usersById: request.usersById,
         messageId: request.messageId,
+        senderId: request.senderId,
       ),
       payload: payload,
     );
@@ -446,6 +450,7 @@ class MessageSyncService {
         messageId: row.clientMessageId.isNotEmpty
             ? row.clientMessageId
             : row.id.toString(),
+        senderId: row.senderId,
         refreshUsers: refreshUsers,
       );
       if (!cryptoService.isDecryptFailureMarker(repaired)) {
@@ -533,6 +538,7 @@ class MessageSyncService {
     required Map<int, AppUser> usersById,
     required String payload,
     required String messageId,
+    required int senderId,
     required Future<void> Function() refreshUsers,
   }) async {
     final plaintext = await cryptoService.decrypt(
@@ -541,6 +547,7 @@ class MessageSyncService {
         conversation: conversation,
         usersById: usersById,
         messageId: messageId,
+        senderId: senderId,
       ),
       payload: payload,
     );
@@ -555,6 +562,7 @@ class MessageSyncService {
         conversation: conversation,
         usersById: usersById,
         messageId: messageId,
+        senderId: senderId,
       ),
       payload: payload,
     );
@@ -577,6 +585,7 @@ class MessageSyncService {
       messageId: message.clientMessageId.isNotEmpty
           ? message.clientMessageId
           : message.id.toString(),
+      senderId: message.senderId,
       refreshUsers: refreshUsers,
     );
     if (!cryptoService.isDecryptFailureMarker(plaintext)) {
@@ -995,6 +1004,7 @@ class OutgoingMessageService {
               currentUserId: currentUserId,
               usersById: usersById,
               payload: message.body,
+              senderId: message.senderId,
               refreshUsers: refreshUsers,
             ),
       createdAt: message.createdAt,
@@ -1109,6 +1119,7 @@ class OutgoingMessageService {
     required int currentUserId,
     required Map<int, AppUser> usersById,
     required String payload,
+    int? senderId,
     required Future<void> Function() refreshUsers,
   }) async {
     final plaintext = await cryptoService.decrypt(
@@ -1116,6 +1127,7 @@ class OutgoingMessageService {
         currentUserId: currentUserId,
         conversation: conversation,
         usersById: usersById,
+        senderId: senderId,
       ),
       payload: payload,
     );
@@ -1129,6 +1141,7 @@ class OutgoingMessageService {
         currentUserId: currentUserId,
         conversation: conversation,
         usersById: usersById,
+        senderId: senderId,
       ),
       payload: payload,
     );
@@ -1169,6 +1182,7 @@ class ChatRealtimeCoordinator {
       currentUserId: currentUserId,
       usersById: usersById,
       payload: payload,
+      senderId: event.payload['sender_id'] as int?,
       refreshUsers: refreshUsers,
     );
     final message = ChatMessage(
@@ -1201,6 +1215,7 @@ class ChatRealtimeCoordinator {
     required int currentUserId,
     required Map<int, AppUser> usersById,
     required String payload,
+    int? senderId,
     required Future<void> Function() refreshUsers,
   }) async {
     final plaintext = await cryptoService.decrypt(
@@ -1208,6 +1223,7 @@ class ChatRealtimeCoordinator {
         currentUserId: currentUserId,
         conversation: conversation,
         usersById: usersById,
+        senderId: senderId,
       ),
       payload: payload,
     );
@@ -1221,6 +1237,7 @@ class ChatRealtimeCoordinator {
         currentUserId: currentUserId,
         conversation: conversation,
         usersById: usersById,
+        senderId: senderId,
       ),
       payload: payload,
     );
