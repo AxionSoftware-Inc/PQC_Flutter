@@ -304,7 +304,7 @@ class ChatHubController extends ChangeNotifier {
       ),
       apiBaseUrl: const String.fromEnvironment(
         'API_BASE_URL',
-        defaultValue: 'http://91.108.121.56/api',
+        defaultValue: 'http://169.58.123.200/api',
       ),
       supportEmail: const String.fromEnvironment(
         'SUPPORT_EMAIL',
