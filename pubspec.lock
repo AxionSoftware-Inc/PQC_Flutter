@@ -182,7 +182,7 @@ packages:
       path: "packages/crypto_core"
       relative: true
     source: path
-    version: "0.1.0"
+    version: "0.2.0-dev.1"
   cryptography:
     dependency: "direct main"
     description:
@@ -694,6 +694,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.5.2"
+  pqc_engine_sdk:
+    dependency: transitive
+    description:
+      path: "."
+      ref: "sdk-v2.0.0-freeze"
+      resolved-ref: abf6d1c98797fa7db5050d313cb97c10b512b358
+      url: "https://github.com/AxionSoftware-Inc/PQC-SDK.git"
+    source: git
+    version: "0.1.0-dev.1"
   pqcrypto:
     dependency: "direct main"
     description:
