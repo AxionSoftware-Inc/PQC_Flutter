@@ -92,13 +92,65 @@ void main() {
         context: ChatCryptoContext(
           currentUserId: 2,
           conversation: conversation,
-          usersById: const {},
+          usersById: {
+            2: AppUser(
+              id: 2,
+              username: 'bob',
+              displayName: 'Bob',
+              devices: [
+                AppUserDevice(
+                  deviceId: oldKeyset.deviceId,
+                  keysetId: oldKeyset.keysetId,
+                  deviceName: 'Bob old phone',
+                  platform: 'historical',
+                  identityPublicKey: oldKeyset.identityPublicKey,
+                  keyAlgorithm: oldKeyset.identityAlgorithm,
+                  pqcPublicKey: oldKeyset.pqcPublicKey,
+                  pqcAlgorithm: oldKeyset.pqcAlgorithm,
+                  pqcSigningPublicKey: oldKeyset.pqcSigningPublicKey,
+                  pqcSigningAlgorithm: oldKeyset.pqcSigningAlgorithm,
+                  status: 'historical',
+                ),
+              ],
+            ),
+          },
           messageId: 'v3-self-message-1',
+          senderId: 2,
         ),
         payload: payload,
       );
 
       expect(plaintext, 'survives reinstall');
+
+      final rejected = await freshReader.decrypt(
+        context: ChatCryptoContext(
+          currentUserId: 2,
+          conversation: conversation,
+          usersById: {
+            2: const AppUser(
+              id: 2,
+              username: 'bob',
+              displayName: 'Bob',
+              devices: [
+                AppUserDevice(
+                  deviceId: 'unexpected-device',
+                  keysetId: 'unexpected-keyset',
+                  deviceName: 'Untrusted',
+                  platform: 'test',
+                  identityPublicKey: '',
+                  keyAlgorithm: '',
+                  pqcSigningPublicKey: 'unexpected-signing-key',
+                  pqcSigningAlgorithm: 'ml-dsa-65',
+                ),
+              ],
+            ),
+          },
+          messageId: 'v3-self-message-1',
+          senderId: 2,
+        ),
+        payload: payload,
+      );
+      expect(rejected, '[decrypt-error]');
     },
   );
 }
