@@ -40,6 +40,7 @@ export 'src/crypto/group_key_store.dart';
 export 'src/crypto/message_codec.dart';
 export 'src/crypto/sdk_v2_private_message_codec.dart';
 export 'src/crypto/sdk_v2_group_message_codec.dart';
+export 'src/crypto/sdk_v2_attachment_crypto_service.dart';
 export 'src/crypto/outbound_message_cache.dart';
 export 'src/models/app_user.dart';
 export 'src/models/attachment.dart';
