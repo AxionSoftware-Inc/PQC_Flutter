@@ -31,6 +31,7 @@ from users.models import (
     WorkspaceMember,
     UserCryptoBackup,
     AccountRecoveryManifest,
+    AccountSettings,
     AccountKeysetEscrowRecord,
     RecoveryDeviceApproval,
     RecoveryAccessGrant,
@@ -41,6 +42,7 @@ from users.escrow import EscrowEnvelope, get_key_escrow_provider
 from users.audit import append_recovery_audit_event
 from users.access_control import AccessPermission, WorkspaceAccessPolicy
 from users.serializers import (
+    AccountSettingsSerializer,
     DeviceSerializer,
     DeviceSyncSerializer,
     InvitationAcceptSerializer,
@@ -60,6 +62,27 @@ from users.roles import CorporateRole, DEFAULT_CORPORATE_ROLE, role_catalog
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+
+
+class AccountSettingsView(APIView):
+    def get(self, request):
+        account_settings, _ = AccountSettings.objects.get_or_create(
+            user=request.user,
+        )
+        return Response(AccountSettingsSerializer(account_settings).data)
+
+    def patch(self, request):
+        account_settings, _ = AccountSettings.objects.get_or_create(
+            user=request.user,
+        )
+        serializer = AccountSettingsSerializer(
+            account_settings,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 def _issue_recovery_access_grant(*, user, device_id):

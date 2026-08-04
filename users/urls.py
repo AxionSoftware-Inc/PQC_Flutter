@@ -1,6 +1,7 @@
 from django.urls import path
 
 from users.views import (
+    AccountSettingsView,
     DeviceListView,
     DeviceRevokeView,
     DeviceSyncView,
@@ -31,6 +32,7 @@ urlpatterns = [
     path('users/roles', RoleCatalogView.as_view(), name='user-role-catalog'),
     path('users/<int:user_id>/role', UserRoleView.as_view(), name='user-role'),
     path('users/me', MeView.as_view(), name='me'),
+    path('users/me/settings', AccountSettingsView.as_view(), name='account-settings'),
     path('users/me/avatar', ProfileAvatarView.as_view(), name='profile-avatar'),
     path('users/me/crypto-backup', CryptoBackupView.as_view(), name='crypto-backup'),
     path('users/me/crypto-recovery', AccountRecoveryManifestView.as_view(), name='crypto-recovery'),

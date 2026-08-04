@@ -67,6 +67,37 @@ class UserProfile(models.Model):
         return f'profile:{self.user_id}'
 
 
+class AccountSettings(models.Model):
+    class Visibility(models.TextChoices):
+        EVERYBODY = 'everybody', 'Everybody'
+        CONTACTS = 'contacts', 'Contacts'
+        NOBODY = 'nobody', 'Nobody'
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='account_settings',
+    )
+    notifications_enabled = models.BooleanField(default=True)
+    notification_previews = models.BooleanField(default=True)
+    read_receipts_enabled = models.BooleanField(default=True)
+    typing_indicators_enabled = models.BooleanField(default=True)
+    last_seen_visibility = models.CharField(
+        max_length=16,
+        choices=Visibility.choices,
+        default=Visibility.CONTACTS,
+    )
+    online_visibility = models.CharField(
+        max_length=16,
+        choices=Visibility.choices,
+        default=Visibility.CONTACTS,
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f'settings:{self.user_id}'
+
+
 class UserCryptoBackup(models.Model):
     """Encrypted client backup; the server must never decrypt this blob."""
 

@@ -2,7 +2,14 @@ import base64
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from users.models import Invitation, Organization, OrganizationMember, Workspace, WorkspaceMember
+from users.models import (
+    AccountSettings,
+    Invitation,
+    Organization,
+    OrganizationMember,
+    Workspace,
+    WorkspaceMember,
+)
 from users.roles import CorporateRole, DEFAULT_CORPORATE_ROLE
 
 
@@ -406,6 +413,19 @@ class ProfileUpdateSerializer(serializers.Serializer):
         if len(value) < 2:
             raise serializers.ValidationError('Ism kamida 2 ta belgidan iborat bo‘lsin.')
         return value
+
+
+class AccountSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AccountSettings
+        fields = [
+            'notifications_enabled',
+            'notification_previews',
+            'read_receipts_enabled',
+            'typing_indicators_enabled',
+            'last_seen_visibility',
+            'online_visibility',
+        ]
 
 
 class WorkspaceMemberSerializer(serializers.ModelSerializer):
