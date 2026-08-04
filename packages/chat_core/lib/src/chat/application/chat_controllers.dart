@@ -166,7 +166,10 @@ class ChatConversationController extends ChangeNotifier {
       // Local cache is an optimization; authoritative sync still runs.
     }
     await refresh(showLoader: _messages.isEmpty);
-    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+    // Realtime is the primary delivery path. Keep a modest polling fallback
+    // for reconnect recovery without continuously competing with encryption
+    // and send requests on slower mobile networks.
+    _pollingTimer = Timer.periodic(const Duration(seconds: 8), (_) {
       // Polling is best-effort. A transient network/API failure must not
       // become an unhandled async exception that restarts the screen or
       // clears an already loaded conversation history.
