@@ -14,6 +14,46 @@ import 'chat_facade.dart';
 import 'chat_models.dart';
 import '../data/chat_realtime_service.dart';
 
+/// Merges locally queued and server-confirmed messages without allowing the
+/// same client message to occupy two timeline rows while a poll/realtime event
+/// races the send response.
+@visibleForTesting
+List<ChatMessage> mergeChatTimeline(
+  List<ChatMessage> existing,
+  List<ChatMessage> incoming,
+) {
+  if (existing.isEmpty) {
+    return incoming;
+  }
+  final byStableId = <String, ChatMessage>{};
+  for (final message in existing) {
+    byStableId[chatTimelineIdentity(message)] = message;
+  }
+  for (final message in incoming) {
+    // Incoming state is authoritative: it replaces a matching local outbox
+    // row once the server has assigned an id.
+    byStableId[chatTimelineIdentity(message)] = message;
+  }
+  final merged = byStableId.values.toList()
+    ..sort((left, right) {
+      final byTime = left.createdAt.compareTo(right.createdAt);
+      return byTime != 0 ? byTime : left.id.compareTo(right.id);
+    });
+  return merged;
+}
+
+@visibleForTesting
+String chatTimelineIdentity(ChatMessage message) {
+  // client_message_id is the idempotency identity shared by the optimistic
+  // outbox row and its server-confirmed counterpart. It must take precedence
+  // over the server id or a periodic refresh displays the same send twice.
+  if (message.clientMessageId.isNotEmpty) {
+    return 'client:${message.clientMessageId}';
+  }
+  if (message.id > 0) return 'server:${message.id}';
+  return 'transient:${message.senderId}:${message.createdAt.microsecondsSinceEpoch}';
+}
+
 class ChatListController extends ChangeNotifier {
   ChatListController({required this.chatFacade, required this.currentUserId});
 
@@ -156,7 +196,7 @@ class ChatConversationController extends ChangeNotifier {
       // seconds, which in turn resets scroll position and replays decrypt
       // placeholders. Keep older pages already loaded by the user and let
       // fresh server rows replace only their matching ids.
-      _messages = _mergeVisibleTimeline(_messages, state.messages);
+      _messages = mergeChatTimeline(_messages, state.messages);
       _hasOlderMessages = _messages.length >= 50;
       _trust = state.trust;
       _error = null;
@@ -198,37 +238,6 @@ class ChatConversationController extends ChangeNotifier {
     }
   }
 
-  List<ChatMessage> _mergeVisibleTimeline(
-    List<ChatMessage> existing,
-    List<ChatMessage> incoming,
-  ) {
-    if (existing.isEmpty) {
-      return incoming;
-    }
-    final byStableId = <String, ChatMessage>{};
-    for (final message in existing) {
-      byStableId[_timelineIdentity(message)] = message;
-    }
-    for (final message in incoming) {
-      // Incoming data is authoritative for the visible/newest window.
-      byStableId[_timelineIdentity(message)] = message;
-    }
-    final merged = byStableId.values.toList()
-      ..sort((left, right) {
-        final byTime = left.createdAt.compareTo(right.createdAt);
-        return byTime != 0 ? byTime : left.id.compareTo(right.id);
-      });
-    return merged;
-  }
-
-  String _timelineIdentity(ChatMessage message) {
-    if (message.id > 0) return 'server:${message.id}';
-    if (message.clientMessageId.isNotEmpty) {
-      return 'client:${message.clientMessageId}';
-    }
-    return 'transient:${message.senderId}:${message.createdAt.microsecondsSinceEpoch}';
-  }
-
   Future<void> sendMessage(SendMessageCommand command) {
     _queuedSendCount++;
     notifyListeners();
@@ -243,8 +252,13 @@ class ChatConversationController extends ChangeNotifier {
   }
 
   Future<void> _sendMessageInOrder(SendMessageCommand command) async {
-    await chatFacade.sendMessage(command);
-    await refresh(showLoader: false);
+    final sent = await chatFacade.sendMessage(command);
+    // The send pipeline already persists this acknowledged message locally.
+    // Render it immediately instead of waiting for another decrypt/poll cycle.
+    _messages = mergeChatTimeline(_messages, [sent]);
+    notifyListeners();
+    // Reconcile receipts/realtime state later without delaying the composer.
+    unawaited(refresh(showLoader: false).catchError((_) {}));
   }
 
   Future<void> retryMessage(String clientMessageId) async {
