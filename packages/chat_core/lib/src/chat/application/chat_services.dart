@@ -1036,9 +1036,26 @@ class OutgoingMessageService {
         plaintext: plaintext,
       );
     } catch (error) {
-      if (error is! ChatEncryptionException ||
-          conversation.isGroup ||
-          error.message != ChatCryptoService.peerPqcKeyNotReadyMessage) {
+      if (error is! ChatEncryptionException) {
+        rethrow;
+      }
+      // Group epochs cover every active participant device.  The cached
+      // member/device snapshot can become stale when a member signs in or a
+      // device key is registered just before this send.  Refresh it once and
+      // rebuild the epoch instead of failing the send at the first attempt.
+      if (conversation.isGroup) {
+        await refreshUsers();
+        return cryptoService.encrypt(
+          request: ChatCryptoRequest(
+            currentUserId: currentUserId,
+            conversation: conversation,
+            usersById: usersById,
+            messageId: messageId,
+          ),
+          plaintext: plaintext,
+        );
+      }
+      if (error.message != ChatCryptoService.peerPqcKeyNotReadyMessage) {
         rethrow;
       }
       await refreshUsers();
