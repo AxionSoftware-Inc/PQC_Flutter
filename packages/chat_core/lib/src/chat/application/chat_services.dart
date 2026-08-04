@@ -923,19 +923,15 @@ class OutgoingMessageService {
     }
     final ensureDurable = onCryptoStateChanged;
     if (ensureDurable != null) {
-      try {
-        await runStage(
-          SendPipelineStage.recoveryVault,
-          ensureDurable,
-          successDetail: 'Key snapshot confirmed in the recovery vault.',
-        );
-      } catch (_) {
-        throw ApiException(
-          'Encryption keys are not backed up yet. Retry when the connection is stable.',
-          code: 'crypto_recovery_not_durable',
-          isRetryable: true,
-        );
-      }
+      // Recovery protects future reinstalls, but a transient vault/network
+      // outage must never turn an otherwise valid encrypted message into a
+      // failed send. The outbox already retains its ciphertext locally and
+      // the next lifecycle/send retries the immutable recovery snapshot.
+      emit(
+        SendPipelineStage.recoveryVault,
+        SendPipelineStepStatus.skipped,
+        'Recovery snapshot is queued after delivery.',
+      );
     } else {
       emit(
         SendPipelineStage.recoveryVault,
@@ -994,6 +990,9 @@ class OutgoingMessageService {
       successDetail:
           'Encrypted payload and protected plaintext cached locally.',
     );
+    if (ensureDurable != null) {
+      unawaited(ensureDurable().catchError((_) {}));
+    }
     emit(
       SendPipelineStage.completed,
       SendPipelineStepStatus.succeeded,
