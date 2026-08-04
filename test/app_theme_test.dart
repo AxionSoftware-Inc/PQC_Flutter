@@ -79,7 +79,7 @@ void main() {
     }
 
     await pumpWithSkin(AppSkinRegistry.defaultSkinId);
-    expect(find.text('PQC Chat'), findsOneWidget);
+    expect(find.text('antiQ'), findsOneWidget);
     expect(find.text('Empty'), findsOneWidget);
 
     await pumpWithSkin(AppSkinRegistry.enterpriseASkinId);

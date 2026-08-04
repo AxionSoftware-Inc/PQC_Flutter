@@ -22,6 +22,7 @@ class AppUserDevice {
   });
 
   final String deviceId;
+
   /// Stable keyset identity used by the V3 decoder/writer. It is optional for
   /// legacy V2 device records, which intentionally decode without it.
   final String keysetId;
@@ -71,7 +72,23 @@ class AppUserDevice {
     }
 
     try {
-      return base64Decode(value).length == 1184;
+      final bytes = base64Decode(value);
+      if (bytes.length != 1184) {
+        return false;
+      }
+
+      // ML-KEM-768 encodes three polynomials in the first 1152 bytes. Every
+      // pair of coefficients occupies three bytes and must be canonical
+      // modulo q=3329. A length-only check lets corrupted/random device keys
+      // reach encapsulation and fail during message send.
+      for (var offset = 0; offset < 1152; offset += 3) {
+        final first = bytes[offset] | ((bytes[offset + 1] & 0x0f) << 8);
+        final second = (bytes[offset + 1] >> 4) | (bytes[offset + 2] << 4);
+        if (first >= 3329 || second >= 3329) {
+          return false;
+        }
+      }
+      return true;
     } catch (_) {
       return false;
     }

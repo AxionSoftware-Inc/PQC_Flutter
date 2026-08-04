@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import os
 import tempfile
 import uuid
@@ -45,10 +46,12 @@ from chat.serializers import (
 )
 from chat.protocols import get_protocol_capabilities
 from users.models import UserDevice, WorkspaceMember
+from users.serializers import is_valid_ml_kem_768_public_key
 
 
 User = get_user_model()
 DEFAULT_ATTACHMENT_SESSION_TTL_DAYS = 7
+logger = logging.getLogger(__name__)
 
 
 class CryptoProtocolCapabilitiesView(APIView):
@@ -155,16 +158,30 @@ def get_user_attachment_session_or_404(request, session_id):
 
 
 def publish_workspace_event(workspace_id, event_type, payload):
-    channel_layer = get_channel_layer()
-    if channel_layer is None:
-        return
-    async_to_sync(channel_layer.group_send)(
-        f'workspace_{workspace_id}',
-        {
-            'type': 'chat.event',
-            'event': event_type,
-            'payload': payload,
-        },
+    try:
+        channel_layer = get_channel_layer()
+        if channel_layer is None:
+            return
+        async_to_sync(channel_layer.group_send)(
+            f'workspace_{workspace_id}',
+            {
+                'type': 'chat.event',
+                'event': event_type,
+                'payload': payload,
+            },
+        )
+    except Exception:
+        # Realtime delivery is auxiliary. The committed HTTP write remains the
+        # source of truth and clients recover through incremental polling.
+        logger.exception(
+            'Failed to publish workspace event',
+            extra={'workspace_id': workspace_id, 'event_type': event_type},
+        )
+
+
+def publish_workspace_event_on_commit(workspace_id, event_type, payload):
+    transaction.on_commit(
+        lambda: publish_workspace_event(workspace_id, event_type, payload)
     )
 
 
@@ -274,23 +291,27 @@ class MessageListCreateView(APIView):
             raise PermissionDenied('Not a participant of this conversation.')
 
         client_message_id = serializer.validated_data['client_message_id'].strip()
+        message_defaults = {
+            'body': serializer.validated_data['body'].strip(),
+            'message_type': serializer.validated_data['message_type'],
+            'reply_to_id': serializer.validated_data.get('reply_to_id'),
+        }
         if client_message_id:
-            existing = Message.objects.filter(
+            message, created = Message.objects.get_or_create(
                 conversation=conversation,
                 sender=request.user,
                 client_message_id=client_message_id,
-            ).select_related('sender').first()
-            if existing is not None:
-                return Response(MessageSerializer(existing).data)
-
-        message = Message.objects.create(
-            conversation=conversation,
-            sender=request.user,
-            body=serializer.validated_data['body'].strip(),
-            client_message_id=client_message_id,
-            message_type=serializer.validated_data['message_type'],
-            reply_to_id=serializer.validated_data.get('reply_to_id'),
-        )
+                defaults=message_defaults,
+            )
+            if not created:
+                return Response(MessageSerializer(message).data)
+        else:
+            message = Message.objects.create(
+                conversation=conversation,
+                sender=request.user,
+                client_message_id='',
+                **message_defaults,
+            )
         attachments = MessageAttachment.objects.filter(
             id__in=serializer.validated_data['attachment_ids'],
             conversation=conversation,
@@ -305,12 +326,12 @@ class MessageListCreateView(APIView):
             message.save(update_fields=['attachment_count'])
         conversation.save(update_fields=['updated_at'])
         serialized = MessageSerializer(message).data
-        publish_workspace_event(
+        publish_workspace_event_on_commit(
             conversation.workspace_id,
             'message.created',
             serialized,
         )
-        publish_workspace_event(
+        publish_workspace_event_on_commit(
             conversation.workspace_id,
             'conversation.updated',
             {
@@ -349,7 +370,7 @@ class MessageActionView(APIView):
         message.edited_at = timezone.now()
         message.save(update_fields=['body', 'edited_at'])
         serialized = MessageSerializer(message).data
-        publish_workspace_event(message.conversation.workspace_id, 'message.updated', serialized)
+        publish_workspace_event_on_commit(message.conversation.workspace_id, 'message.updated', serialized)
         return Response(serialized)
 
     @transaction.atomic
@@ -368,7 +389,7 @@ class MessageActionView(APIView):
         )
         target.save(update_fields=['updated_at'])
         serialized = MessageSerializer(forwarded).data
-        publish_workspace_event(target.workspace_id, 'message.created', serialized)
+        publish_workspace_event_on_commit(target.workspace_id, 'message.created', serialized)
         return Response(serialized, status=status.HTTP_201_CREATED)
 
     def delete(self, request, message_id):
@@ -379,7 +400,7 @@ class MessageActionView(APIView):
         message.deleted_at = timezone.now()
         message.save(update_fields=['body', 'deleted_at'])
         serialized = MessageSerializer(message).data
-        publish_workspace_event(message.conversation.workspace_id, 'message.deleted', serialized)
+        publish_workspace_event_on_commit(message.conversation.workspace_id, 'message.deleted', serialized)
         return Response(serialized)
 
 
@@ -396,14 +417,14 @@ class MessageReactionView(APIView):
             defaults={'emoji': emoji.strip()},
         )
         payload = MessageReactionSerializer(reaction).data | {'message_id': message.id}
-        publish_workspace_event(message.conversation.workspace_id, 'reaction.updated', payload)
+        publish_workspace_event_on_commit(message.conversation.workspace_id, 'reaction.updated', payload)
         return Response(payload)
 
     def delete(self, request, message_id):
         message = generics.get_object_or_404(Message, id=message_id)
         get_user_conversation_or_404(request, message.conversation_id)
         MessageReaction.objects.filter(message=message, user=request.user).delete()
-        publish_workspace_event(
+        publish_workspace_event_on_commit(
             message.conversation.workspace_id,
             'reaction.deleted',
             {'message_id': message.id, 'user_id': request.user.id},
@@ -438,7 +459,7 @@ class ConversationKeyEnvelopeView(APIView):
         participant_user_ids = set(
             conversation.participants.values_list('id', flat=True)
         )
-        expected_target_ids = set(
+        expected_target_devices = list(
             UserDevice.objects.filter(
                 user_id__in=participant_user_ids,
                 status=UserDevice.Status.ACTIVE,
@@ -447,8 +468,12 @@ class ConversationKeyEnvelopeView(APIView):
             )
             .exclude(pqc_public_key='')
             .exclude(pqc_signing_public_key='')
-            .values_list('device_id', flat=True)
         )
+        expected_target_ids = {
+            device.device_id
+            for device in expected_target_devices
+            if is_valid_ml_kem_768_public_key(device.pqc_public_key)
+        }
         submitted_target_ids = []
         for item in serializer.validated_data['envelopes']:
             submitted_target_ids.append(item['target_device_id'])

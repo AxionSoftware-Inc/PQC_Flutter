@@ -3,6 +3,9 @@ import 'package:pqc_chat_app/core/models/app_user.dart';
 import 'dart:convert';
 
 final _validMlKem768PublicKey = base64Encode(List<int>.filled(1184, 0));
+final _nonCanonicalMlKem768PublicKey = base64Encode(
+  List<int>.filled(1184, 0xff),
+);
 
 void main() {
   test(
@@ -83,11 +86,21 @@ void main() {
         pqcPublicKey: _validMlKem768PublicKey,
         pqcAlgorithm: 'demo',
       );
+      final nonCanonicalDevice = AppUserDevice(
+        deviceId: 'device-pqc-5',
+        deviceName: 'Corrupted phone',
+        platform: 'android',
+        identityPublicKey: '',
+        keyAlgorithm: '',
+        pqcPublicKey: _nonCanonicalMlKem768PublicKey,
+        pqcAlgorithm: 'ml-kem-768',
+      );
 
       expect(validDevice.hasUsableMlKemKey, isTrue);
       expect(invalidBase64Device.hasUsableMlKemKey, isFalse);
       expect(invalidLengthDevice.hasUsableMlKemKey, isFalse);
       expect(wrongAlgorithmDevice.hasUsableMlKemKey, isFalse);
+      expect(nonCanonicalDevice.hasUsableMlKemKey, isFalse);
     },
   );
 }

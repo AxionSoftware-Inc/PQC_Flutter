@@ -123,7 +123,18 @@ class DevicePqcKeyService {
       return false;
     }
     try {
-      return base64Decode(publicKeyBase64).length == publicKeyLength;
+      final bytes = base64Decode(publicKeyBase64);
+      if (bytes.length != publicKeyLength) {
+        return false;
+      }
+      for (var offset = 0; offset < 1152; offset += 3) {
+        final first = bytes[offset] | ((bytes[offset + 1] & 0x0f) << 8);
+        final second = (bytes[offset + 1] >> 4) | (bytes[offset + 2] << 4);
+        if (first >= 3329 || second >= 3329) {
+          return false;
+        }
+      }
+      return true;
     } catch (_) {
       return false;
     }
