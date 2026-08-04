@@ -125,6 +125,18 @@ class ChatFacade {
     return users;
   }
 
+  /// Optional RBAC integration. The core chat flow stays independent of this
+  /// endpoint; deployments without the RBAC plugin simply never expose the
+  /// management action in the UI.
+  Future<AppUser> updateUserRole({
+    required int userId,
+    required String role,
+  }) async {
+    final user = await _remoteDataSource.updateUserRole(userId, role);
+    _usersById[user.id] = user;
+    return user;
+  }
+
   Future<ChatListState> loadChatList({
     required int currentUserId,
     String searchQuery = '',

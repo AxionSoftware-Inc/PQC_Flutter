@@ -14,6 +14,8 @@ import '../../chat/data/outbox_store.dart';
 import '../../../core/models/chat_message.dart';
 import '../../crypto/outbound_message_cache.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 class AuthRepository {
   static const _unsupportedPqcServerMessage =
@@ -99,6 +101,54 @@ class AuthRepository {
     return deviceIdentity.deviceName.trim();
   }
 
+  Future<SessionUser> updateProfile(
+    SessionUser current, {
+    required String displayName,
+    List<int>? avatarBytes,
+    String avatarFilename = '',
+  }) async {
+    var response = await apiClient.patch('/users/me', {
+      'display_name': displayName,
+    });
+    if (avatarBytes != null && avatarBytes.isNotEmpty) {
+      response = await apiClient.multipartPost(
+        '/users/me/avatar',
+        files: [
+          http.MultipartFile.fromBytes(
+            'avatar',
+            avatarBytes,
+            filename: avatarFilename.isEmpty ? 'avatar.jpg' : avatarFilename,
+            contentType: _avatarMediaType(avatarFilename),
+          ),
+        ],
+      );
+    }
+    if (response is! Map<String, dynamic>) {
+      throw ApiException(
+        'Profil javobi noto‘g‘ri formatda.',
+        code: 'profile_response_invalid',
+      );
+    }
+    final updated = current.copyWith(
+      username: response['username'] as String? ?? current.username,
+      displayName: response['display_name'] as String? ?? displayName,
+      avatarUrl: response['avatar_url'] as String? ?? current.avatarUrl,
+    );
+    await sessionStorage.write(updated);
+    return updated;
+  }
+
+  MediaType _avatarMediaType(String filename) {
+    final lower = filename.toLowerCase();
+    if (lower.endsWith('.png')) {
+      return MediaType('image', 'png');
+    }
+    if (lower.endsWith('.webp')) {
+      return MediaType('image', 'webp');
+    }
+    return MediaType('image', 'jpeg');
+  }
+
   Future<SessionUser> bootstrapLogin() async {
     final bootstrapName = await suggestedBootstrapName();
     return login(bootstrapName);
@@ -180,6 +230,7 @@ class AuthRepository {
       username: user['username'] as String,
       displayName:
           (user['display_name'] as String?) ?? user['username'] as String,
+      avatarUrl: user['avatar_url'] as String? ?? '',
       deviceId: response['device_id'] as String? ?? deviceIdentity.id,
       deviceStatus: response['device_status'] as String? ?? 'active',
       profileFingerprint: response['profile_fingerprint'] as String? ?? '',
@@ -249,6 +300,7 @@ class AuthRepository {
         username: user['username'] as String,
         displayName:
             (user['display_name'] as String?) ?? user['username'] as String,
+        avatarUrl: user['avatar_url'] as String? ?? '',
         deviceId: response['device_id'] as String? ?? deviceIdentity.id,
         deviceStatus: response['device_status'] as String? ?? 'active',
         profileFingerprint: response['profile_fingerprint'] as String? ?? '',
@@ -290,6 +342,7 @@ class AuthRepository {
       username: user['username'] as String,
       displayName:
           user['display_name'] as String? ?? user['username'] as String,
+      avatarUrl: user['avatar_url'] as String? ?? '',
       deviceId: response['device_id'] as String? ?? fallbackDeviceId,
       deviceStatus: response['device_status'] as String? ?? 'active',
       profileFingerprint: response['profile_fingerprint'] as String? ?? '',

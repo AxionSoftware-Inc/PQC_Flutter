@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:hugeicons/hugeicons.dart';
 
+import '../../../app/app_localization.dart';
 import '../../../app/design_system/app_design_system.dart';
 import '../../../core/models/app_user.dart';
 import '../../../core/models/chat_message.dart';
@@ -10,6 +13,7 @@ import '../../../app/theme_controller.dart';
 import '../../auth/session_controller.dart';
 import '../../chat/application/chat_facade.dart';
 import '../../crypto/durability/crypto_core_facade.dart';
+import 'access_control_settings_page.dart';
 import 'chat_hub_controller.dart';
 import 'chat_page.dart';
 
@@ -140,24 +144,27 @@ class _ChatListPageState extends State<ChatListPage> {
           shrinkWrap: true,
           children: [
             const ListTile(
-              title: Text('History recovery requests'),
+              title: Text('Tarixni tiklash so‘rovlari'),
               subtitle: Text(
-                'Approve only a device you recognize. Approval expires automatically.',
+                'Faqat o‘zingiz taniydigan qurilmani tasdiqlang. Ruxsat muddati avtomatik tugaydi.',
               ),
             ),
             if (approvals.isEmpty)
-              const ListTile(title: Text('No pending requests')),
+              const ListTile(title: Text('Kutilayotgan so‘rov yo‘q')),
             for (final approval in approvals)
               ListTile(
                 leading: const Icon(Icons.devices_other_outlined),
                 title: Text(
-                  approval['requesting_device_id'] as String? ?? 'New device',
+                  approval['requesting_device_id'] as String? ??
+                      'Yangi qurilma',
                 ),
-                subtitle: Text('Requested ${approval['created_at'] ?? ''}'),
+                subtitle: Text(
+                  'So‘ralgan vaqt: ${approval['created_at'] ?? ''}',
+                ),
                 trailing: Wrap(
                   children: [
                     IconButton(
-                      tooltip: 'Deny',
+                      tooltip: 'Rad etish',
                       icon: const Icon(Icons.close_rounded),
                       onPressed: () async {
                         await _controller.decideRecoveryApproval(
@@ -168,7 +175,7 @@ class _ChatListPageState extends State<ChatListPage> {
                       },
                     ),
                     IconButton(
-                      tooltip: 'Approve',
+                      tooltip: 'Tasdiqlash',
                       icon: const Icon(Icons.check_rounded),
                       onPressed: () async {
                         await _controller.decideRecoveryApproval(
@@ -195,7 +202,9 @@ class _ChatListPageState extends State<ChatListPage> {
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
         title: Text(
-          hasServerBackup ? 'Restore chat history' : 'Protect chat history',
+          hasServerBackup
+              ? 'Chat tarixini tiklash'
+              : 'Chat tarixini himoyalash',
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -203,8 +212,8 @@ class _ChatListPageState extends State<ChatListPage> {
           children: [
             Text(
               hasServerBackup
-                  ? 'This account has an encrypted recovery backup. Enter your recovery PIN to open older messages on this device.'
-                  : 'Create a recovery PIN. It protects your chat keys and lets you restore history after reinstalling or changing devices.',
+                  ? 'Bu akkauntda shifrlangan tiklash nusxasi mavjud. Eski xabarlarni ochish uchun tiklash PIN kodini kiriting.'
+                  : 'Tiklash PIN kodini yarating. U chat kalitlarini himoyalaydi va qayta o‘rnatishdan keyin tarixni tiklashga yordam beradi.',
             ),
             const SizedBox(height: 16),
             TextField(
@@ -213,7 +222,7 @@ class _ChatListPageState extends State<ChatListPage> {
               obscureText: true,
               keyboardType: TextInputType.number,
               maxLength: 12,
-              decoration: const InputDecoration(labelText: 'Recovery PIN'),
+              decoration: const InputDecoration(labelText: 'Tiklash PIN kodi'),
             ),
           ],
         ),
@@ -221,7 +230,7 @@ class _ChatListPageState extends State<ChatListPage> {
           if (hasServerBackup)
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Later'),
+              child: const Text('Keyinroq'),
             ),
           FilledButton(
             onPressed: () {
@@ -229,7 +238,7 @@ class _ChatListPageState extends State<ChatListPage> {
               if (pin.length < 6) return;
               Navigator.of(dialogContext).pop(pin);
             },
-            child: Text(hasServerBackup ? 'Restore' : 'Save backup'),
+            child: Text(hasServerBackup ? 'Tiklash' : 'Zaxirani saqlash'),
           ),
         ],
       ),
@@ -246,21 +255,11 @@ class _ChatListPageState extends State<ChatListPage> {
     }
   }
 
-  Future<void> _openSettingsPage() async {
-    _scaffoldKey.currentState?.closeDrawer();
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _SettingsPage(
-          title: 'Settings',
-          child: _buildSettingsOverview(_controller.settingsState),
-        ),
-      ),
-    );
-  }
-
   Future<void> _openConversation({
     required Conversation conversation,
     required String title,
+    String avatarUrl = '',
+    String roleLabel = '',
   }) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -268,17 +267,11 @@ class _ChatListPageState extends State<ChatListPage> {
           currentUserId: widget.sessionController.sessionUser!.id,
           conversation: conversation,
           title: title,
+          avatarUrl: avatarUrl,
+          roleLabel: roleLabel,
           chatFacade: widget.chatFacade,
           cryptoCoreFacade: widget.cryptoCoreFacade,
           onUnauthorized: widget.sessionController.invalidateSession,
-          onOpenContactDetails: () async {
-            final contact = _controller.contactItemForConversation(
-              conversation,
-            );
-            if (contact != null && mounted) {
-              await _showContactDetails(contact);
-            }
-          },
         ),
       ),
     );
@@ -289,6 +282,8 @@ class _ChatListPageState extends State<ChatListPage> {
     return _openConversation(
       conversation: item.conversation,
       title: item.title,
+      avatarUrl: item.avatarUrl,
+      roleLabel: item.roleLabel,
     );
   }
 
@@ -301,6 +296,8 @@ class _ChatListPageState extends State<ChatListPage> {
       await _openConversation(
         conversation: conversation,
         title: user.displayName,
+        avatarUrl: user.avatarUrl,
+        roleLabel: user.roleLabel,
       );
     } catch (error) {
       if (error is UnauthorizedApiException) {
@@ -330,7 +327,9 @@ class _ChatListPageState extends State<ChatListPage> {
                   leading: Icon(
                     item.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
                   ),
-                  title: Text(item.isPinned ? 'Unpin chat' : 'Pin chat'),
+                  title: Text(
+                    item.isPinned ? 'Chatni bo‘shatish' : 'Chatni mahkamlash',
+                  ),
                   onTap: () async {
                     Navigator.of(context).pop();
                     await _controller.togglePinned(item.conversation.id);
@@ -343,7 +342,7 @@ class _ChatListPageState extends State<ChatListPage> {
                         : Icons.archive_outlined,
                   ),
                   title: Text(
-                    item.isArchived ? 'Unarchive chat' : 'Archive chat',
+                    item.isArchived ? 'Arxivdan chiqarish' : 'Arxivlash',
                   ),
                   onTap: () async {
                     Navigator.of(context).pop();
@@ -357,7 +356,7 @@ class _ChatListPageState extends State<ChatListPage> {
                         : Icons.mark_chat_unread_outlined,
                   ),
                   title: Text(
-                    item.isUnread ? 'Mark as read' : 'Mark as unread',
+                    item.isUnread ? 'O‘qilgan qilish' : 'O‘qilmagan qilish',
                   ),
                   onTap: () async {
                     Navigator.of(context).pop();
@@ -391,18 +390,16 @@ class _ChatListPageState extends State<ChatListPage> {
                     return;
                   }
                   _showMessage(
-                    'Contact key verified.',
+                    'Kontakt kaliti tasdiqlandi.',
                     tone: AppStatusTone.success,
                   );
                 }
               : null,
-          onBlock: item.isCurrentUser
-              ? null
-              : () => _controller.blockUser(item.user.id),
-          onReport: item.isCurrentUser
-              ? null
-              : (reason) =>
-                    _controller.reportUser(item.user.id, reason: reason),
+          onRoleChanged: item.user.canManageRole
+              ? (role) async {
+                  await _controller.updateContactRole(item.user, role);
+                }
+              : null,
         ),
       ),
     );
@@ -412,6 +409,162 @@ class _ChatListPageState extends State<ChatListPage> {
     await widget.sessionController.switchWorkspace(workspaceId);
     widget.chatFacade.switchWorkspaceContext(workspaceId);
     await _load();
+  }
+
+  Future<void> _showEditProfile() async {
+    final session = widget.sessionController.sessionUser!;
+    final nameController = TextEditingController(text: session.displayName);
+    PlatformFile? selectedAvatar;
+    var isSaving = false;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                context.appSpacing.lg,
+                context.appSpacing.xs,
+                context.appSpacing.lg,
+                MediaQuery.viewInsetsOf(sheetContext).bottom +
+                    context.appSpacing.lg,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: isSaving
+                        ? null
+                        : () async {
+                            final result = await FilePicker.platform.pickFiles(
+                              type: FileType.custom,
+                              allowedExtensions: const [
+                                'jpg',
+                                'jpeg',
+                                'png',
+                                'webp',
+                              ],
+                              withData: true,
+                            );
+                            final file = result?.files.singleOrNull;
+                            if (file == null) {
+                              return;
+                            }
+                            if (file.size > 5 * 1024 * 1024) {
+                              if (sheetContext.mounted) {
+                                ScaffoldMessenger.of(sheetContext)
+                                  ..hideCurrentSnackBar()
+                                  ..showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Rasm hajmi 5 MB dan oshmasligi kerak.',
+                                      ),
+                                    ),
+                                  );
+                              }
+                              return;
+                            }
+                            setSheetState(() => selectedAvatar = file);
+                          },
+                    child: Stack(
+                      alignment: Alignment.bottomRight,
+                      children: [
+                        if (selectedAvatar?.bytes != null)
+                          ClipOval(
+                            child: SizedBox.square(
+                              dimension: 84,
+                              child: Image.memory(
+                                selectedAvatar!.bytes!,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          )
+                        else
+                          AppAvatar(
+                            label: session.displayName,
+                            imageUrl: session.avatarUrl,
+                            radius: 42,
+                          ),
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: context.appColors.primary,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: context.appColors.surface,
+                              width: 2,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.photo_camera_outlined,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: context.appSpacing.md),
+                  TextField(
+                    controller: nameController,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'Ism va familiya',
+                      prefixIcon: Icon(Icons.person_outline_rounded),
+                    ),
+                  ),
+                  SizedBox(height: context.appSpacing.md),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: isSaving
+                          ? null
+                          : () async {
+                              final name = nameController.text.trim();
+                              if (name.length < 2) {
+                                return;
+                              }
+                              setSheetState(() => isSaving = true);
+                              try {
+                                await widget.sessionController.updateProfile(
+                                  displayName: name,
+                                  avatarBytes: selectedAvatar?.bytes,
+                                  avatarFilename: selectedAvatar?.name ?? '',
+                                );
+                                await _controller.refresh();
+                                if (sheetContext.mounted) {
+                                  Navigator.of(sheetContext).pop();
+                                }
+                              } catch (error) {
+                                if (sheetContext.mounted) {
+                                  ScaffoldMessenger.of(sheetContext)
+                                    ..hideCurrentSnackBar()
+                                    ..showSnackBar(
+                                      SnackBar(content: Text(error.toString())),
+                                    );
+                                  setSheetState(() => isSaving = false);
+                                }
+                              }
+                            },
+                      child: isSaving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Saqlash'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    ).whenComplete(nameController.dispose);
   }
 
   // ignore: unused_element
@@ -436,14 +589,14 @@ class _ChatListPageState extends State<ChatListPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const AppSectionHeader(
-                  title: 'Export encrypted backup',
+                  title: 'Shifrlangan zaxirani eksport qilish',
                   subtitle:
                       'Recovery passphrase bilan historical decrypt backup yaratiladi.',
                 ),
                 SizedBox(height: spacing.lg),
                 AppTextField(
                   controller: controller,
-                  labelText: 'Recovery passphrase',
+                  labelText: 'Tiklash maxfiy iborasi',
                 ),
                 SizedBox(height: spacing.lg),
                 AppPrimaryButton(
@@ -462,7 +615,7 @@ class _ChatListPageState extends State<ChatListPage> {
                       blob: blob,
                     );
                   },
-                  label: const Text('Generate backup'),
+                  label: const Text('Zaxira yaratish'),
                 ),
               ],
             ),
@@ -495,19 +648,19 @@ class _ChatListPageState extends State<ChatListPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const AppSectionHeader(
-                  title: 'Import encrypted backup',
+                  title: 'Shifrlangan zaxirani import qilish',
                   subtitle:
                       'Old historical decrypt capability qayta tiklanadi.',
                 ),
                 SizedBox(height: spacing.lg),
                 AppTextField(
                   controller: passphraseController,
-                  labelText: 'Recovery passphrase',
+                  labelText: 'Tiklash maxfiy iborasi',
                 ),
                 SizedBox(height: spacing.md),
                 AppTextField(
                   controller: blobController,
-                  labelText: 'Encrypted backup blob',
+                  labelText: 'Shifrlangan zaxira ma’lumoti',
                   maxLines: 8,
                   minLines: 6,
                 ),
@@ -527,7 +680,7 @@ class _ChatListPageState extends State<ChatListPage> {
                     }
                     blobController.text = blob;
                   },
-                  label: const Text('Load backup from server'),
+                  label: const Text('Serverdan zaxirani yuklash'),
                 ),
                 SizedBox(height: spacing.lg),
                 AppPrimaryButton(
@@ -543,7 +696,7 @@ class _ChatListPageState extends State<ChatListPage> {
                       encryptedBlob: blob,
                     );
                   },
-                  label: const Text('Restore backup'),
+                  label: const Text('Zaxirani tiklash'),
                 ),
               ],
             ),
@@ -620,24 +773,26 @@ class _ChatListPageState extends State<ChatListPage> {
     final settingsState = _controller.settingsState;
     final tabs = [
       _TabMeta(
-        label: 'Chats',
-        icon: Icons.chat_bubble_outline_rounded,
-        title: settingsState.currentWorkspace?.name ?? 'Chats',
+        label: context.antiQText(uz: 'Chatlar', en: 'Chats'),
+        icon: HugeIcons.strokeRoundedChat,
+        title:
+            settingsState.currentWorkspace?.name ??
+            context.antiQText(uz: 'Chatlar', en: 'Chats'),
       ),
-      const _TabMeta(
-        label: 'Contacts',
-        icon: Icons.people_alt_outlined,
-        title: 'Contacts',
+      _TabMeta(
+        label: context.antiQText(uz: 'Kontaktlar', en: 'Contacts'),
+        icon: HugeIcons.strokeRoundedContactBook,
+        title: context.antiQText(uz: 'Kontaktlar', en: 'Contacts'),
       ),
-      const _TabMeta(
-        label: 'Account',
-        icon: Icons.person_outline_rounded,
-        title: 'Account',
+      _TabMeta(
+        label: context.antiQText(uz: 'Sozlamalar', en: 'Settings'),
+        icon: HugeIcons.strokeRoundedSettings02,
+        title: context.antiQText(uz: 'Sozlamalar', en: 'Settings'),
       ),
-      const _TabMeta(
-        label: 'Settings',
-        icon: Icons.settings_outlined,
-        title: 'Settings',
+      _TabMeta(
+        label: context.antiQText(uz: 'Profil', en: 'Profile'),
+        icon: HugeIcons.strokeRoundedUserCircle,
+        title: context.antiQText(uz: 'Profil', en: 'Profile'),
       ),
     ];
 
@@ -645,59 +800,31 @@ class _ChatListPageState extends State<ChatListPage> {
       scaffoldKey: _scaffoldKey,
       drawer: _buildNavigationDrawer(settingsState),
       appBar: AppBar(
-        toolbarHeight: 68,
-        leading: IconButton(
-          tooltip: 'Menu',
-          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-          icon: const Icon(Icons.menu_rounded),
+        toolbarHeight: 56,
+        leadingWidth: 52,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: _PremiumIconButton(
+            tooltip: context.antiQText(uz: 'Menyu', en: 'Menu'),
+            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+            icon: Icons.menu_rounded,
+          ),
         ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Text(
-              tabs[_selectedTabIndex].title,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            SizedBox(height: spacing.xs),
-            Text(sessionUser.displayName, style: theme.textTheme.labelMedium),
-          ],
+        title: Text(
+          tabs[_selectedTabIndex].title,
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
         actions: [
-          if (sessionUser.organizations.isNotEmpty)
-            PopupMenuButton<int>(
-              tooltip: 'Switch workspace',
-              onSelected: _switchWorkspace,
-              itemBuilder: (context) {
-                final items = <PopupMenuEntry<int>>[];
-                for (final organization in sessionUser.organizations) {
-                  items.add(
-                    PopupMenuItem<int>(
-                      enabled: false,
-                      child: Text(organization.name),
-                    ),
-                  );
-                  for (final workspace in organization.workspaces) {
-                    items.add(
-                      PopupMenuItem<int>(
-                        value: workspace.id,
-                        child: Row(
-                          children: [
-                            Expanded(child: Text(workspace.name)),
-                            if (workspace.id == sessionUser.activeWorkspaceId)
-                              const Icon(Icons.check, size: 18),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
-                }
-                return items;
-              },
-              icon: const Icon(Icons.apartment_outlined),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: AppAvatar(
+              label: sessionUser.displayName,
+              imageUrl: sessionUser.avatarUrl,
+              radius: 17,
             ),
+          ),
         ],
       ),
       body: SafeArea(
@@ -732,47 +859,37 @@ class _ChatListPageState extends State<ChatListPage> {
                   ),
                   RefreshIndicator(
                     onRefresh: _refresh,
-                    child: _buildAccountTab(settingsState),
-                  ),
-                  RefreshIndicator(
-                    onRefresh: _refresh,
                     child: _buildSettingsOverview(settingsState),
                   ),
+                  _buildAccountTab(settingsState),
                 ],
               ),
             ),
           ],
         ),
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: context.appColors.surface,
-          border: Border(top: BorderSide(color: context.appColors.border)),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        minimum: EdgeInsets.fromLTRB(
+          spacing.md,
+          spacing.xs,
+          spacing.md,
+          spacing.sm,
         ),
-        child: NavigationBarTheme(
-          data: NavigationBarThemeData(
-            height: 66,
-            backgroundColor: context.appColors.surface,
-            indicatorColor: context.appColors.primarySoft,
-            labelTextStyle: WidgetStatePropertyAll(
-              theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: context.appColors.surface.withValues(alpha: 0.98),
+            borderRadius: BorderRadius.circular(context.appRadii.xl),
+            border: Border.all(
+              color: context.appColors.border.withValues(alpha: 0.72),
             ),
+            boxShadow: context.appShadows.floating,
           ),
-          child: NavigationBar(
-            destinations: [
-              for (final tab in tabs)
-                NavigationDestination(
-                  icon: Icon(tab.icon),
-                  selectedIcon: Icon(tab.icon),
-                  label: tab.label,
-                ),
-            ],
+          child: _PremiumBottomNavigation(
+            tabs: tabs,
             selectedIndex: _selectedTabIndex,
-            onDestinationSelected: (index) {
-              setState(() {
-                _selectedTabIndex = index;
-              });
-            },
+            onSelected: (index) => setState(() => _selectedTabIndex = index),
           ),
         ),
       ),
@@ -784,10 +901,10 @@ class _ChatListPageState extends State<ChatListPage> {
     final items = state.items;
     return ListView(
       padding: EdgeInsets.fromLTRB(
-        spacing.lg,
-        spacing.sm,
-        spacing.lg,
-        spacing.lg,
+        spacing.md,
+        spacing.xs,
+        spacing.md,
+        spacing.md,
       ),
       children: [
         if (_selectedConversationIds.isNotEmpty) ...[
@@ -796,18 +913,18 @@ class _ChatListPageState extends State<ChatListPage> {
             child: Row(
               children: [
                 IconButton(
-                  tooltip: 'Clear selection',
+                  tooltip: 'Tanlovni bekor qilish',
                   onPressed: () => setState(_selectedConversationIds.clear),
                   icon: const Icon(Icons.close_rounded),
                 ),
                 Expanded(
                   child: Text(
-                    '${_selectedConversationIds.length} selected',
+                    '${_selectedConversationIds.length} ta tanlandi',
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Archive selected',
+                  tooltip: 'Tanlanganlarni arxivlash',
                   onPressed: _archiveSelectedConversations,
                   icon: const Icon(Icons.archive_outlined),
                 ),
@@ -816,14 +933,8 @@ class _ChatListPageState extends State<ChatListPage> {
           ),
           SizedBox(height: spacing.sm),
         ],
-        AppSearchField(
-          controller: _chatSearchController,
-          hintText: 'Search chats, drafts, people',
-          onChanged: (value) => _controller.setChatSearchQuery(value),
-        ),
-        SizedBox(height: spacing.md),
-        _buildChatFilterSelector(state.preferences.selectedFilter),
-        SizedBox(height: spacing.lg),
+        _buildCompactChatToolbar(state.preferences.selectedFilter),
+        SizedBox(height: spacing.sm),
         if (_controller.isLoading && items.isEmpty)
           ..._buildChatSkeleton()
         else if (items.isEmpty)
@@ -839,7 +950,7 @@ class _ChatListPageState extends State<ChatListPage> {
                 alignment: Alignment.centerLeft,
                 color: context.appColors.primary,
                 icon: Icons.mark_chat_read_outlined,
-                label: 'Unread',
+                label: 'O‘qilmagan',
               ),
               secondaryBackground: _swipeActionBackground(
                 alignment: Alignment.centerRight,
@@ -847,7 +958,7 @@ class _ChatListPageState extends State<ChatListPage> {
                 icon: item.isArchived
                     ? Icons.unarchive_outlined
                     : Icons.archive_outlined,
-                label: item.isArchived ? 'Restore' : 'Archive',
+                label: item.isArchived ? 'Qaytarish' : 'Arxivlash',
               ),
               confirmDismiss: (direction) async {
                 if (direction == DismissDirection.startToEnd) {
@@ -865,15 +976,100 @@ class _ChatListPageState extends State<ChatListPage> {
                 onTap: () => _selectedConversationIds.isNotEmpty
                     ? _toggleConversationSelection(item.conversation.id)
                     : _openConversationItem(item),
-                onLongPress: () =>
+                onAvatarLongPress: () =>
                     _toggleConversationSelection(item.conversation.id),
-                onMorePressed: () => _showConversationActions(item),
+                onLongPress: () => _selectedConversationIds.isNotEmpty
+                    ? _toggleConversationSelection(item.conversation.id)
+                    : _showConversationActions(item),
                 relativeTime: _formatRelativeTime(item.updatedAt),
               ),
             ),
       ],
     );
   }
+
+  Widget _buildCompactChatToolbar(ChatListFilter selectedFilter) {
+    final spacing = context.appSpacing;
+    return Row(
+      children: [
+        Expanded(
+          child: AppSearchField(
+            controller: _chatSearchController,
+            hintText: context.antiQText(uz: 'Qidirish', en: 'Search'),
+            compact: true,
+            onChanged: _controller.setChatSearchQuery,
+          ),
+        ),
+        SizedBox(width: spacing.xs),
+        PopupMenuButton<ChatListFilter>(
+          tooltip: context.antiQText(uz: 'Chat filtri', en: 'Chat filter'),
+          initialValue: selectedFilter,
+          onSelected: _controller.setChatFilter,
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: ChatListFilter.all,
+              child: Text(context.antiQText(uz: 'Barchasi', en: 'All')),
+            ),
+            PopupMenuItem(
+              value: ChatListFilter.unread,
+              child: Text(context.antiQText(uz: 'O‘qilmagan', en: 'Unread')),
+            ),
+            PopupMenuItem(
+              value: ChatListFilter.pinned,
+              child: Text(context.antiQText(uz: 'Mahkamlangan', en: 'Pinned')),
+            ),
+            PopupMenuItem(
+              value: ChatListFilter.archived,
+              child: Text(context.antiQText(uz: 'Arxiv', en: 'Archived')),
+            ),
+          ],
+          child: Container(
+            height: 42,
+            padding: EdgeInsets.symmetric(horizontal: spacing.sm),
+            decoration: BoxDecoration(
+              color: selectedFilter == ChatListFilter.all
+                  ? context.appColors.surfaceMuted
+                  : context.appColors.primarySoft,
+              borderRadius: BorderRadius.circular(context.appRadii.md),
+              border: Border.all(
+                color: selectedFilter == ChatListFilter.all
+                    ? context.appColors.border.withValues(alpha: 0.58)
+                    : context.appColors.primary.withValues(alpha: 0.22),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.tune_rounded,
+                  size: 18,
+                  color: selectedFilter == ChatListFilter.all
+                      ? context.appColors.textMuted
+                      : context.appColors.primary,
+                ),
+                if (selectedFilter != ChatListFilter.all) ...[
+                  SizedBox(width: spacing.xs),
+                  Text(
+                    _chatFilterShortLabel(selectedFilter),
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: context.appColors.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _chatFilterShortLabel(ChatListFilter filter) => switch (filter) {
+    ChatListFilter.all => context.antiQText(uz: 'Barchasi', en: 'All'),
+    ChatListFilter.unread => context.antiQText(uz: 'Yangi', en: 'Unread'),
+    ChatListFilter.pinned => context.antiQText(uz: 'Muhim', en: 'Pinned'),
+    ChatListFilter.archived => context.antiQText(uz: 'Arxiv', en: 'Archived'),
+  };
 
   Widget _swipeActionBackground({
     required Alignment alignment,
@@ -928,7 +1124,10 @@ class _ChatListPageState extends State<ChatListPage> {
       children: [
         AppSearchField(
           controller: _contactsSearchController,
-          hintText: 'Search contacts',
+          hintText: context.antiQText(
+            uz: 'Kontaktlarni qidiring',
+            en: 'Search contacts',
+          ),
           onChanged: _controller.setContactsSearchQuery,
         ),
         SizedBox(height: spacing.md),
@@ -937,7 +1136,12 @@ class _ChatListPageState extends State<ChatListPage> {
         if (_controller.isLoading && state.sections.isEmpty)
           ..._buildContactSkeleton()
         else if (state.sections.isEmpty)
-          _buildEmptyCard('No contacts match the current filter.')
+          _buildEmptyCard(
+            context.antiQText(
+              uz: 'Bu filtr bo‘yicha kontakt topilmadi.',
+              en: 'No contacts match this filter.',
+            ),
+          )
         else
           for (final section in state.sections) ...[
             AppSectionHeader(title: section.label),
@@ -953,129 +1157,7 @@ class _ChatListPageState extends State<ChatListPage> {
     );
   }
 
-  Widget _buildAccountTab(SettingsViewState state) {
-    final spacing = context.appSpacing;
-    final theme = Theme.of(context);
-    final session = state.sessionUser;
-    return ListView(
-      padding: EdgeInsets.all(spacing.lg),
-      children: [
-        AppSurfaceCard(
-          backgroundColor: context.appColors.primarySoft,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(child: AppAvatar(label: session.displayName, radius: 42)),
-              SizedBox(height: spacing.md),
-              Center(
-                child: Text(
-                  session.displayName,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              SizedBox(height: spacing.xs),
-              Center(
-                child: Text(
-                  session.username,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: context.appColors.textMuted,
-                  ),
-                ),
-              ),
-              SizedBox(height: spacing.md),
-              Align(
-                alignment: Alignment.center,
-                child: AppPrimaryButton(
-                  onPressed: _editProfile,
-                  label: const Text('Edit profile'),
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: spacing.lg),
-        AppSurfaceCard(
-          child: Column(
-            children: [
-              _buildInfoRow(
-                'Workspace',
-                state.currentWorkspace?.name ?? 'None',
-              ),
-              _buildInfoRow('Workspace ID', '${session.activeWorkspaceId}'),
-              _buildInfoRow('Device ID', session.deviceId),
-              _buildInfoRow('App skin', state.appSkinId),
-            ],
-          ),
-        ),
-        SizedBox(height: spacing.lg),
-        AppSecondaryButton(
-          onPressed: _openSettingsPage,
-          label: const Text('Open full settings'),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSettingsOverview(SettingsViewState state) {
-    final spacing = context.appSpacing;
-    return ListView(
-      padding: EdgeInsets.all(spacing.lg),
-      children: [
-        const AppSectionHeader(
-          title: 'Settings',
-          subtitle: 'Choose a section to manage your account.',
-        ),
-        SizedBox(height: spacing.md),
-        _settingsSectionTile(
-          title: 'Account',
-          subtitle: 'Profile, workspace and sign-in',
-          icon: Icons.person_outline_rounded,
-          builder: _buildAccountSettings,
-        ),
-        _settingsSectionTile(
-          title: 'Security',
-          subtitle: 'Trust, encryption and key health',
-          icon: Icons.shield_outlined,
-          builder: _buildSecuritySettings,
-        ),
-        _settingsSectionTile(
-          title: 'Devices',
-          subtitle: 'Sessions, registered devices and revoke',
-          icon: Icons.devices_outlined,
-          builder: _buildDevicesSettings,
-        ),
-        _settingsSectionTile(
-          title: 'Backup & Recovery',
-          subtitle: 'Encrypted history and recovery approvals',
-          icon: Icons.backup_outlined,
-          builder: _buildBackupSettings,
-        ),
-        _settingsSectionTile(
-          title: 'Notifications & Privacy',
-          subtitle: 'Notification delivery and read receipts',
-          icon: Icons.notifications_outlined,
-          builder: _buildNotificationsPrivacySettings,
-        ),
-        _settingsSectionTile(
-          title: 'Appearance & Chats',
-          subtitle: 'Theme, inbox layout and drafts',
-          icon: Icons.palette_outlined,
-          builder: _buildAppearanceSettings,
-        ),
-        _settingsSectionTile(
-          title: 'About & Support',
-          subtitle: 'Version, support and connection details',
-          icon: Icons.info_outline_rounded,
-          builder: _buildAboutSettings,
-        ),
-      ],
-    );
-  }
-
-  // Kept temporarily as a migration reference while the new section pages
-  // above replace its old all-in-one settings experience.
+  // Legacy all-in-one layout kept temporarily as a migration reference.
   // ignore: unused_element
   Widget _buildSettingsTab(SettingsViewState state) {
     final spacing = context.appSpacing;
@@ -1092,34 +1174,29 @@ class _ChatListPageState extends State<ChatListPage> {
               const AppBrandMark(size: 48),
               SizedBox(height: spacing.lg),
               Text(
-                'Profile and workspace',
+                'Profil va ish maydoni',
                 style: theme.textTheme.headlineSmall,
               ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: _editProfile,
-                  icon: const Icon(Icons.edit_outlined),
-                  label: const Text('Edit profile'),
-                ),
-              ),
               SizedBox(height: spacing.md),
-              _buildInfoRow('Display name', sessionUser.displayName),
-              _buildInfoRow('Username', sessionUser.username),
+              _buildInfoRow('Ko‘rinadigan ism', sessionUser.displayName),
+              _buildInfoRow('Foydalanuvchi nomi', sessionUser.username),
               _buildInfoRow(
-                'Workspace',
-                state.currentWorkspace?.name ?? 'None',
+                'Ish maydoni',
+                state.currentWorkspace?.name ?? 'Mavjud emas',
               ),
-              _buildInfoRow('Workspace ID', '${sessionUser.activeWorkspaceId}'),
-              _buildInfoRow('Device ID', sessionUser.deviceId),
-              _buildInfoRow('Skin', state.appSkinId),
+              _buildInfoRow(
+                'Ish maydoni ID',
+                '${sessionUser.activeWorkspaceId}',
+              ),
+              _buildInfoRow('Qurilma ID', sessionUser.deviceId),
+              _buildInfoRow('Ko‘rinish', state.appSkinId),
             ],
           ),
         ),
         SizedBox(height: spacing.lg),
         const AppSectionHeader(
-          title: 'Security Center',
-          subtitle: 'Trust, device readiness and historical decrypt health.',
+          title: 'Xavfsizlik markazi',
+          subtitle: 'Ishonch, qurilma tayyorligi va eski xabarlar holati.',
         ),
         SizedBox(height: spacing.sm),
         AppSurfaceCard(
@@ -1131,16 +1208,16 @@ class _ChatListPageState extends State<ChatListPage> {
                 runSpacing: spacing.sm,
                 children: [
                   AppBadge(
-                    label: '${state.security.verifiedPeersCount} verified',
+                    label: '${state.security.verifiedPeersCount} tasdiqlangan',
                     tone: AppStatusTone.success,
                   ),
                   AppBadge(
                     label:
-                        '${state.security.needsAttentionCount} need attention',
+                        '${state.security.needsAttentionCount} e’tibor talab qiladi',
                     tone: AppStatusTone.warning,
                   ),
                   AppBadge(
-                    label: '${state.security.notReadyCount} not ready',
+                    label: '${state.security.notReadyCount} tayyor emas',
                     tone: AppStatusTone.danger,
                   ),
                 ],
@@ -1148,8 +1225,8 @@ class _ChatListPageState extends State<ChatListPage> {
               SizedBox(height: spacing.md),
               AppStatusBanner(
                 message: state.security.hasHistoricalDecryptCapability
-                    ? 'Historical decrypt ready. ${state.security.availableHistoricalKeysets} keysets available.'
-                    : 'Historical decrypt limited. Backup restore tavsiya qilinadi.',
+                    ? 'Eski xabarlarni ochish tayyor. ${state.security.availableHistoricalKeysets} ta kalitlar to‘plami mavjud.'
+                    : 'Eski xabarlarni ochish cheklangan. Zaxirani tiklash tavsiya etiladi.',
                 tone: state.security.hasHistoricalDecryptCapability
                     ? AppStatusTone.success
                     : AppStatusTone.warning,
@@ -1157,8 +1234,8 @@ class _ChatListPageState extends State<ChatListPage> {
               SizedBox(height: spacing.md),
               AppStatusBanner(
                 message: state.security.isCurrentDeviceReady
-                    ? 'Current device PQC ready.'
-                    : 'Current device to‘liq ready emas.',
+                    ? 'Joriy qurilma PQC uchun tayyor.'
+                    : 'Joriy qurilma hali to‘liq tayyor emas.',
                 tone: state.security.isCurrentDeviceReady
                     ? AppStatusTone.success
                     : AppStatusTone.warning,
@@ -1168,8 +1245,8 @@ class _ChatListPageState extends State<ChatListPage> {
         ),
         SizedBox(height: spacing.lg),
         const AppSectionHeader(
-          title: 'Backup & Recovery',
-          subtitle: 'Automatic encrypted recovery linked to this account.',
+          title: 'Zaxira va tiklash',
+          subtitle: 'Akkauntga bog‘langan avtomatik shifrlangan tiklash.',
         ),
         SizedBox(height: spacing.sm),
         if (state.backup.statusMessage != null) ...[
@@ -1184,19 +1261,19 @@ class _ChatListPageState extends State<ChatListPage> {
             children: [
               ListTile(
                 leading: const Icon(Icons.admin_panel_settings_outlined),
-                title: const Text('Enterprise history recovery'),
+                title: const Text('Korporativ tarixni tiklash'),
                 subtitle: const Text(
                   'AWS KMS escrow manifestini faqat siz Restore history tugmasini bosganingizda import qilamiz.',
                 ),
                 trailing: Wrap(
                   children: [
                     IconButton(
-                      tooltip: 'Recovery requests',
+                      tooltip: 'Tiklash so‘rovlari',
                       icon: const Icon(Icons.verified_user_outlined),
                       onPressed: _showPendingRecoveryApprovals,
                     ),
                     IconButton(
-                      tooltip: 'Restore history',
+                      tooltip: 'Tarixni tiklash',
                       icon: const Icon(Icons.restore_rounded),
                       onPressed: () async {
                         try {
@@ -1217,8 +1294,8 @@ class _ChatListPageState extends State<ChatListPage> {
         ),
         SizedBox(height: spacing.lg),
         const AppSectionHeader(
-          title: 'Devices & Sessions',
-          subtitle: 'Current device and visible registered devices.',
+          title: 'Qurilmalar va seanslar',
+          subtitle: 'Joriy va ro‘yxatdan o‘tgan qurilmalar.',
         ),
         SizedBox(height: spacing.sm),
         if (state.currentDevice != null)
@@ -1238,13 +1315,13 @@ class _ChatListPageState extends State<ChatListPage> {
                     children: [
                       Text(
                         state.currentDevice!.deviceName.isEmpty
-                            ? 'Current device'
+                            ? 'Joriy qurilma'
                             : state.currentDevice!.deviceName,
                         style: theme.textTheme.titleMedium,
                       ),
                       SizedBox(height: spacing.xs),
                       Text(
-                        '${state.currentDevice!.platform.isEmpty ? 'unknown' : state.currentDevice!.platform} • ${state.currentDevice!.status}',
+                        '${state.currentDevice!.platform.isEmpty ? 'noma’lum' : state.currentDevice!.platform} • ${state.currentDevice!.status}',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: context.appColors.textMuted,
                         ),
@@ -1256,8 +1333,8 @@ class _ChatListPageState extends State<ChatListPage> {
                   label:
                       state.currentDevice!.hasUsableMlKemKey &&
                           state.currentDevice!.hasUsableMlDsaKey
-                      ? 'PQC ready'
-                      : 'Needs setup',
+                      ? 'PQC tayyor'
+                      : 'Sozlash kerak',
                   tone:
                       state.currentDevice!.hasUsableMlKemKey &&
                           state.currentDevice!.hasUsableMlDsaKey
@@ -1268,7 +1345,7 @@ class _ChatListPageState extends State<ChatListPage> {
             ),
           )
         else
-          _buildEmptyCard('Current device information is not available.'),
+          _buildEmptyCard('Joriy qurilma ma’lumoti mavjud emas.'),
         SizedBox(height: spacing.sm),
         for (final device in state.devices)
           Padding(
@@ -1294,7 +1371,7 @@ class _ChatListPageState extends State<ChatListPage> {
                         ),
                         SizedBox(height: spacing.xs),
                         Text(
-                          '${device.platform.isEmpty ? 'unknown' : device.platform} • ${device.status} • fingerprint ${device.profileFingerprint.isEmpty ? 'missing' : 'present'}',
+                          '${device.platform.isEmpty ? 'noma’lum' : device.platform} • ${device.status} • barmoq izi ${device.profileFingerprint.isEmpty ? 'yo‘q' : 'mavjud'}',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: context.appColors.textMuted,
                           ),
@@ -1302,7 +1379,7 @@ class _ChatListPageState extends State<ChatListPage> {
                         if (device.lastSeenAt != null) ...[
                           SizedBox(height: spacing.xs),
                           Text(
-                            'Last seen ${_formatRelativeTime(device.lastSeenAt!)}',
+                            'Oxirgi faollik: ${_formatRelativeTime(device.lastSeenAt!)}',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: context.appColors.textMuted,
                             ),
@@ -1313,8 +1390,8 @@ class _ChatListPageState extends State<ChatListPage> {
                   ),
                   AppBadge(
                     label: device.hasUsableMlKemKey && device.hasUsableMlDsaKey
-                        ? 'Ready'
-                        : 'Not ready',
+                        ? 'Tayyor'
+                        : 'Tayyor emas',
                     tone: device.hasUsableMlKemKey && device.hasUsableMlDsaKey
                         ? AppStatusTone.success
                         : AppStatusTone.warning,
@@ -1325,8 +1402,8 @@ class _ChatListPageState extends State<ChatListPage> {
           ),
         SizedBox(height: spacing.lg),
         const AppSectionHeader(
-          title: 'Preferences',
-          subtitle: 'Local product settings for inbox behavior.',
+          title: 'Afzalliklar',
+          subtitle: 'Chatlar oynasi uchun mahalliy sozlamalar.',
         ),
         SizedBox(height: spacing.sm),
         AppSurfaceCard(
@@ -1334,32 +1411,8 @@ class _ChatListPageState extends State<ChatListPage> {
             children: [
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                value: _notificationsEnabled,
-                title: const Text('Notifications'),
-                subtitle: const Text('Account notification delivery.'),
-                onChanged: (value) {
-                  setState(() => _notificationsEnabled = value);
-                  _controller.updateAccountSettings({
-                    'notifications_enabled': value,
-                  });
-                },
-              ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: _readReceiptsEnabled,
-                title: const Text('Read receipts'),
-                subtitle: const Text('Allow read status for your messages.'),
-                onChanged: (value) {
-                  setState(() => _readReceiptsEnabled = value);
-                  _controller.updateAccountSettings({
-                    'read_receipts_enabled': value,
-                  });
-                },
-              ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
                 value: widget.themeController.themeMode == ThemeMode.dark,
-                title: const Text('Dark mode'),
+                title: const Text('Qorong‘i rejim'),
                 subtitle: const Text(
                   'Light va dark ko‘rinish o‘rtasida almashish.',
                 ),
@@ -1372,7 +1425,7 @@ class _ChatListPageState extends State<ChatListPage> {
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: state.appPreferences.showArchivedByDefault,
-                title: const Text('Show archived in main inbox'),
+                title: const Text('Arxivni asosiy ro‘yxatda ko‘rsatish'),
                 subtitle: const Text(
                   'Archived chats “All” ichida ham ko‘rinsin.',
                 ),
@@ -1384,19 +1437,8 @@ class _ChatListPageState extends State<ChatListPage> {
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                value: state.appPreferences.compactListMode,
-                title: const Text('Compact list mode'),
-                subtitle: const Text('Tiles shorter va zichroq ko‘rinadi.'),
-                onChanged: (value) {
-                  _controller.updateAppPreferences(
-                    state.appPreferences.copyWith(compactListMode: value),
-                  );
-                },
-              ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
                 value: state.appPreferences.keepDrafts,
-                title: const Text('Keep drafts'),
+                title: const Text('Qoralamalarni saqlash'),
                 subtitle: const Text('Composer draftlari avtomatik saqlansin.'),
                 onChanged: (value) {
                   _controller.updateAppPreferences(
@@ -1407,7 +1449,9 @@ class _ChatListPageState extends State<ChatListPage> {
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: state.appPreferences.preferManualRefreshHints,
-                title: const Text('Prefer manual refresh hints'),
+                title: const Text(
+                  'Qo‘lda yangilash ko‘rsatmalarini afzal ko‘rish',
+                ),
                 subtitle: const Text(
                   'Auto refresh o‘rniga ko‘proq manual affordance.',
                 ),
@@ -1424,16 +1468,16 @@ class _ChatListPageState extends State<ChatListPage> {
         ),
         SizedBox(height: spacing.lg),
         const AppSectionHeader(
-          title: 'About & Support',
-          subtitle: 'Build identity and support contact.',
+          title: 'Dastur va yordam',
+          subtitle: 'Versiya ma’lumoti va yordam aloqasi.',
         ),
         SizedBox(height: spacing.sm),
         AppSurfaceCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildInfoRow('Version', state.appVersion),
-              _buildInfoRow('Support', state.supportEmail),
+              _buildInfoRow('Versiya', state.appVersion),
+              _buildInfoRow('Yordam', state.supportEmail),
               _buildInfoRow('API', state.apiBaseUrl),
             ],
           ),
@@ -1445,7 +1489,7 @@ class _ChatListPageState extends State<ChatListPage> {
               child: AppSecondaryButton(
                 onPressed: () => _logout(forgetDevice: false),
                 icon: const Icon(Icons.logout_rounded),
-                label: const Text('Logout'),
+                label: const Text('Chiqish'),
               ),
             ),
             SizedBox(width: spacing.sm),
@@ -1453,7 +1497,7 @@ class _ChatListPageState extends State<ChatListPage> {
               child: AppPrimaryButton(
                 onPressed: () => _logout(forgetDevice: true),
                 icon: const Icon(Icons.delete_outline_rounded),
-                label: const Text('Forget device'),
+                label: const Text('Qurilmani unutish'),
               ),
             ),
           ],
@@ -1462,32 +1506,321 @@ class _ChatListPageState extends State<ChatListPage> {
     );
   }
 
-  Widget _settingsSectionTile({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Widget Function(SettingsViewState state) builder,
-  }) {
-    final spacing = context.appSpacing;
-    return Padding(
-      padding: EdgeInsets.only(bottom: spacing.sm),
-      child: AppSurfaceCard(
-        child: ListTile(
-          contentPadding: EdgeInsets.symmetric(horizontal: spacing.md),
-          leading: Icon(icon, color: context.appColors.primary),
-          title: Text(title),
-          subtitle: Text(subtitle),
-          trailing: const Icon(Icons.chevron_right_rounded),
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => _SettingsPage(
-                title: title,
-                child: ListenableBuilder(
-                  listenable: _controller,
-                  builder: (_, _) => builder(_controller.settingsState),
-                ),
+  Widget _buildNavigationDrawer(SettingsViewState state) {
+    final session = state.sessionUser;
+    return Drawer(
+      child: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(color: context.appColors.primarySoft),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AppAvatar(
+                    label: session.displayName,
+                    imageUrl: session.avatarUrl,
+                    radius: 28,
+                  ),
+                  const Spacer(),
+                  Text(
+                    session.displayName,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  Text(
+                    session.username,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  if (state.currentUser?.roleLabel.isNotEmpty == true)
+                    Text(
+                      state.currentUser!.roleLabel,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: context.appColors.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                ],
               ),
             ),
+            ListTile(
+              leading: const HugeIcon(
+                icon: HugeIcons.strokeRoundedChat,
+                size: 21,
+              ),
+              title: Text(context.antiQText(uz: 'Chatlar', en: 'Chats')),
+              onTap: () {
+                _scaffoldKey.currentState?.closeDrawer();
+                setState(() => _selectedTabIndex = 0);
+              },
+            ),
+            ListTile(
+              leading: const HugeIcon(
+                icon: HugeIcons.strokeRoundedContactBook,
+                size: 21,
+              ),
+              title: Text(context.antiQText(uz: 'Kontaktlar', en: 'Contacts')),
+              onTap: () {
+                _scaffoldKey.currentState?.closeDrawer();
+                setState(() => _selectedTabIndex = 1);
+              },
+            ),
+            ListTile(
+              leading: const HugeIcon(
+                icon: HugeIcons.strokeRoundedSettings02,
+                size: 21,
+              ),
+              title: Text(context.antiQText(uz: 'Sozlamalar', en: 'Settings')),
+              onTap: () {
+                _scaffoldKey.currentState?.closeDrawer();
+                setState(() => _selectedTabIndex = 2);
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const HugeIcon(
+                icon: HugeIcons.strokeRoundedUserCircle,
+                size: 21,
+              ),
+              title: Text(context.antiQText(uz: 'Profil', en: 'Profile')),
+              onTap: () {
+                _scaffoldKey.currentState?.closeDrawer();
+                setState(() => _selectedTabIndex = 3);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded),
+              title: Text(context.antiQText(uz: 'Chiqish', en: 'Log out')),
+              onTap: () async {
+                _scaffoldKey.currentState?.closeDrawer();
+                await _logout(forgetDevice: false);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAccountTab(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    final session = state.sessionUser;
+    return ListView(
+      padding: EdgeInsets.all(spacing.md),
+      children: [
+        AppSurfaceCard(
+          backgroundColor: context.appColors.primarySoft,
+          child: Column(
+            children: [
+              AppAvatar(
+                label: session.displayName,
+                imageUrl: session.avatarUrl,
+                radius: 36,
+              ),
+              SizedBox(height: spacing.md),
+              Text(
+                session.displayName,
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              Text(
+                session.username,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: context.appColors.textMuted,
+                ),
+              ),
+              if (state.currentUser?.roleLabel.isNotEmpty == true) ...[
+                SizedBox(height: spacing.xs),
+                AppBadge(
+                  label: state.currentUser!.roleLabel,
+                  tone: AppStatusTone.info,
+                ),
+              ],
+            ],
+          ),
+        ),
+        SizedBox(height: spacing.md),
+        AppSurfaceCard(
+          child: Column(
+            children: [
+              _buildInfoRow(
+                'Ish maydoni',
+                state.currentWorkspace?.name ?? 'Mavjud emas',
+              ),
+              _buildInfoRow('Qurilma', session.deviceId),
+            ],
+          ),
+        ),
+        SizedBox(height: spacing.md),
+        AppPrimaryButton(
+          onPressed: _showEditProfile,
+          icon: const Icon(Icons.edit_outlined),
+          label: const Text('Profilni tahrirlash'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSettingsOverview(SettingsViewState state) {
+    final spacing = context.appSpacing;
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        spacing.md,
+        spacing.xs,
+        spacing.md,
+        spacing.md,
+      ),
+      children: [
+        AppSectionHeader(
+          title: context.antiQText(uz: 'Sozlamalar', en: 'Settings'),
+          subtitle: context.antiQText(
+            uz: 'Kerakli bo‘limni tanlang.',
+            en: 'Choose a section.',
+          ),
+        ),
+        SizedBox(height: spacing.xs),
+        _settingsSection(
+          context.antiQText(uz: 'Akkaunt', en: 'Account'),
+          context.antiQText(
+            uz: 'Profil, ish maydoni va seans',
+            en: 'Profile, workspace and session',
+          ),
+          Icons.person_outline_rounded,
+          _buildAccountSettings,
+        ),
+        _settingsSection(
+          context.antiQText(
+            uz: 'Rollar va ruxsatlar',
+            en: 'Roles & permissions',
+          ),
+          context.antiQText(
+            uz: 'Xodimlar vakolati va maxsus rollar',
+            en: 'Member access and custom roles',
+          ),
+          Icons.admin_panel_settings_outlined,
+          (_) => AccessControlSettingsPage(
+            apiClient: widget.apiClient,
+            users: _controller.users,
+          ),
+        ),
+        _settingsSection(
+          context.antiQText(uz: 'Xavfsizlik', en: 'Security'),
+          context.antiQText(
+            uz: 'Ishonch, kalitlar va shifrni ochish holati',
+            en: 'Trust, keys and decryption health',
+          ),
+          Icons.shield_outlined,
+          _buildSecuritySettings,
+        ),
+        _settingsSection(
+          context.antiQText(uz: 'Qurilmalar', en: 'Devices'),
+          context.antiQText(
+            uz: 'Ro‘yxatdagi qurilmalar va bekor qilish',
+            en: 'Registered devices and revoke',
+          ),
+          Icons.devices_outlined,
+          _buildDevicesSettings,
+        ),
+        _settingsSection(
+          context.antiQText(uz: 'Zaxira va tiklash', en: 'Backup & Recovery'),
+          context.antiQText(
+            uz: 'Tiklash va ko‘chma shifrlangan zaxiralar',
+            en: 'Restore and portable encrypted backups',
+          ),
+          Icons.backup_outlined,
+          _buildBackupSettings,
+        ),
+        _settingsSection(
+          context.antiQText(
+            uz: 'Bildirishnomalar va maxfiylik',
+            en: 'Notifications & Privacy',
+          ),
+          context.antiQText(
+            uz: 'Ogohlantirishlar, yozish va faollik',
+            en: 'Alerts, typing and presence',
+          ),
+          Icons.notifications_outlined,
+          _buildNotificationsSettings,
+        ),
+        _settingsSection(
+          context.antiQText(
+            uz: 'Ko‘rinish va chatlar',
+            en: 'Appearance & Chats',
+          ),
+          context.antiQText(
+            uz: 'Mavzu, qoralamalar va chatlar joylashuvi',
+            en: 'Theme, drafts and inbox layout',
+          ),
+          Icons.palette_outlined,
+          _buildAppearanceSettings,
+        ),
+        _settingsSection(
+          context.antiQText(uz: 'Dastur va yordam', en: 'About & Support'),
+          context.antiQText(
+            uz: 'Versiya va yordam tafsilotlari',
+            en: 'Version and support details',
+          ),
+          Icons.info_outline_rounded,
+          _buildAboutSettings,
+        ),
+      ],
+    );
+  }
+
+  Widget _settingsSection(
+    String title,
+    String subtitle,
+    IconData icon,
+    Widget Function(SettingsViewState) builder,
+  ) {
+    final spacing = context.appSpacing;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(context.appRadii.md),
+        onTap: () => Navigator.of(context).push(
+          PageRouteBuilder<void>(
+            transitionDuration: const Duration(milliseconds: 220),
+            reverseTransitionDuration: const Duration(milliseconds: 180),
+            pageBuilder: (_, animation, _) {
+              final curve = CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              );
+              return FadeTransition(
+                opacity: curve,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0.015, 0.02),
+                    end: Offset.zero,
+                  ).animate(curve),
+                  child: _SettingsPage(
+                    title: title,
+                    child: ListenableBuilder(
+                      listenable: _controller,
+                      builder: (_, _) => builder(_controller.settingsState),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: context.appColors.border.withValues(alpha: 0.65),
+              ),
+            ),
+          ),
+          child: ListTile(
+            dense: true,
+            visualDensity: const VisualDensity(vertical: -2),
+            contentPadding: EdgeInsets.symmetric(horizontal: spacing.xs),
+            leading: Icon(icon, color: context.appColors.primary),
+            title: Text(title),
+            subtitle: Text(subtitle),
+            trailing: const Icon(Icons.chevron_right_rounded),
           ),
         ),
       ),
@@ -1495,7 +1828,7 @@ class _ChatListPageState extends State<ChatListPage> {
   }
 
   Widget _settingsList(List<Widget> children) => ListView(
-    padding: EdgeInsets.all(context.appSpacing.lg),
+    padding: EdgeInsets.all(context.appSpacing.md),
     children: children,
   );
 
@@ -1507,7 +1840,11 @@ class _ChatListPageState extends State<ChatListPage> {
         backgroundColor: context.appColors.primarySoft,
         child: Column(
           children: [
-            AppAvatar(label: session.displayName, radius: 38),
+            AppAvatar(
+              label: session.displayName,
+              imageUrl: session.avatarUrl,
+              radius: 38,
+            ),
             SizedBox(height: spacing.md),
             Text(
               session.displayName,
@@ -1520,24 +1857,24 @@ class _ChatListPageState extends State<ChatListPage> {
               ),
             ),
             SizedBox(height: spacing.sm),
-            AppPrimaryButton(
-              onPressed: _editProfile,
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('Edit profile'),
+            TextButton.icon(
+              onPressed: _showEditProfile,
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Profilni tahrirlash'),
             ),
           ],
         ),
       ),
       SizedBox(height: spacing.lg),
-      const AppSectionHeader(
-        title: 'Workspace',
-        subtitle: 'Switch only the workspace used by this device.',
-      ),
+      const AppSectionHeader(title: 'Ish maydoni'),
       SizedBox(height: spacing.sm),
       AppSurfaceCard(
         child: Column(
           children: [
-            _buildInfoRow('Current', state.currentWorkspace?.name ?? 'None'),
+            _buildInfoRow(
+              'Joriy',
+              state.currentWorkspace?.name ?? 'Mavjud emas',
+            ),
             for (final organization in session.organizations)
               for (final workspace in organization.workspaces)
                 ListTile(
@@ -1557,15 +1894,13 @@ class _ChatListPageState extends State<ChatListPage> {
         ),
       ),
       SizedBox(height: spacing.lg),
-      const AppSectionHeader(title: 'Session'),
-      SizedBox(height: spacing.sm),
       AppSurfaceCard(
         child: Column(
           children: [
             ListTile(
               leading: const Icon(Icons.logout_rounded),
-              title: const Text('Log out'),
-              subtitle: const Text('Keep this device registered.'),
+              title: const Text('Akkauntdan chiqish'),
+              subtitle: const Text('Bu qurilma ro‘yxatda qoladi.'),
               onTap: () => _logout(forgetDevice: false),
             ),
             ListTile(
@@ -1573,9 +1908,9 @@ class _ChatListPageState extends State<ChatListPage> {
                 Icons.delete_outline_rounded,
                 color: context.appColors.danger,
               ),
-              title: const Text('Forget this device'),
+              title: const Text('Bu qurilmani unutish'),
               subtitle: const Text(
-                'Remove this local session and local history.',
+                'Mahalliy seans va mahalliy tarix o‘chiriladi.',
               ),
               onTap: () => _logout(forgetDevice: true),
             ),
@@ -1589,8 +1924,8 @@ class _ChatListPageState extends State<ChatListPage> {
     final spacing = context.appSpacing;
     return _settingsList([
       const AppSectionHeader(
-        title: 'Security Center',
-        subtitle: 'Key trust and historical decrypt readiness.',
+        title: 'Xavfsizlik markazi',
+        subtitle: 'Ishonch va eski xabarlarni ochish tayyorligi.',
       ),
       SizedBox(height: spacing.sm),
       AppSurfaceCard(
@@ -1602,15 +1937,16 @@ class _ChatListPageState extends State<ChatListPage> {
               runSpacing: spacing.sm,
               children: [
                 AppBadge(
-                  label: '${state.security.verifiedPeersCount} verified',
+                  label: '${state.security.verifiedPeersCount} tasdiqlangan',
                   tone: AppStatusTone.success,
                 ),
                 AppBadge(
-                  label: '${state.security.needsAttentionCount} need attention',
+                  label:
+                      '${state.security.needsAttentionCount} e’tibor talab qiladi',
                   tone: AppStatusTone.warning,
                 ),
                 AppBadge(
-                  label: '${state.security.notReadyCount} not ready',
+                  label: '${state.security.notReadyCount} tayyor emas',
                   tone: AppStatusTone.danger,
                 ),
               ],
@@ -1618,8 +1954,8 @@ class _ChatListPageState extends State<ChatListPage> {
             SizedBox(height: spacing.md),
             AppStatusBanner(
               message: state.security.hasHistoricalDecryptCapability
-                  ? 'Historical decrypt ready. ${state.security.availableHistoricalKeysets} keysets available.'
-                  : 'Historical decrypt is limited. Restore a backup to recover older messages.',
+                  ? 'Eski xabarlarni ochish tayyor. ${state.security.availableHistoricalKeysets} ta kalitlar to‘plami mavjud.'
+                  : 'Eski xabarlarni ochish cheklangan. Eski xabarlar uchun zaxirani tiklang.',
               tone: state.security.hasHistoricalDecryptCapability
                   ? AppStatusTone.success
                   : AppStatusTone.warning,
@@ -1627,8 +1963,8 @@ class _ChatListPageState extends State<ChatListPage> {
             SizedBox(height: spacing.sm),
             AppStatusBanner(
               message: state.security.isCurrentDeviceReady
-                  ? 'This device is ready for secure messaging.'
-                  : 'This device needs key setup before secure messaging.',
+                  ? 'Bu qurilma xavfsiz xabar almashishga tayyor.'
+                  : 'Bu qurilmada kalitlarni sozlash kerak.',
               tone: state.security.isCurrentDeviceReady
                   ? AppStatusTone.success
                   : AppStatusTone.warning,
@@ -1643,8 +1979,8 @@ class _ChatListPageState extends State<ChatListPage> {
     final spacing = context.appSpacing;
     return _settingsList([
       const AppSectionHeader(
-        title: 'Devices & Sessions',
-        subtitle: 'Remove a device only if you no longer recognize it.',
+        title: 'Qurilmalar va seanslar',
+        subtitle: 'Faqat o‘zingiz tanimaydigan qurilmalarni bekor qiling.',
       ),
       SizedBox(height: spacing.sm),
       for (final device in state.devices)
@@ -1661,16 +1997,15 @@ class _ChatListPageState extends State<ChatListPage> {
                 device.deviceName.isEmpty ? device.deviceId : device.deviceName,
               ),
               subtitle: Text(
-                '${device.platform.isEmpty ? 'Unknown platform' : device.platform} • ${device.status}'
-                '${device.lastSeenAt == null ? '' : ' • ${_formatRelativeTime(device.lastSeenAt!)}'}',
+                '${device.platform.isEmpty ? 'Noma’lum platforma' : device.platform} • ${device.status}',
               ),
               trailing: device.deviceId == state.sessionUser.deviceId
                   ? const AppBadge(
-                      label: 'This device',
+                      label: 'Bu qurilma',
                       tone: AppStatusTone.info,
                     )
                   : IconButton(
-                      tooltip: 'Revoke device',
+                      tooltip: 'Qurilmani bekor qilish',
                       icon: Icon(
                         Icons.remove_circle_outline_rounded,
                         color: context.appColors.danger,
@@ -1681,7 +2016,7 @@ class _ChatListPageState extends State<ChatListPage> {
           ),
         ),
       if (state.devices.isEmpty)
-        _buildEmptyCard('No registered devices found.'),
+        _buildEmptyCard('Ro‘yxatdan o‘tgan qurilma topilmadi.'),
     ]);
   }
 
@@ -1689,53 +2024,43 @@ class _ChatListPageState extends State<ChatListPage> {
     final spacing = context.appSpacing;
     return _settingsList([
       const AppSectionHeader(
-        title: 'Backup & Recovery',
+        title: 'Zaxira va tiklash',
         subtitle:
-            'Recover encrypted history after a reinstall or device switch.',
+            'Qayta o‘rnatish yoki qurilma almashtirishdan keyin tarixni tiklash.',
       ),
       SizedBox(height: spacing.sm),
-      if (state.backup.statusMessage != null) ...[
+      if (state.backup.statusMessage != null)
         AppStatusBanner(
           message: state.backup.statusMessage!,
           tone: _statusTone(state.backup.statusTone),
         ),
-        SizedBox(height: spacing.sm),
-      ],
       AppSurfaceCard(
         child: Column(
           children: [
             ListTile(
               leading: const Icon(Icons.restore_rounded),
-              title: const Text('Restore encrypted history'),
+              title: const Text('Shifrlangan tarixni tiklash'),
               subtitle: const Text(
-                'Import the account recovery manifest after approval.',
+                'Tasdiqlangandan keyin akkaunt tiklash ma’lumotini import qiling.',
               ),
-              trailing: const Icon(Icons.chevron_right_rounded),
               onTap: _restoreEnterpriseRecovery,
             ),
             ListTile(
               leading: const Icon(Icons.verified_user_outlined),
-              title: const Text('Recovery approvals'),
-              subtitle: const Text('Review requests from your other devices.'),
-              trailing: const Icon(Icons.chevron_right_rounded),
+              title: const Text('Tiklash ruxsatlari'),
+              subtitle: const Text(
+                'Boshqa qurilmalaringiz so‘rovlarini ko‘ring.',
+              ),
               onTap: _showPendingRecoveryApprovals,
             ),
             ListTile(
               leading: const Icon(Icons.upload_file_outlined),
-              title: const Text('Export encrypted backup'),
-              subtitle: const Text(
-                'Create a portable, passphrase-protected backup.',
-              ),
-              trailing: const Icon(Icons.chevron_right_rounded),
+              title: const Text('Shifrlangan zaxirani eksport qilish'),
               onTap: _showExportBackupSheet,
             ),
             ListTile(
               leading: const Icon(Icons.download_for_offline_outlined),
-              title: const Text('Import encrypted backup'),
-              subtitle: const Text(
-                'Restore a backup blob using its passphrase.',
-              ),
-              trailing: const Icon(Icons.chevron_right_rounded),
+              title: const Text('Shifrlangan zaxirani import qilish'),
               onTap: _showImportBackupSheet,
             ),
           ],
@@ -1744,12 +2069,12 @@ class _ChatListPageState extends State<ChatListPage> {
     ]);
   }
 
-  Widget _buildNotificationsPrivacySettings(SettingsViewState state) {
+  Widget _buildNotificationsSettings(SettingsViewState state) {
     final spacing = context.appSpacing;
     return _settingsList([
       const AppSectionHeader(
-        title: 'Notifications',
-        subtitle: 'These account preferences sync with your other devices.',
+        title: 'Bildirishnomalar',
+        subtitle: 'Bu sozlamalar akkauntingiz bilan sinxronlanadi.',
       ),
       SizedBox(height: spacing.sm),
       AppSurfaceCard(
@@ -1758,95 +2083,41 @@ class _ChatListPageState extends State<ChatListPage> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _notificationsEnabled,
-              title: const Text('Notifications'),
-              subtitle: const Text('Allow account notification delivery.'),
-              onChanged: _setNotificationsEnabled,
+              title: const Text('Bildirishnomalar'),
+              onChanged: (value) =>
+                  _setAccountBool('notifications_enabled', value),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _notificationPreviewsEnabled,
-              title: const Text('Notification previews'),
-              subtitle: const Text(
-                'Include message text in notification alerts.',
-              ),
-              onChanged: _setNotificationPreviewsEnabled,
+              title: const Text('Bildirishnoma matni'),
+              subtitle: const Text('Ogohlantirishda xabar matnini ko‘rsatish.'),
+              onChanged: (value) =>
+                  _setAccountBool('notification_previews', value),
             ),
-          ],
-        ),
-      ),
-      SizedBox(height: spacing.lg),
-      const AppSectionHeader(
-        title: 'Privacy',
-        subtitle:
-            'Control presence and message-state information shared with contacts.',
-      ),
-      SizedBox(height: spacing.sm),
-      AppSurfaceCard(
-        child: Column(
-          children: [
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _readReceiptsEnabled,
-              title: const Text('Read receipts'),
-              subtitle: const Text(
-                'Let contacts see when you have read a message.',
-              ),
-              onChanged: _setReadReceiptsEnabled,
+              title: const Text('O‘qilganlik belgisi'),
+              onChanged: (value) =>
+                  _setAccountBool('read_receipts_enabled', value),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _typingIndicatorsEnabled,
-              title: const Text('Typing indicators'),
-              subtitle: const Text('Let contacts see when you are typing.'),
-              onChanged: _setTypingIndicatorsEnabled,
+              title: const Text('Yozayotganlik belgisi'),
+              onChanged: (value) =>
+                  _setAccountBool('typing_indicators_enabled', value),
             ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Last seen visibility'),
-              subtitle: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _lastSeenVisibility,
-                  isExpanded: true,
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'everyone',
-                      child: Text('Everyone'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'contacts',
-                      child: Text('Contacts'),
-                    ),
-                    DropdownMenuItem(value: 'nobody', child: Text('Nobody')),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) _setLastSeenVisibility(value);
-                  },
-                ),
-              ),
+            _visibilitySetting(
+              'Oxirgi faollik ko‘rinishi',
+              _lastSeenVisibility,
+              _setLastSeenVisibility,
             ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Online visibility'),
-              subtitle: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _onlineVisibility,
-                  isExpanded: true,
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'everyone',
-                      child: Text('Everyone'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'contacts',
-                      child: Text('Contacts'),
-                    ),
-                    DropdownMenuItem(value: 'nobody', child: Text('Nobody')),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) _setOnlineVisibility(value);
-                  },
-                ),
-              ),
+            _visibilitySetting(
+              'Onlayn holati ko‘rinishi',
+              _onlineVisibility,
+              _setOnlineVisibility,
             ),
           ],
         ),
@@ -1855,49 +2126,108 @@ class _ChatListPageState extends State<ChatListPage> {
       const AppSurfaceCard(
         child: ListTile(
           leading: Icon(Icons.lock_outline_rounded),
-          title: Text('Message content'),
+          title: Text('Xabar mazmuni'),
           subtitle: Text(
-            'Message content remains end-to-end encrypted and is not readable by the server.',
+            'Xabar mazmuni boshidan oxirigacha shifrlanadi va server uni o‘qiy olmaydi.',
           ),
         ),
       ),
     ]);
   }
 
+  Widget _visibilitySetting(
+    String title,
+    String value,
+    ValueChanged<String> onChanged,
+  ) => ListTile(
+    contentPadding: EdgeInsets.zero,
+    title: Text(title),
+    subtitle: DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        value: value,
+        isExpanded: true,
+        items: const [
+          DropdownMenuItem(value: 'everyone', child: Text('Hamma')),
+          DropdownMenuItem(value: 'contacts', child: Text('Kontaktlar')),
+          DropdownMenuItem(value: 'nobody', child: Text('Hech kim')),
+        ],
+        onChanged: (next) {
+          if (next != null) onChanged(next);
+        },
+      ),
+    ),
+  );
+
   Widget _buildAppearanceSettings(SettingsViewState state) {
     final spacing = context.appSpacing;
     return _settingsList([
-      const AppSectionHeader(
-        title: 'Appearance & Chats',
-        subtitle: 'Local display and composer preferences for this device.',
+      AppSectionHeader(
+        title: context.antiQText(
+          uz: 'Ko‘rinish va chatlar',
+          en: 'Appearance & Chats',
+        ),
+        subtitle: context.antiQText(
+          uz: 'Ko‘rinish va xabar yozishning mahalliy sozlamalari.',
+          en: 'Local display and composer preferences.',
+        ),
       ),
       SizedBox(height: spacing.sm),
       AppSurfaceCard(
         child: Column(
           children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.language_rounded),
+              title: Text(
+                context.antiQText(uz: 'Dastur tili', en: 'App language'),
+              ),
+              subtitle: Text(
+                context.antiQText(
+                  uz: 'Interfeys tilini tanlang.',
+                  en: 'Choose the interface language.',
+                ),
+              ),
+              trailing: DropdownButtonHideUnderline(
+                child: DropdownButton<AppLanguagePreference>(
+                  value: widget.themeController.languagePreference,
+                  items: const [
+                    DropdownMenuItem(
+                      value: AppLanguagePreference.uzbek,
+                      child: Text('O‘zbekcha'),
+                    ),
+                    DropdownMenuItem(
+                      value: AppLanguagePreference.english,
+                      child: Text('English'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      widget.themeController.setLanguage(value);
+                    }
+                  },
+                ),
+              ),
+            ),
+            const Divider(height: 1),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: widget.themeController.themeMode == ThemeMode.dark,
-              title: const Text('Dark mode'),
-              subtitle: const Text('Use the dark color theme.'),
+              title: Text(
+                context.antiQText(uz: 'Qorong‘i rejim', en: 'Dark mode'),
+              ),
               onChanged: (value) => widget.themeController.setThemeMode(
                 value ? ThemeMode.dark : ThemeMode.light,
               ),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              value: state.appPreferences.compactListMode,
-              title: const Text('Compact chat list'),
-              subtitle: const Text('Use shorter rows in the chats list.'),
-              onChanged: (value) => _controller.updateAppPreferences(
-                state.appPreferences.copyWith(compactListMode: value),
-              ),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
               value: state.appPreferences.showArchivedByDefault,
-              title: const Text('Show archived chats'),
-              subtitle: const Text('Include archived chats in the main list.'),
+              title: Text(
+                context.antiQText(
+                  uz: 'Arxivlangan chatlarni ko‘rsatish',
+                  en: 'Show archived chats',
+                ),
+              ),
               onChanged: (value) => _controller.updateAppPreferences(
                 state.appPreferences.copyWith(showArchivedByDefault: value),
               ),
@@ -1905,23 +2235,14 @@ class _ChatListPageState extends State<ChatListPage> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: state.appPreferences.keepDrafts,
-              title: const Text('Keep drafts'),
-              subtitle: const Text(
-                'Save unfinished composer text automatically.',
+              title: Text(
+                context.antiQText(
+                  uz: 'Qoralamalarni saqlash',
+                  en: 'Keep drafts',
+                ),
               ),
               onChanged: (value) => _controller.updateAppPreferences(
                 state.appPreferences.copyWith(keepDrafts: value),
-              ),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: state.appPreferences.preferManualRefreshHints,
-              title: const Text('Manual refresh hints'),
-              subtitle: const Text(
-                'Prefer manual refresh prompts in the inbox.',
-              ),
-              onChanged: (value) => _controller.updateAppPreferences(
-                state.appPreferences.copyWith(preferManualRefreshHints: value),
               ),
             ),
           ],
@@ -1931,16 +2252,15 @@ class _ChatListPageState extends State<ChatListPage> {
   }
 
   Widget _buildAboutSettings(SettingsViewState state) => _settingsList([
-    const AppSectionHeader(title: 'About & Support'),
+    const AppSectionHeader(title: 'Dastur va yordam'),
     SizedBox(height: context.appSpacing.sm),
     AppSurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildInfoRow('Version', state.appVersion),
-          _buildInfoRow('Support', state.supportEmail),
+          _buildInfoRow('Versiya', state.appVersion),
+          _buildInfoRow('Yordam', state.supportEmail),
           _buildInfoRow('API', state.apiBaseUrl),
-          _buildInfoRow('Skin', state.appSkinId),
         ],
       ),
     ),
@@ -1954,24 +2274,20 @@ class _ChatListPageState extends State<ChatListPage> {
     }
   }
 
-  void _setNotificationsEnabled(bool value) {
-    setState(() => _notificationsEnabled = value);
-    _controller.updateAccountSettings({'notifications_enabled': value});
-  }
-
-  void _setNotificationPreviewsEnabled(bool value) {
-    setState(() => _notificationPreviewsEnabled = value);
-    _controller.updateAccountSettings({'notification_previews': value});
-  }
-
-  void _setReadReceiptsEnabled(bool value) {
-    setState(() => _readReceiptsEnabled = value);
-    _controller.updateAccountSettings({'read_receipts_enabled': value});
-  }
-
-  void _setTypingIndicatorsEnabled(bool value) {
-    setState(() => _typingIndicatorsEnabled = value);
-    _controller.updateAccountSettings({'typing_indicators_enabled': value});
+  void _setAccountBool(String key, bool value) {
+    setState(() {
+      switch (key) {
+        case 'notifications_enabled':
+          _notificationsEnabled = value;
+        case 'notification_previews':
+          _notificationPreviewsEnabled = value;
+        case 'read_receipts_enabled':
+          _readReceiptsEnabled = value;
+        case 'typing_indicators_enabled':
+          _typingIndicatorsEnabled = value;
+      }
+    });
+    _controller.updateAccountSettings({key: value});
   }
 
   void _setLastSeenVisibility(String value) {
@@ -1991,16 +2307,16 @@ class _ChatListPageState extends State<ChatListPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Revoke device?'),
-        content: Text('$label will no longer be able to access this account.'),
+        title: const Text('Qurilma bekor qilinsinmi?'),
+        content: Text('$label endi bu akkauntga kira olmaydi.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: const Text('Bekor qilish'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Revoke'),
+            child: const Text('Bekor qilishni tasdiqlash'),
           ),
         ],
       ),
@@ -2008,138 +2324,31 @@ class _ChatListPageState extends State<ChatListPage> {
     if (confirmed != true) return;
     try {
       await _controller.revokeDevice(device.deviceId);
-      if (mounted) _showMessage('Device revoked.', tone: AppStatusTone.success);
+      if (mounted) {
+        _showMessage('Qurilma bekor qilindi.', tone: AppStatusTone.success);
+      }
     } catch (error) {
       if (mounted) _showMessage(error.toString(), tone: AppStatusTone.danger);
     }
-  }
-
-  Widget _buildNavigationDrawer(SettingsViewState state) {
-    final session = state.sessionUser;
-    return Drawer(
-      child: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(color: context.appColors.primarySoft),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AppAvatar(label: session.displayName, radius: 28),
-                  const Spacer(),
-                  Text(
-                    session.displayName,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  Text(
-                    session.username,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.chat_bubble_outline_rounded),
-              title: const Text('Chats'),
-              onTap: () {
-                _scaffoldKey.currentState?.closeDrawer();
-                setState(() => _selectedTabIndex = 0);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.people_alt_outlined),
-              title: const Text('Contacts'),
-              onTap: () {
-                _scaffoldKey.currentState?.closeDrawer();
-                setState(() => _selectedTabIndex = 1);
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.settings_outlined),
-              title: const Text('Settings'),
-              onTap: _openSettingsPage,
-            ),
-            ListTile(
-              leading: const Icon(Icons.logout_rounded),
-              title: const Text('Log out'),
-              onTap: () async {
-                _scaffoldKey.currentState?.closeDrawer();
-                await _logout(forgetDevice: false);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _editProfile() async {
-    final controller = TextEditingController(
-      text: widget.sessionController.sessionUser?.displayName ?? '',
-    );
-    final name = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Edit profile'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Display name'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, controller.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (name == null || name.isEmpty || !mounted) return;
-    try {
-      await widget.apiClient.patch('/users/me', {'display_name': name});
-      await widget.sessionController.initialize();
-      if (mounted) setState(() {});
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(error.toString())));
-      }
-    }
-  }
-
-  Widget _buildChatFilterSelector(ChatListFilter filter) {
-    return _FilterStrip<ChatListFilter>(
-      selected: filter,
-      options: const [
-        _FilterOption(value: ChatListFilter.all, label: 'All'),
-        _FilterOption(value: ChatListFilter.unread, label: 'Unread'),
-        _FilterOption(value: ChatListFilter.pinned, label: 'Pinned'),
-        _FilterOption(value: ChatListFilter.archived, label: 'Archived'),
-      ],
-      onSelected: _controller.setChatFilter,
-    );
   }
 
   Widget _buildContactsFilterSelector(ContactsTrustFilter filter) {
     return _FilterStrip<ContactsTrustFilter>(
       selected: filter,
       options: const [
-        _FilterOption(value: ContactsTrustFilter.all, label: 'All'),
-        _FilterOption(value: ContactsTrustFilter.verified, label: 'Verified'),
+        _FilterOption(value: ContactsTrustFilter.all, label: 'Barchasi'),
+        _FilterOption(
+          value: ContactsTrustFilter.verified,
+          label: 'Tasdiqlangan',
+        ),
         _FilterOption(
           value: ContactsTrustFilter.needsAttention,
-          label: 'Attention',
+          label: 'E’tibor kerak',
         ),
-        _FilterOption(value: ContactsTrustFilter.notReady, label: 'Not ready'),
+        _FilterOption(
+          value: ContactsTrustFilter.notReady,
+          label: 'Tayyor emas',
+        ),
       ],
       onSelected: _controller.setContactsFilter,
     );
@@ -2260,32 +2469,47 @@ class _ChatListPageState extends State<ChatListPage> {
   String _emptyMessageForChatState(ChatListFilter filter) {
     switch (filter) {
       case ChatListFilter.unread:
-        return 'Unread chat topilmadi.';
+        return context.antiQText(
+          uz: 'O‘qilmagan chat topilmadi.',
+          en: 'No unread chats.',
+        );
       case ChatListFilter.pinned:
-        return 'Pinned chatlar hali yo‘q.';
+        return context.antiQText(
+          uz: 'Mahkamlangan chatlar hali yo‘q.',
+          en: 'No pinned chats yet.',
+        );
       case ChatListFilter.archived:
-        return 'Archived chatlar hali yo‘q.';
+        return context.antiQText(
+          uz: 'Arxivlangan chatlar hali yo‘q.',
+          en: 'No archived chats.',
+        );
       case ChatListFilter.all:
-        return 'Hali chatlar yo‘q. Contacts bo‘limidan suhbat boshlashingiz mumkin.';
+        return context.antiQText(
+          uz: 'Hali chatlar yo‘q. Kontaktlar bo‘limidan suhbat boshlashingiz mumkin.',
+          en: 'No chats yet. Start a conversation from Contacts.',
+        );
     }
   }
 
   String _formatRelativeTime(DateTime time) {
     final now = DateTime.now();
-    final difference = now.difference(time);
-    if (difference.inMinutes < 1) {
-      return 'now';
+    final local = time.toLocal();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDay = DateTime(local.year, local.month, local.day);
+    final dayDifference = today.difference(messageDay).inDays;
+    if (dayDifference <= 0) {
+      final hour = local.hour.toString().padLeft(2, '0');
+      final minute = local.minute.toString().padLeft(2, '0');
+      return '$hour:$minute';
     }
-    if (difference.inHours < 1) {
-      return '${difference.inMinutes}m';
+    if (dayDifference == 1) {
+      return context.antiQText(uz: 'Kecha', en: 'Yesterday');
     }
-    if (difference.inDays < 1) {
-      return '${difference.inHours}h';
+    if (dayDifference < 7) {
+      const weekdays = ['Du', 'Se', 'Cho', 'Pa', 'Ju', 'Sha', 'Ya'];
+      return weekdays[local.weekday - 1];
     }
-    if (difference.inDays < 7) {
-      return '${difference.inDays}d';
-    }
-    return '${time.day}/${time.month}';
+    return '${local.day.toString().padLeft(2, '0')}.${local.month.toString().padLeft(2, '0')}';
   }
 
   AppStatusTone _statusTone(UiStatusTone tone) {
@@ -2308,7 +2532,7 @@ class _ConversationListRow extends StatelessWidget {
     required this.selected,
     required this.onTap,
     required this.onLongPress,
-    required this.onMorePressed,
+    required this.onAvatarLongPress,
     required this.relativeTime,
   });
 
@@ -2316,7 +2540,7 @@ class _ConversationListRow extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
-  final VoidCallback onMorePressed;
+  final VoidCallback onAvatarLongPress;
   final String relativeTime;
 
   @override
@@ -2327,158 +2551,205 @@ class _ConversationListRow extends StatelessWidget {
         item.trustBadge?.tone == UiStatusTone.warning ||
         item.trustBadge?.tone == UiStatusTone.danger;
     final preview = item.hasDraft
-        ? 'Draft: ${item.draftPreview!.trim()}'
+        ? '${context.antiQText(uz: 'Qoralama', en: 'Draft')}: ${item.draftPreview!.trim()}'
         : item.preview.isEmpty
-        ? 'Open conversation'
+        ? context.antiQText(uz: 'Suhbatni ochish', en: 'Open conversation')
         : item.preview;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
+    return AnimatedContainer(
+      duration: context.appDurations.fast,
+      curve: Curves.easeOutCubic,
+      margin: const EdgeInsets.only(bottom: 1),
+      decoration: BoxDecoration(
+        color: selected ? colors.primarySoft : Colors.transparent,
         borderRadius: BorderRadius.circular(context.appRadii.md),
-        child: Container(
-          padding: EdgeInsets.symmetric(vertical: spacing.md),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: colors.border.withValues(alpha: 0.72)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(context.appRadii.md),
+          child: Container(
+            padding: EdgeInsets.fromLTRB(
+              spacing.xs,
+              spacing.sm,
+              spacing.xs,
+              spacing.sm,
             ),
-          ),
-          child: Row(
-            children: [
-              selected
-                  ? IconButton.filledTonal(
-                      onPressed: onLongPress,
-                      icon: const Icon(Icons.check_rounded),
-                      tooltip: 'Selected',
-                    )
-                  : AppAvatar(
-                      label: item.title,
-                      icon: item.conversation.isGroup
-                          ? Icons.forum_outlined
-                          : null,
-                      radius: 25,
-                    ),
-              SizedBox(width: spacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  item.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.titleMedium
-                                      ?.copyWith(
-                                        fontWeight: item.isUnread
-                                            ? FontWeight.w700
-                                            : FontWeight.w600,
-                                      ),
-                                ),
-                              ),
-                              if (item.isPinned) ...[
-                                SizedBox(width: spacing.xs),
-                                Icon(
-                                  Icons.push_pin_rounded,
-                                  size: 14,
-                                  color: colors.textMuted,
-                                ),
-                              ],
-                              if (isAttention) ...[
-                                SizedBox(width: spacing.xs),
-                                Icon(
-                                  Icons.error_outline_rounded,
-                                  size: 15,
-                                  color: colors.warning,
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        SizedBox(width: spacing.sm),
-                        Text(
-                          relativeTime,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: item.isUnread
-                                    ? colors.primary
-                                    : colors.textMuted,
-                                fontWeight: item.isUnread
-                                    ? FontWeight.w700
-                                    : FontWeight.w400,
-                              ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: spacing.xs),
-                    Row(
-                      children: [
-                        if (item.deliveryState != null) ...[
-                          Icon(
-                            _deliveryIcon(item.deliveryState!),
-                            size: 15,
-                            color: _deliveryColor(colors, item.deliveryState!),
-                          ),
-                          SizedBox(width: spacing.xs),
-                        ],
-                        Expanded(
-                          child: Text(
-                            preview,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(
-                                  color: item.hasDraft
-                                      ? colors.primary
-                                      : colors.textMuted,
-                                  fontWeight: item.hasDraft
-                                      ? FontWeight.w600
-                                      : FontWeight.w400,
-                                ),
-                          ),
-                        ),
-                        if (item.isUnread) ...[
-                          SizedBox(width: spacing.sm),
-                          Container(
-                            constraints: const BoxConstraints(
-                              minWidth: 20,
-                              minHeight: 20,
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 5),
-                            alignment: Alignment.center,
+            child: Row(
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onLongPress: onAvatarLongPress,
+                  child: AnimatedSwitcher(
+                    duration: context.appDurations.fast,
+                    child: selected
+                        ? Container(
+                            key: const ValueKey('selected'),
+                            width: 44,
+                            height: 44,
                             decoration: BoxDecoration(
                               color: colors.primary,
                               shape: BoxShape.circle,
                             ),
+                            child: const Icon(
+                              Icons.check_rounded,
+                              color: Colors.white,
+                            ),
+                          )
+                        : AppAvatar(
+                            key: const ValueKey('avatar'),
+                            label: item.title,
+                            imageUrl: item.avatarUrl,
+                            icon: item.conversation.isGroup
+                                ? Icons.forum_outlined
+                                : null,
+                            radius: 22,
+                          ),
+                  ),
+                ),
+                SizedBox(width: spacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    item.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(
+                                          fontWeight: item.isUnread
+                                              ? FontWeight.w700
+                                              : FontWeight.w600,
+                                        ),
+                                  ),
+                                ),
+                                if (item.isPinned) ...[
+                                  SizedBox(width: spacing.xs),
+                                  Icon(
+                                    Icons.push_pin_rounded,
+                                    size: 14,
+                                    color: colors.textMuted,
+                                  ),
+                                ],
+                                if (isAttention) ...[
+                                  SizedBox(width: spacing.xs),
+                                  Icon(
+                                    Icons.error_outline_rounded,
+                                    size: 15,
+                                    color: colors.warning,
+                                  ),
+                                ],
+                                if (item.roleLabel.isNotEmpty &&
+                                    !item.conversation.isGroup) ...[
+                                  SizedBox(width: spacing.xs),
+                                  Flexible(
+                                    child: Text(
+                                      '• ${item.roleLabel}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelSmall
+                                          ?.copyWith(
+                                            color: colors.textMuted,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          SizedBox(width: spacing.sm),
+                          Text(
+                            relativeTime,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: item.isUnread
+                                      ? colors.primary
+                                      : colors.textMuted,
+                                  fontWeight: item.isUnread
+                                      ? FontWeight.w700
+                                      : FontWeight.w400,
+                                ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          if (item.deliveryState != null) ...[
+                            Icon(
+                              _deliveryIcon(item.deliveryState!),
+                              size: 15,
+                              color: _deliveryColor(
+                                colors,
+                                item.deliveryState!,
+                              ),
+                            ),
+                            SizedBox(width: spacing.xs),
+                          ],
+                          Expanded(
                             child: Text(
-                              item.unreadCount > 0 ? '${item.unreadCount}' : '',
-                              style: Theme.of(context).textTheme.labelSmall
+                              preview,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
+                                    color: item.hasDraft
+                                        ? colors.primary
+                                        : colors.textMuted,
+                                    fontWeight: item.hasDraft
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
                                   ),
                             ),
                           ),
+                          if (item.isUnread) ...[
+                            SizedBox(width: spacing.sm),
+                            Container(
+                              constraints: const BoxConstraints(
+                                minWidth: 18,
+                                minHeight: 18,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                              ),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: colors.primary,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                item.unreadCount > 0
+                                    ? '${item.unreadCount}'
+                                    : '',
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              SizedBox(width: spacing.xs),
-              IconButton(
-                onPressed: onMorePressed,
-                visualDensity: VisualDensity.compact,
-                icon: Icon(Icons.more_horiz_rounded, color: colors.textMuted),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -2508,6 +2779,119 @@ class _ConversationListRow extends StatelessWidget {
       case MessageDeliveryState.sent:
         return colors.primary;
     }
+  }
+}
+
+class _PremiumIconButton extends StatelessWidget {
+  const _PremiumIconButton({
+    required this.tooltip,
+    required this.onPressed,
+    required this.icon,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 21),
+      style: IconButton.styleFrom(
+        backgroundColor: context.appColors.surfaceMuted,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
+        side: BorderSide(
+          color: context.appColors.border.withValues(alpha: 0.7),
+        ),
+      ),
+    );
+  }
+}
+
+class _PremiumBottomNavigation extends StatelessWidget {
+  const _PremiumBottomNavigation({
+    required this.tabs,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final List<_TabMeta> tabs;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return SizedBox(
+      height: 58,
+      child: Row(
+        children: [
+          for (var index = 0; index < tabs.length; index++)
+            Expanded(
+              child: Semantics(
+                selected: selectedIndex == index,
+                button: true,
+                label: tabs[index].label,
+                child: InkWell(
+                  onTap: () => onSelected(index),
+                  child: AnimatedContainer(
+                    duration: context.appDurations.fast,
+                    curve: Curves.easeOutCubic,
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selectedIndex == index
+                          ? colors.primarySoft
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(
+                        context.appRadii.pill,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        AnimatedScale(
+                          duration: context.appDurations.fast,
+                          scale: selectedIndex == index ? 1.06 : 1,
+                          child: HugeIcon(
+                            icon: tabs[index].icon,
+                            size: 20,
+                            strokeWidth: selectedIndex == index ? 2.1 : 1.7,
+                            color: selectedIndex == index
+                                ? colors.primary
+                                : colors.textMuted,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          tabs[index].label,
+                          maxLines: 1,
+                          overflow: TextOverflow.fade,
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                fontSize: 10,
+                                height: 1,
+                                color: selectedIndex == index
+                                    ? colors.primary
+                                    : colors.textMuted,
+                                fontWeight: selectedIndex == index
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 
@@ -2541,7 +2925,11 @@ class _ContactListRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              AppAvatar(label: item.user.displayName, radius: 24),
+              AppAvatar(
+                label: item.user.displayName,
+                imageUrl: item.user.avatarUrl,
+                radius: 24,
+              ),
               SizedBox(width: spacing.md),
               Expanded(
                 child: Column(
@@ -2613,6 +3001,21 @@ class _ContactListRow extends StatelessWidget {
   }
 }
 
+class _SettingsPage extends StatelessWidget {
+  const _SettingsPage({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppScaffold(
+      appBar: AppBar(title: Text(title)),
+      body: child,
+    );
+  }
+}
+
 class _FilterOption<T> {
   const _FilterOption({required this.value, required this.label});
 
@@ -2668,21 +3071,6 @@ class _FilterStrip<T> extends StatelessWidget {
   }
 }
 
-class _SettingsPage extends StatelessWidget {
-  const _SettingsPage({required this.title, required this.child});
-
-  final String title;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppScaffold(
-      appBar: AppBar(title: Text(title)),
-      body: child,
-    );
-  }
-}
-
 class _TabMeta {
   const _TabMeta({
     required this.label,
@@ -2691,7 +3079,7 @@ class _TabMeta {
   });
 
   final String label;
-  final IconData icon;
+  final List<List<dynamic>> icon;
   final String title;
 }
 
@@ -2701,29 +3089,31 @@ class _ContactDetailPage extends StatelessWidget {
     required this.detail,
     required this.onStartChat,
     required this.onVerify,
-    required this.onBlock,
-    required this.onReport,
+    required this.onRoleChanged,
   });
 
   final ContactListItemState item;
   final ContactDetailState detail;
   final Future<void> Function()? onStartChat;
   final Future<void> Function()? onVerify;
-  final Future<void> Function()? onBlock;
-  final Future<void> Function(String reason)? onReport;
+  final Future<void> Function(String role)? onRoleChanged;
 
   @override
   Widget build(BuildContext context) {
     final spacing = context.appSpacing;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Contact details')),
+      appBar: AppBar(title: const Text('Kontakt ma’lumotlari')),
       body: ListView(
         padding: EdgeInsets.all(spacing.lg),
         children: [
           AppSurfaceCard(
             child: Row(
               children: [
-                AppAvatar(label: item.user.displayName, radius: 28),
+                AppAvatar(
+                  label: item.user.displayName,
+                  imageUrl: item.user.avatarUrl,
+                  radius: 28,
+                ),
                 SizedBox(width: spacing.md),
                 Expanded(
                   child: Column(
@@ -2735,7 +3125,7 @@ class _ContactDetailPage extends StatelessWidget {
                       ),
                       SizedBox(height: spacing.xs),
                       Text(
-                        item.user.username,
+                        '${item.user.roleLabel} • ${item.user.username}',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: context.appColors.textMuted,
                         ),
@@ -2747,26 +3137,22 @@ class _ContactDetailPage extends StatelessWidget {
             ),
           ),
           SizedBox(height: spacing.lg),
-          Wrap(
-            spacing: spacing.sm,
-            children: [
-              if (onBlock != null)
-                AppSecondaryButton(
-                  onPressed: () async {
-                    await onBlock!.call();
-                    if (context.mounted) Navigator.of(context).pop();
-                  },
-                  label: const Text('Block'),
-                ),
-              if (onReport != null)
-                AppSecondaryButton(
-                  onPressed: () async {
-                    await onReport!.call('user_report');
-                    if (context.mounted) Navigator.of(context).pop();
-                  },
-                  label: const Text('Report'),
-                ),
-            ],
+          AppSurfaceCard(
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                Icons.badge_outlined,
+                color: context.appColors.primary,
+              ),
+              title: const Text('Korporativ roli'),
+              subtitle: Text(item.user.roleLabel),
+              trailing: onRoleChanged == null
+                  ? null
+                  : const Icon(Icons.chevron_right_rounded),
+              onTap: onRoleChanged == null
+                  ? null
+                  : () => _showRolePicker(context),
+            ),
           ),
           SizedBox(height: spacing.lg),
           AppBadge(
@@ -2778,6 +3164,55 @@ class _ContactDetailPage extends StatelessWidget {
             message: detail.badge.details ?? detail.deviceSummary,
             tone: _mapTone(detail.badge.tone),
           ),
+          SizedBox(height: spacing.lg),
+          const AppSectionHeader(
+            title: 'Qurilmalar',
+            subtitle: 'Kontaktning ko‘rinadigan qurilmalari.',
+          ),
+          SizedBox(height: spacing.sm),
+          if (detail.devices.isEmpty)
+            const AppEmptyState(
+              message: 'Bu kontakt uchun ko‘rinadigan qurilma yo‘q.',
+              icon: Icons.devices_outlined,
+            )
+          else
+            for (final device in detail.devices)
+              Padding(
+                padding: EdgeInsets.only(bottom: spacing.sm),
+                child: AppSurfaceCard(
+                  child: Row(
+                    children: [
+                      const AppAvatar(
+                        label: 'D',
+                        icon: Icons.devices_outlined,
+                        radius: 18,
+                      ),
+                      SizedBox(width: spacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              device.deviceName.isEmpty
+                                  ? device.deviceId
+                                  : device.deviceName,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            SizedBox(height: spacing.xs),
+                            Text(
+                              '${device.platform.isEmpty ? 'noma’lum' : device.platform} • ${device.isActive ? 'faol' : device.status} • ${device.hasUsableMlKemKey && device.hasUsableMlDsaKey ? 'tayyor' : 'tayyor emas'}',
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: context.appColors.textMuted,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           SizedBox(height: spacing.lg),
           Row(
             children: [
@@ -2792,7 +3227,9 @@ class _ContactDetailPage extends StatelessWidget {
                           }
                         },
                   label: Text(
-                    detail.hasExistingConversation ? 'Open chat' : 'Start chat',
+                    detail.hasExistingConversation
+                        ? 'Chatni ochish'
+                        : 'Chat boshlash',
                   ),
                 ),
               ),
@@ -2807,7 +3244,7 @@ class _ContactDetailPage extends StatelessWidget {
                             Navigator.of(context).maybePop();
                           }
                         },
-                  label: const Text('Verify key'),
+                  label: const Text('Kalitni tasdiqlash'),
                 ),
               ),
             ],
@@ -2815,6 +3252,60 @@ class _ContactDetailPage extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _showRolePicker(BuildContext context) async {
+    const roles = <(String, String, IconData)>[
+      ('owner', 'Egasi', Icons.workspace_premium_outlined),
+      ('admin', 'Administrator', Icons.admin_panel_settings_outlined),
+      ('manager', 'Menejer', Icons.supervisor_account_outlined),
+      ('member', 'Xodim', Icons.badge_outlined),
+    ];
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            context.appSpacing.md,
+            0,
+            context.appSpacing.md,
+            context.appSpacing.md,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: EdgeInsets.all(context.appSpacing.sm),
+                child: Text(
+                  'Rolni tanlang',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              for (final role in roles)
+                ListTile(
+                  leading: Icon(role.$3),
+                  title: Text(role.$2),
+                  trailing: item.user.role == role.$1
+                      ? Icon(
+                          Icons.check_circle_rounded,
+                          color: context.appColors.primary,
+                        )
+                      : null,
+                  onTap: () => Navigator.of(sheetContext).pop(role.$1),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (selected != null && selected != item.user.role) {
+      await onRoleChanged!(selected);
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+    }
   }
 
   AppStatusTone _mapTone(UiStatusTone tone) {

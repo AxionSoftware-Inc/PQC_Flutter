@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   cupertino_icons: ^1.0.8
   chat_core:
     path: packages/chat_core
@@ -41,6 +43,7 @@ dependencies:
   file_picker: ^10.3.2
   flutter_secure_storage: ^9.2.4
   http: ^1.5.0
+  http_parser: ^4.1.2
   path: ^1.9.1
   path_provider: ^2.1.5
   pqcrypto: ^0.4.0
@@ -50,7 +53,7 @@ dependencies:
   web_socket_channel: ^3.0.3
   google_sign_in: ^7.2.0
   open_filex: ^4.7.0
-  record: ^6.1.2
+  hugeicons: ^1.1.7
 
 dev_dependencies:
   build_runner: ^2.7.0
@@ -69,6 +72,13 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/brand/antiq-mark-dark.png
+    - assets/brand/antiq-mark-light.png
+    - assets/brand/antiq-app-icon.png
+    - assets/brand/antiq-splash-light.png
+    - assets/brand/antiq-splash-dark.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

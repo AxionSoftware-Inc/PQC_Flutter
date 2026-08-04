@@ -10,7 +10,6 @@ class AppScaffold extends StatelessWidget {
     this.bottomNavigationBar,
     this.floatingActionButton,
     this.drawer,
-    this.endDrawer,
     this.scaffoldKey,
   });
 
@@ -19,7 +18,6 @@ class AppScaffold extends StatelessWidget {
   final Widget? bottomNavigationBar;
   final Widget? floatingActionButton;
   final Widget? drawer;
-  final Widget? endDrawer;
   final GlobalKey<ScaffoldState>? scaffoldKey;
 
   @override
@@ -31,10 +29,20 @@ class AppScaffold extends StatelessWidget {
       backgroundColor: colors.background,
       floatingActionButton: floatingActionButton,
       drawer: drawer,
-      endDrawer: endDrawer,
       bottomNavigationBar: bottomNavigationBar,
       body: DecoratedBox(
-        decoration: BoxDecoration(color: colors.background),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color.lerp(colors.background, colors.primarySoft, 0.06)!,
+              colors.background,
+              colors.background,
+            ],
+            stops: const [0, 0.34, 1],
+          ),
+        ),
         child: body,
       ),
     );

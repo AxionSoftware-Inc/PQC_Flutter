@@ -25,7 +25,7 @@ class AppSurfaceCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: backgroundColor ?? colors.surface,
         borderRadius: BorderRadius.circular(radii.lg),
-        border: Border.all(color: colors.border.withValues(alpha: 0.82)),
+        border: Border.all(color: colors.border.withValues(alpha: 0.66)),
         boxShadow: context.appShadows.card,
       ),
       child: Padding(

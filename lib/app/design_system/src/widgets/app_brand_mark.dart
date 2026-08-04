@@ -4,11 +4,7 @@ import '../brand/app_brand_scope.dart';
 import '../theme/app_theme.dart';
 
 class AppBrandMark extends StatelessWidget {
-  const AppBrandMark({
-    super.key,
-    this.size = 56,
-    this.showWordmark = true,
-  });
+  const AppBrandMark({super.key, this.size = 56, this.showWordmark = true});
 
   final double size;
   final bool showWordmark;
@@ -16,9 +12,7 @@ class AppBrandMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scope = AppBrandScope.of(context);
-    final colors = context.appColors;
     final spacing = context.appSpacing;
-    final accent = scope.brand?.accentColor ?? colors.primary;
     final logoUrl = scope.brand?.logoUrl.isNotEmpty == true
         ? scope.brand!.logoUrl
         : scope.skin.logoUrl;
@@ -26,26 +20,25 @@ class AppBrandMark extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Color.lerp(accent, Colors.white, 0.28)!,
-            Color.lerp(accent, Colors.white, 0.62)!,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: const Color(0xFF07090D),
         borderRadius: BorderRadius.circular(context.appRadii.lg),
         boxShadow: context.appShadows.card,
       ),
+      padding: EdgeInsets.all(size * 0.13),
       clipBehavior: Clip.antiAlias,
       child: logoUrl.isNotEmpty
           ? Image.network(
               logoUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) =>
-                  _FallbackBrandGlyph(accent: accent, wordmark: scope.skin.wordmark),
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) => const Image(
+                image: AssetImage('assets/brand/antiq-mark-light.png'),
+                fit: BoxFit.contain,
+              ),
             )
-          : _FallbackBrandGlyph(accent: accent, wordmark: scope.skin.wordmark),
+          : const Image(
+              image: AssetImage('assets/brand/antiq-mark-light.png'),
+              fit: BoxFit.contain,
+            ),
     );
     if (!showWordmark) {
       return emblem;
@@ -61,45 +54,14 @@ class AppBrandMark extends StatelessWidget {
                 ? scope.brand!.label
                 : scope.skin.wordmark,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w700,
+              letterSpacing: -0.7,
             ),
             overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
-    );
-  }
-}
-
-class _FallbackBrandGlyph extends StatelessWidget {
-  const _FallbackBrandGlyph({
-    required this.accent,
-    required this.wordmark,
-  });
-
-  final Color accent;
-  final String wordmark;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(context.appRadii.lg),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.6)),
-        ),
-        child: Center(
-          child: Text(
-            wordmark.isEmpty ? 'A' : wordmark[0].toUpperCase(),
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: accent,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
