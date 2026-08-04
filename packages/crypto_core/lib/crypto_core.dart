@@ -50,3 +50,4 @@ export 'src/models/session_user.dart';
 export 'src/network/api_client.dart';
 export 'src/support/chat_models.dart';
 export 'src/support/conversation_device_policy.dart';
+export 'antiq_protocol_sdk.dart';

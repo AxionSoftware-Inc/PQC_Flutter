@@ -9,12 +9,7 @@ import 'device_pqc_key_service.dart';
 import 'device_pqc_signing_key_service.dart';
 import 'device_security_state_service.dart';
 
-enum DeviceInstallationStatus {
-  active,
-  needsRegistration,
-  rotated,
-  revoked,
-}
+enum DeviceInstallationStatus { active, needsRegistration, rotated, revoked }
 
 class DeviceProfileSnapshot {
   const DeviceProfileSnapshot({
@@ -296,9 +291,11 @@ class DeviceStateManager {
         orElse: () => DeviceInstallationStatus.active,
       ),
     );
-    apiClient.setDeviceId(sessionUser.deviceId.isEmpty
-        ? state.deviceIdentity.id
-        : sessionUser.deviceId);
+    apiClient.setDeviceId(
+      sessionUser.deviceId.isEmpty
+          ? state.deviceIdentity.id
+          : sessionUser.deviceId,
+    );
   }
 
   Future<DeviceProfileSnapshot?> _readSnapshot() async {

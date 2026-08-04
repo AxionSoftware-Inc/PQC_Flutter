@@ -75,13 +75,19 @@ class DeviceIdentityService {
           final info = await _deviceInfoPlugin.androidInfo;
           final brand = info.brand.trim();
           final model = info.model.trim();
-          final device = [brand, model].where((item) => item.isNotEmpty).join(' ');
+          final device = [
+            brand,
+            model,
+          ].where((item) => item.isNotEmpty).join(' ');
           return device.isEmpty ? 'Android Device' : device;
         case TargetPlatform.iOS:
           final info = await _deviceInfoPlugin.iosInfo;
           final name = info.utsname.machine.trim();
           final model = info.model.trim();
-          final device = [model, name].where((item) => item.isNotEmpty).join(' ');
+          final device = [
+            model,
+            name,
+          ].where((item) => item.isNotEmpty).join(' ');
           return device.isEmpty ? 'iPhone' : device;
         case TargetPlatform.macOS:
           final info = await _deviceInfoPlugin.macOsInfo;

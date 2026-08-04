@@ -1,25 +1,35 @@
 import 'crypto_durability_models.dart';
 import 'v2_protocol_contract.dart';
 
+/// Explicit SDK write profile. A release id and its wire protocol are not the
+/// same thing: v2.5 keeps the immutable v2 wire format while v3 writes a new
+/// one. The host must select this deliberately, never by decoder presence.
+enum PayloadWriteProfile { v2, v3 }
+
 class PayloadFormatRegistry {
-  PayloadFormatRegistry({List<PayloadFormatDescriptor>? descriptors})
-    : _descriptors = descriptors ?? _defaultDescriptors;
+  PayloadFormatRegistry({
+    List<PayloadFormatDescriptor>? descriptors,
+    PayloadWriteProfile? writeProfile,
+  }) : _descriptors =
+           descriptors ?? _descriptorsFor(writeProfile ?? _environmentProfile);
 
   final List<PayloadFormatDescriptor> _descriptors;
 
-  static final bool _v3WriterEnabled = bool.fromEnvironment(
-    'V3_WRITER',
-    defaultValue: false,
-  );
+  static final PayloadWriteProfile _environmentProfile =
+      bool.fromEnvironment('V3_WRITER', defaultValue: false)
+      ? PayloadWriteProfile.v3
+      : PayloadWriteProfile.v2;
 
-  static final List<PayloadFormatDescriptor> _defaultDescriptors = [
+  static List<PayloadFormatDescriptor> _descriptorsFor(
+    PayloadWriteProfile writeProfile,
+  ) => [
     PayloadFormatDescriptor(
       formatId: 'pqc-private-v2',
       payloadKind: PayloadKind.privateMessage,
       prefix: '${PqcV2ProtocolContract.privatePrefix}:',
       introducedAtVersion: '2.0.0',
       decryptSupported: true,
-      writeEnabled: !_v3WriterEnabled,
+      writeEnabled: writeProfile == PayloadWriteProfile.v2,
     ),
     PayloadFormatDescriptor(
       formatId: 'group-message-v2',
@@ -27,7 +37,7 @@ class PayloadFormatRegistry {
       prefix: '${PqcV2ProtocolContract.groupPrefix}:',
       introducedAtVersion: '2.0.0',
       decryptSupported: true,
-      writeEnabled: !_v3WriterEnabled,
+      writeEnabled: writeProfile == PayloadWriteProfile.v2,
     ),
     const PayloadFormatDescriptor(
       formatId: 'group-envelope-pqc-v2',
@@ -42,7 +52,7 @@ class PayloadFormatRegistry {
       prefix: 'pqc:v3:',
       introducedAtVersion: '3.0.0',
       decryptSupported: true,
-      writeEnabled: _v3WriterEnabled,
+      writeEnabled: writeProfile == PayloadWriteProfile.v3,
     ),
     PayloadFormatDescriptor(
       formatId: 'group-message-v3',
@@ -50,7 +60,7 @@ class PayloadFormatRegistry {
       prefix: 'group:v3:',
       introducedAtVersion: '3.0.0',
       decryptSupported: true,
-      writeEnabled: _v3WriterEnabled,
+      writeEnabled: writeProfile == PayloadWriteProfile.v3,
     ),
   ];
 
