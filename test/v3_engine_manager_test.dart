@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pqc_chat_app/features/crypto/v3/v3_engine_manager.dart';
 import 'package:pqc_chat_app/features/crypto/v3/v3_engine_module.dart';
-import 'package:pqc_chat_app/features/crypto/durability/crypto_durability_models.dart';
 import 'package:pqc_chat_app/features/crypto/v3/v3_envelope.dart';
 import 'package:pqc_chat_app/features/crypto/v3/pqc_v3_crypto_adapter.dart';
 import 'package:pqc_chat_app/features/crypto/v3/v3_capabilities.dart';

@@ -1,1 +1,1 @@
-export 'package:crypto_core/src/crypto/v3/pqc_v3_crypto_adapter.dart';
+export 'package:crypto_core/antiq_engine_v3.dart';
