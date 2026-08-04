@@ -35,6 +35,13 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
         .toList();
   }
 
+  Future<AppUser> updateUserRole(int userId, String role) async {
+    final response =
+        await apiClient.put('/users/$userId/role', {'role': role})
+            as Map<String, dynamic>;
+    return AppUser.fromJson(response);
+  }
+
   Future<List<Conversation>> fetchConversations({
     DateTime? updatedAfter,
     String search = '',

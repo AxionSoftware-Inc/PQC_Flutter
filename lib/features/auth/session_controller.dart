@@ -134,6 +134,33 @@ class SessionController extends ChangeNotifier {
     }
   }
 
+  Future<void> updateProfile({
+    required String displayName,
+    List<int>? avatarBytes,
+    String avatarFilename = '',
+  }) async {
+    final sessionUser = _sessionUser;
+    if (sessionUser == null) {
+      return;
+    }
+    _setLoading(true);
+    _error = null;
+    try {
+      _sessionUser = await authRepository.updateProfile(
+        sessionUser,
+        displayName: displayName,
+        avatarBytes: avatarBytes,
+        avatarFilename: avatarFilename,
+      );
+      await _notifySessionChanged(_sessionUser);
+    } catch (error) {
+      _error = error.toString();
+      rethrow;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   void clearError() {
     _error = null;
     notifyListeners();

@@ -34,6 +34,7 @@ class SessionStorage {
   static const _accountIdKey = 'session_account_id';
   static const _usernameKey = 'session_username';
   static const _displayNameKey = 'session_display_name';
+  static const _avatarUrlKey = 'session_avatar_url';
   static const _deviceIdKey = 'session_device_id';
   static const _deviceStatusKey = 'session_device_status';
   static const _profileFingerprintKey = 'session_profile_fingerprint';
@@ -55,6 +56,7 @@ class SessionStorage {
     final accountIdValue = await _secretStore.read(_accountIdKey);
     final username = await _secretStore.read(_usernameKey);
     final displayName = await _secretStore.read(_displayNameKey);
+    final avatarUrl = await _secretStore.read(_avatarUrlKey);
     final deviceId = await _secretStore.read(_deviceIdKey);
     final deviceStatus = await _secretStore.read(_deviceStatusKey);
     final profileFingerprint = await _secretStore.read(_profileFingerprintKey);
@@ -91,6 +93,7 @@ class SessionStorage {
       accountId: accountId,
       username: username,
       displayName: displayName,
+      avatarUrl: avatarUrl ?? '',
       deviceId: deviceId,
       deviceStatus: deviceStatus ?? 'active',
       profileFingerprint: profileFingerprint ?? '',
@@ -111,6 +114,7 @@ class SessionStorage {
     );
     await _secretStore.write(key: _usernameKey, value: user.username);
     await _secretStore.write(key: _displayNameKey, value: user.displayName);
+    await _secretStore.write(key: _avatarUrlKey, value: user.avatarUrl);
     await _secretStore.write(key: _deviceIdKey, value: user.deviceId);
     await _secretStore.write(key: _deviceStatusKey, value: user.deviceStatus);
     await _secretStore.write(
@@ -241,6 +245,7 @@ class SessionStorage {
     await _secretStore.delete(_accountIdKey);
     await _secretStore.delete(_usernameKey);
     await _secretStore.delete(_displayNameKey);
+    await _secretStore.delete(_avatarUrlKey);
     await _secretStore.delete(_deviceIdKey);
     await _secretStore.delete(_deviceStatusKey);
     await _secretStore.delete(_profileFingerprintKey);

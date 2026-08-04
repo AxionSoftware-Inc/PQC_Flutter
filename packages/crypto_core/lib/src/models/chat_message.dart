@@ -16,6 +16,7 @@ class ChatMessage {
     this.clientMessageId = '',
     this.deliveryState = MessageDeliveryState.sent,
     this.failureReason,
+    this.isRead = false,
   });
 
   final int id;
@@ -30,6 +31,7 @@ class ChatMessage {
   final String clientMessageId;
   final MessageDeliveryState deliveryState;
   final String? failureReason;
+  final bool isRead;
 
   bool get isPending => deliveryState == MessageDeliveryState.pending;
   bool get canRetry => deliveryState == MessageDeliveryState.failedRetryable;
@@ -51,6 +53,7 @@ class ChatMessage {
       deliveryState: _deliveryStateFromJson(
         json['delivery_state'] as String? ?? 'sent',
       ),
+      isRead: json['is_read'] as bool? ?? false,
     );
   }
 
@@ -67,6 +70,7 @@ class ChatMessage {
     String? clientMessageId,
     MessageDeliveryState? deliveryState,
     String? failureReason,
+    bool? isRead,
   }) {
     return ChatMessage(
       id: id ?? this.id,
@@ -81,6 +85,7 @@ class ChatMessage {
       clientMessageId: clientMessageId ?? this.clientMessageId,
       deliveryState: deliveryState ?? this.deliveryState,
       failureReason: failureReason ?? this.failureReason,
+      isRead: isRead ?? this.isRead,
     );
   }
 

@@ -31,6 +31,8 @@ class ConversationListItemState {
     this.deliveryState,
     this.trustBadge,
     this.deviceSummary = '',
+    this.avatarUrl = '',
+    this.roleLabel = '',
   });
 
   final Conversation conversation;
@@ -45,6 +47,8 @@ class ConversationListItemState {
   final MessageDeliveryState? deliveryState;
   final ContactTrustBadgeState? trustBadge;
   final String deviceSummary;
+  final String avatarUrl;
+  final String roleLabel;
 
   bool get isUnread => unreadCount > 0 || isManuallyUnread;
   bool get hasDraft => draftPreview != null && draftPreview!.trim().isNotEmpty;
@@ -249,6 +253,7 @@ class ChatHubController extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
   String? get error => _error;
+  List<AppUser> get users => List<AppUser>.unmodifiable(_users);
   ChatListViewState get chatState => ChatListViewState(
     preferences: _chatPreferences,
     items: _conversationItems,
@@ -258,25 +263,8 @@ class ChatHubController extends ChangeNotifier {
     selectedFilter: _contactsFilter,
     sections: _contactSections,
   );
-
   Map<String, dynamic> get accountSettings =>
       Map.unmodifiable(Map<String, dynamic>.of(_accountSettings));
-
-  ContactListItemState? contactItemForConversation(Conversation conversation) {
-    if (conversation.isGroup) return null;
-    final sessionId = currentUserId;
-    final peerId = conversation.participantIds
-        .where((id) => id != sessionId)
-        .firstOrNull;
-    if (peerId == null) return null;
-    for (final section in _contactSections) {
-      for (final item in section.items) {
-        if (item.user.id == peerId) return item;
-      }
-    }
-    return null;
-  }
-
   SettingsViewState get settingsState {
     final sessionUser = sessionUserProvider();
     final currentUser = _users
@@ -304,7 +292,7 @@ class ChatHubController extends ChangeNotifier {
       ),
       apiBaseUrl: const String.fromEnvironment(
         'API_BASE_URL',
-        defaultValue: 'http://169.58.123.200/api',
+        defaultValue: 'http://91.108.121.56/api',
       ),
       supportEmail: const String.fromEnvironment(
         'SUPPORT_EMAIL',
@@ -313,8 +301,7 @@ class ChatHubController extends ChangeNotifier {
     );
   }
 
-  Map<int, UserKeyTrust> get trustByUserId =>
-      Map.unmodifiable(Map<int, UserKeyTrust>.of(_trustByUserId));
+  Map<int, UserKeyTrust> get trustByUserId => _trustByUserId;
 
   Future<void> load() async {
     _isLoading = true;
@@ -356,12 +343,9 @@ class ChatHubController extends ChangeNotifier {
         _accountSettings = Map<String, dynamic>.from(response);
       }
     } catch (_) {
-      // Settings are auxiliary; keep the last known values during outages.
+      // Account settings must not block the inbox while offline.
     }
-    final state = await chatFacade.loadChatList(
-      currentUserId: currentUserId,
-      searchQuery: _chatPreferences.searchQuery,
-    );
+    final state = await chatFacade.loadChatList(currentUserId: currentUserId);
     _users = state.users;
     _conversations = state.conversations;
     _trustByUserId = state.trustByUserId;
@@ -406,16 +390,14 @@ class ChatHubController extends ChangeNotifier {
     await refresh();
   }
 
+  Future<void> updateContactRole(AppUser user, String role) async {
+    await chatFacade.updateUserRole(userId: user.id, role: role);
+    await refresh();
+  }
+
   Future<void> setChatSearchQuery(String value) async {
     _chatPreferences = _chatPreferences.copyWith(searchQuery: value);
     await _persistChatPreferences();
-    final state = await chatFacade.loadChatList(
-      currentUserId: currentUserId,
-      searchQuery: value,
-    );
-    _users = state.users;
-    _conversations = state.conversations;
-    _trustByUserId = state.trustByUserId;
     _conversationItems = await _buildConversationItems(sessionUserProvider());
     notifyListeners();
   }
@@ -492,27 +474,6 @@ class ChatHubController extends ChangeNotifier {
   Future<void> revokeDevice(String deviceId) async {
     await apiClient.post('/users/me/devices/$deviceId/revoke', const {});
     await refresh();
-  }
-
-  Future<void> blockUser(int userId) async {
-    await apiClient.post('/users/$userId/block', const {});
-    await refresh();
-  }
-
-  Future<void> unblockUser(int userId) async {
-    await apiClient.delete('/users/$userId/block');
-    await refresh();
-  }
-
-  Future<void> reportUser(
-    int userId, {
-    required String reason,
-    String details = '',
-  }) {
-    return apiClient.post('/users/$userId/report', {
-      'reason': reason,
-      'details': details,
-    });
   }
 
   Future<String> exportBackup(String recoveryPassphrase) async {
@@ -726,11 +687,6 @@ class ChatHubController extends ChangeNotifier {
   Future<List<ConversationListItemState>> _buildConversationItems(
     SessionUser sessionUser,
   ) async {
-    final conversations = List<Conversation>.of(_conversations);
-    final users = List<AppUser>.of(_users);
-    final trustByUserId = Map<int, UserKeyTrust>.of(_trustByUserId);
-    final preferences = _chatPreferences;
-    final appPreferences = _appPreferences;
     final rows = await _database.readConversations();
     final rowMap = {
       for (final row in rows)
@@ -741,7 +697,7 @@ class ChatHubController extends ChangeNotifier {
     final draftMap = <int, String>{};
     final localPreviewMap = <int, String>{};
     final messageStateMap = <int, MessageDeliveryState?>{};
-    for (final conversation in conversations) {
+    for (final conversation in _conversations) {
       final draft = await _database.readDraft(conversation.id);
       if (draft != null && draft.draftText.trim().isNotEmpty) {
         draftMap[conversation.id] = draft.draftText.trim();
@@ -765,17 +721,24 @@ class ChatHubController extends ChangeNotifier {
       }
     }
 
-    final items = conversations
+    final items = _conversations
         .map((conversation) {
           final peerId = conversation.participantIds.firstWhere(
             (id) => id != currentUserId,
             orElse: () => -1,
           );
-          final peerUser = users.where((user) => user.id == peerId).firstOrNull;
-          final trust = peerUser == null ? null : trustByUserId[peerUser.id];
+          final peerUser = _users
+              .where((user) => user.id == peerId)
+              .firstOrNull;
+          final trust = peerUser == null ? null : _trustByUserId[peerUser.id];
           final draftPreview = draftMap[conversation.id];
           final row = rowMap[conversation.id];
           final unreadCount = row?.unreadCount ?? conversation.unreadCount;
+          final archived = _chatPreferences.archivedConversationIds.contains(
+            conversation.id,
+          );
+          final manuallyUnread = _chatPreferences.manuallyUnreadConversationIds
+              .contains(conversation.id);
           return ConversationListItemState(
             conversation: conversation,
             title: conversation.isGroup
@@ -783,20 +746,17 @@ class ChatHubController extends ChangeNotifier {
                 : (peerUser?.displayName.isNotEmpty == true
                       ? peerUser!.displayName
                       : conversation.title),
-            preview: draftPreview != null && appPreferences.keepDrafts
+            preview: draftPreview != null && _appPreferences.keepDrafts
                 ? 'Draft: $draftPreview'
                 : localPreviewMap[conversation.id] ??
                       conversation.lastMessagePreview,
             draftPreview: draftPreview,
             unreadCount: unreadCount,
-            isPinned: preferences.pinnedConversationIds.contains(
+            isPinned: _chatPreferences.pinnedConversationIds.contains(
               conversation.id,
             ),
-            isArchived: preferences.archivedConversationIds.contains(
-              conversation.id,
-            ),
-            isManuallyUnread: preferences.manuallyUnreadConversationIds
-                .contains(conversation.id),
+            isArchived: archived,
+            isManuallyUnread: manuallyUnread,
             updatedAt: conversation.updatedAt,
             deliveryState: messageStateMap[conversation.id],
             trustBadge: conversation.isGroup
@@ -810,6 +770,8 @@ class ChatHubController extends ChangeNotifier {
             deviceSummary: conversation.isGroup
                 ? 'Workspace encrypted'
                 : _deviceSummaryForUser(peerUser),
+            avatarUrl: conversation.isGroup ? '' : peerUser?.avatarUrl ?? '',
+            roleLabel: conversation.isGroup ? '' : peerUser?.roleLabel ?? '',
           );
         })
         .where(_matchesConversationFilter)
@@ -863,32 +825,19 @@ class ChatHubController extends ChangeNotifier {
   }
 
   List<ContactsSectionState> _buildContactSections(SessionUser sessionUser) {
-    final users = List<AppUser>.of(_users);
-    final conversations = List<Conversation>.of(_conversations);
-    final trustByUserId = Map<int, UserKeyTrust>.of(_trustByUserId);
-    final items = users
+    final items = _users
         .map(
           (user) => ContactListItemState(
             user: user,
             title: user.id == sessionUser.id
-                ? '${user.displayName} (You)'
+                ? '${user.displayName} (Siz)'
                 : user.displayName,
-            subtitle: user.username,
+            subtitle: user.roleLabel,
             sortKey: user.displayName.toLowerCase(),
-            badge: _buildContactBadge(user, trustByUserId: trustByUserId),
+            badge: _buildContactBadge(user),
             deviceSummary: _deviceSummaryForUser(user),
-            hasExistingConversation: conversations.any(
-              (conversation) =>
-                  !conversation.isGroup &&
-                  conversation.participantIds.contains(user.id),
-            ),
-            privateConversation: conversations
-                .where(
-                  (conversation) =>
-                      !conversation.isGroup &&
-                      conversation.participantIds.contains(user.id),
-                )
-                .firstOrNull,
+            hasExistingConversation: _findPrivateConversation(user.id) != null,
+            privateConversation: _findPrivateConversation(user.id),
             isCurrentUser: user.id == sessionUser.id,
           ),
         )
@@ -946,17 +895,14 @@ class ChatHubController extends ChangeNotifier {
     }
   }
 
-  ContactTrustBadgeState _buildContactBadge(
-    AppUser user, {
-    Map<int, UserKeyTrust>? trustByUserId,
-  }) {
+  ContactTrustBadgeState _buildContactBadge(AppUser user) {
     if (user.id == currentUserId) {
       return const ContactTrustBadgeState(
         label: 'Current device set',
         tone: UiStatusTone.info,
       );
     }
-    final trust = (trustByUserId ?? _trustByUserId)[user.id];
+    final trust = _trustByUserId[user.id];
     if (trust == null) {
       return const ContactTrustBadgeState(
         label: 'Unknown',

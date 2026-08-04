@@ -1,6 +1,9 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../app/app_localization.dart';
+
 enum ChatListFilter { all, unread, pinned, archived }
+
 enum AppThemePreference { light, dark }
 
 class ChatListPreferences {
@@ -41,10 +44,11 @@ class ChatListPreferences {
 class AppPreferencesState {
   const AppPreferencesState({
     this.showArchivedByDefault = false,
-    this.compactListMode = false,
+    this.compactListMode = true,
     this.keepDrafts = true,
     this.preferManualRefreshHints = false,
     this.themePreference = AppThemePreference.light,
+    this.languagePreference = AppLanguagePreference.uzbek,
   });
 
   final bool showArchivedByDefault;
@@ -52,6 +56,7 @@ class AppPreferencesState {
   final bool keepDrafts;
   final bool preferManualRefreshHints;
   final AppThemePreference themePreference;
+  final AppLanguagePreference languagePreference;
 
   AppPreferencesState copyWith({
     bool? showArchivedByDefault,
@@ -59,6 +64,7 @@ class AppPreferencesState {
     bool? keepDrafts,
     bool? preferManualRefreshHints,
     AppThemePreference? themePreference,
+    AppLanguagePreference? languagePreference,
   }) {
     return AppPreferencesState(
       showArchivedByDefault:
@@ -68,6 +74,7 @@ class AppPreferencesState {
       preferManualRefreshHints:
           preferManualRefreshHints ?? this.preferManualRefreshHints,
       themePreference: themePreference ?? this.themePreference,
+      languagePreference: languagePreference ?? this.languagePreference,
     );
   }
 }
@@ -83,6 +90,7 @@ class LocalUiPreferencesStore {
   static const _keepDraftsKey = 'ui_pref_keep_drafts';
   static const _preferManualRefreshHintsKey = 'ui_pref_manual_refresh_hints';
   static const _themePreferenceKey = 'ui_pref_theme_preference';
+  static const _languagePreferenceKey = 'ui_pref_language_preference';
 
   Future<ChatListPreferences> readChatListPreferences({
     required int accountId,
@@ -151,7 +159,7 @@ class LocalUiPreferencesStore {
     return AppPreferencesState(
       showArchivedByDefault:
           preferences.getBool(_showArchivedByDefaultKey) ?? false,
-      compactListMode: preferences.getBool(_compactListModeKey) ?? false,
+      compactListMode: true,
       keepDrafts: preferences.getBool(_keepDraftsKey) ?? true,
       preferManualRefreshHints:
           preferences.getBool(_preferManualRefreshHintsKey) ?? false,
@@ -162,6 +170,13 @@ class LocalUiPreferencesStore {
                 AppThemePreference.light.name),
         orElse: () => AppThemePreference.light,
       ),
+      languagePreference: AppLanguagePreference.values.firstWhere(
+        (item) =>
+            item.name ==
+            (preferences.getString(_languagePreferenceKey) ??
+                AppLanguagePreference.uzbek.name),
+        orElse: () => AppLanguagePreference.uzbek,
+      ),
     );
   }
 
@@ -171,13 +186,20 @@ class LocalUiPreferencesStore {
       _showArchivedByDefaultKey,
       state.showArchivedByDefault,
     );
-    await preferences.setBool(_compactListModeKey, state.compactListMode);
+    await preferences.setBool(_compactListModeKey, true);
     await preferences.setBool(_keepDraftsKey, state.keepDrafts);
     await preferences.setBool(
       _preferManualRefreshHintsKey,
       state.preferManualRefreshHints,
     );
-    await preferences.setString(_themePreferenceKey, state.themePreference.name);
+    await preferences.setString(
+      _themePreferenceKey,
+      state.themePreference.name,
+    );
+    await preferences.setString(
+      _languagePreferenceKey,
+      state.languagePreference.name,
+    );
   }
 
   Set<int> _readIntSet(SharedPreferences preferences, String key) {
