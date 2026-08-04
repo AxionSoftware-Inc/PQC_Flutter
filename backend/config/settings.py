@@ -256,7 +256,9 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR.parent / 'shared' / 'media'
+MEDIA_ROOT = Path(
+    os.environ.get('DJANGO_MEDIA_ROOT', BASE_DIR.parent / 'shared' / 'media')
+).resolve()
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 
 # Resumable attachments are uploaded chunk-by-chunk, so the product-level file
