@@ -30,6 +30,7 @@ User = get_user_model()
 VALID_PUBLIC_KEY_1 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
 VALID_PUBLIC_KEY_2 = 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE='
 VALID_PQC_PUBLIC_KEY = base64.b64encode(bytes(1184)).decode()
+INVALID_PQC_PUBLIC_KEY = base64.b64encode(bytes([255]) * 1184).decode()
 VALID_PQC_SIGNING_PUBLIC_KEY = base64.b64encode(bytes(1952)).decode()
 
 
@@ -344,6 +345,28 @@ class _FakeGoogleResponse:
 
 
 class AuthApiTests(APITestCase):
+    def test_login_rejects_non_canonical_ml_kem_public_key(self):
+        response = self.client.post(
+            '/api/auth/login',
+            {
+                'username': 'invalid-pqc-device',
+                'device_id': 'invalid-pqc-device',
+                'identity_public_key': VALID_PUBLIC_KEY_1,
+                'key_algorithm': 'x25519',
+                'pqc_public_key': INVALID_PQC_PUBLIC_KEY,
+                'pqc_algorithm': 'ml-kem-768',
+                'pqc_signing_public_key': VALID_PQC_SIGNING_PUBLIC_KEY,
+                'pqc_signing_algorithm': 'ml-dsa-65',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('non-canonical', str(response.data))
+        self.assertFalse(
+            UserDevice.objects.filter(device_id='invalid-pqc-device').exists()
+        )
+
     def test_google_login_issues_device_bound_one_use_recovery_proofs(self):
         claims = {
             'aud': '937305477350-n9h2s4e6ra9rvs6s1s95gel6p4ldl5tg.apps.googleusercontent.com',

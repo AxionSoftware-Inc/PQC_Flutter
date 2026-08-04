@@ -7,6 +7,9 @@ from users.roles import CorporateRole, DEFAULT_CORPORATE_ROLE
 
 
 User = get_user_model()
+ML_KEM_768_PUBLIC_KEY_BYTES = 1184
+ML_KEM_POLYVEC_BYTES = 1152
+ML_KEM_Q = 3329
 
 
 def validate_identity_public_key_fields(key_algorithm, identity_public_key):
@@ -33,6 +36,38 @@ def validate_identity_public_key_fields(key_algorithm, identity_public_key):
     return identity_public_key
 
 
+def decode_valid_ml_kem_768_public_key(pqc_public_key):
+    try:
+        decoded = base64.b64decode(pqc_public_key, validate=True)
+    except Exception as exc:
+        raise serializers.ValidationError(
+            'pqc_public_key must be valid base64 for ml-kem-768.'
+        ) from exc
+
+    if len(decoded) != ML_KEM_768_PUBLIC_KEY_BYTES:
+        raise serializers.ValidationError(
+            'pqc_public_key must decode to 1184 bytes for ml-kem-768.'
+        )
+
+    encoded_polyvec = decoded[:ML_KEM_POLYVEC_BYTES]
+    for offset in range(0, len(encoded_polyvec), 3):
+        first = encoded_polyvec[offset] | ((encoded_polyvec[offset + 1] & 0x0F) << 8)
+        second = (encoded_polyvec[offset + 1] >> 4) | (encoded_polyvec[offset + 2] << 4)
+        if first >= ML_KEM_Q or second >= ML_KEM_Q:
+            raise serializers.ValidationError(
+                'pqc_public_key has a non-canonical ml-kem-768 polynomial encoding.'
+            )
+    return decoded
+
+
+def is_valid_ml_kem_768_public_key(pqc_public_key):
+    try:
+        decode_valid_ml_kem_768_public_key(pqc_public_key)
+        return True
+    except serializers.ValidationError:
+        return False
+
+
 def validate_pqc_public_key_fields(pqc_algorithm, pqc_public_key):
     if not pqc_algorithm:
         return pqc_public_key
@@ -45,17 +80,7 @@ def validate_pqc_public_key_fields(pqc_algorithm, pqc_public_key):
             'pqc_public_key is required when pqc_algorithm is ml-kem-768.'
         )
 
-    try:
-        decoded = base64.b64decode(pqc_public_key, validate=True)
-    except Exception as exc:
-        raise serializers.ValidationError(
-            'pqc_public_key must be valid base64 for ml-kem-768.'
-        ) from exc
-
-    if len(decoded) != 1184:
-        raise serializers.ValidationError(
-            'pqc_public_key must decode to 1184 bytes for ml-kem-768.'
-        )
+    decode_valid_ml_kem_768_public_key(pqc_public_key)
 
     return pqc_public_key
 
