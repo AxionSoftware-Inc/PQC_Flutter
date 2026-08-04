@@ -11,6 +11,16 @@ SDK consumers should import only:
 import 'package:crypto_core/antiq_protocol_sdk.dart';
 ```
 
+For complete codec integration, use exactly one engine surface:
+
+```dart
+import 'package:crypto_core/antiq_engine_v25.dart';
+// or: package:crypto_core/antiq_engine_v3.dart
+```
+
+The two engine files are deliberately separate. An app using V2.5 does not
+load the V3 writer; V3 keeps V2 compatibility as a read-only decoder path.
+
 ```dart
 final protocol = AntiQProtocolSdk.v25();
 print(protocol.release.releaseId);    // 2.5.0
