@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -29,7 +30,13 @@ class UnauthorizedApiException extends ApiException {
 }
 
 class ApiClient {
-  final http.Client _client = http.Client();
+  ApiClient({
+    http.Client? client,
+    this.requestTimeout = const Duration(seconds: 20),
+  }) : _client = client ?? http.Client();
+
+  final http.Client _client;
+  final Duration requestTimeout;
   String? _token;
   String? _deviceId;
   String? _workspaceId;
@@ -120,7 +127,13 @@ class ApiClient {
 
   Future<http.Response> _send(Future<http.Response> Function() request) async {
     try {
-      return await request();
+      return await request().timeout(requestTimeout);
+    } on TimeoutException {
+      throw ApiException(
+        'Server javobi kutilgan vaqtda kelmadi. Qayta uriniladi.',
+        code: 'request_timeout',
+        isRetryable: true,
+      );
     } on SocketException {
       throw ApiException(
         'Network unavailable. Please try again.',
@@ -131,6 +144,12 @@ class ApiClient {
       throw ApiException(
         'Server connection failed.',
         code: 'connection_failed',
+        isRetryable: true,
+      );
+    } on http.ClientException {
+      throw ApiException(
+        'Server ulanishni yakunlamadi. Qayta uriniladi.',
+        code: 'connection_closed',
         isRetryable: true,
       );
     }

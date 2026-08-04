@@ -23,6 +23,7 @@ VALID_PUBLIC_KEY_1 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
 VALID_PUBLIC_KEY_2 = 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE='
 VALID_PQC_PUBLIC_KEY_1 = base64.b64encode(bytes(1184)).decode()
 VALID_PQC_PUBLIC_KEY_2 = base64.b64encode(bytes([1]) * 1184).decode()
+INVALID_PQC_PUBLIC_KEY = base64.b64encode(bytes([255]) * 1184).decode()
 VALID_PQC_SIGNING_PUBLIC_KEY_1 = base64.b64encode(bytes(1952)).decode()
 VALID_PQC_SIGNING_PUBLIC_KEY_2 = base64.b64encode(bytes([1]) * 1952).decode()
 
@@ -196,6 +197,26 @@ class ChatApiTests(APITestCase):
         self.assertEqual(first.status_code, 201)
         self.assertEqual(second.status_code, 200)
         self.assertEqual(first.data['id'], second.data['id'])
+
+    def test_realtime_failure_does_not_rollback_message(self):
+        with patch('chat.views.async_to_sync', side_effect=RuntimeError('channel down')):
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.post(
+                    f'/api/conversations/{self.group.id}/messages',
+                    {
+                        'body': _group_payload('durable'),
+                        'client_message_id': 'channel-down-message',
+                    },
+                    format='json',
+                )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            self.group.messages.filter(
+                sender=self.user,
+                client_message_id='channel-down-message',
+            ).exists()
+        )
 
     def test_messages_support_incremental_after_id_sync(self):
         self.client.post(
@@ -534,6 +555,39 @@ class ChatApiTests(APITestCase):
             'Envelope set must exactly match the registered group devices.',
         )
         self.assertIn('missing devices: device-2', response.data['mismatch'][0])
+
+    def test_group_key_envelope_ignores_quarantinable_malformed_device(self):
+        malformed_user = User.objects.create_user(username='malformed-device-user')
+        ConversationParticipant.objects.create(
+            conversation=self.group,
+            user=malformed_user,
+        )
+        UserDevice.objects.create(
+            user=malformed_user,
+            device_id='malformed-device',
+            pqc_public_key=INVALID_PQC_PUBLIC_KEY,
+            pqc_algorithm='ml-kem-768',
+            pqc_signing_public_key=VALID_PQC_SIGNING_PUBLIC_KEY_2,
+            pqc_signing_algorithm='ml-dsa-65',
+        )
+
+        response = self.client.post(
+            f'/api/conversations/{self.group.id}/keys',
+            {
+                'key_id': 'healthy-key-coverage',
+                'algorithm': 'group-ml-kem-768-aesgcm-v2',
+                'envelopes': [
+                    {
+                        'target_device_id': 'device-1',
+                        'wrapped_key': 'group-wrap:pqc:v2:device-1:sign:kem:nonce:cipher:mac:signature',
+                    },
+                ],
+            },
+            format='json',
+            HTTP_X_DEVICE_ID='device-1',
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
 
     def test_group_key_envelope_rejects_duplicate_target_devices(self):
         response = self.client.post(

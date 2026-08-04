@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pqc_chat_app/app/design_system/app_design_system.dart';
 import 'package:pqc_chat_app/core/device/device_identity_service.dart';
@@ -56,6 +57,13 @@ void main() {
     final skin = AppSkinRegistry.resolve(AppSkinRegistry.defaultSkinId);
     await tester.pumpWidget(
       MaterialApp(
+        locale: const Locale('uz'),
+        supportedLocales: const [Locale('uz'), Locale('en')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         theme: AppThemeFactory.build(skin: skin),
         home: AppBrandScope(
           skin: skin,
@@ -66,8 +74,8 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.text('Sign in to PQC Chat'), findsOneWidget);
-    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(find.text('antiQ akkauntiga kirish'), findsOneWidget);
+    expect(find.text('Google orqali davom etish'), findsOneWidget);
     expect(find.byType(FilledButton), findsNothing);
     expect(find.byType(OutlinedButton), findsOneWidget);
   });
