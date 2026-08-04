@@ -116,25 +116,50 @@ class GroupKeyStore implements GroupKeyProvider {
     final keyId = _uuid.v4();
     final secretKeyBytes = List<int>.generate(32, (_) => _random.nextInt(256));
     final envelopes = <ConversationKeyEnvelopeUpload>[];
+    final coveredUserIds = <int>{};
+    final malformedDeviceIds = <String>[];
 
     for (final device in targetDevices) {
-      envelopes.add(
-        ConversationKeyEnvelopeUpload(
-          targetDeviceId: device.deviceId,
-          wrappedKey: await _wrapGroupKeyForDevice(
-            conversation: conversation,
-            keyId: keyId,
-            senderDeviceId: deviceIdentity.id,
-            targetDevice: device,
-            secretKeyBytes: secretKeyBytes,
+      try {
+        envelopes.add(
+          ConversationKeyEnvelopeUpload(
+            targetDeviceId: device.deviceId,
+            wrappedKey: await _wrapGroupKeyForDevice(
+              conversation: conversation,
+              keyId: keyId,
+              senderDeviceId: deviceIdentity.id,
+              targetDevice: device,
+              secretKeyBytes: secretKeyBytes,
+            ),
           ),
-        ),
-      );
+        );
+        final userId = _userIdForDevice(usersById, device.deviceId);
+        if (userId != null) {
+          coveredUserIds.add(userId);
+        }
+      } on ArgumentError {
+        // A legacy/server-corrupted ML-KEM key can have the expected byte
+        // length yet still fail polynomial decoding.  It is not a usable
+        // active device and must not prevent every healthy group member from
+        // receiving a new epoch.
+        malformedDeviceIds.add(device.deviceId);
+      }
     }
 
-    if (envelopes.length != targetDevices.length) {
+    // The local sender receives this freshly generated epoch directly through
+    // protected storage; it does not need a self-envelope to be covered.
+    final coveredParticipants = {
+      ...coveredUserIds,
+      _userIdForDevice(usersById, deviceIdentity.id),
+    }..remove(null);
+    final missingParticipants = conversation.participantIds
+        .where((userId) => !coveredParticipants.contains(userId))
+        .map((userId) => usersById[userId]?.displayName ?? 'user-$userId')
+        .toList();
+    if (missingParticipants.isNotEmpty) {
       throw ChatEncryptionException(
-        'Group key distribution incomplete. Retry after all participants re-open the app.',
+        'Group key yangilanishi kerak: ${missingParticipants.join(', ')}. '
+        'Ular ilovani qayta ochib, device keyni yangilashi kerak.',
       );
     }
 
@@ -236,6 +261,15 @@ class GroupKeyStore implements GroupKeyProvider {
       deviceId: deviceId,
       includeHistorical: true,
     );
+  }
+
+  int? _userIdForDevice(Map<int, AppUser> usersById, String deviceId) {
+    for (final entry in usersById.entries) {
+      if (entry.value.devices.any((item) => item.deviceId == deviceId)) {
+        return entry.key;
+      }
+    }
+    return null;
   }
 
   Future<String> _wrapGroupKeyForDevice({
