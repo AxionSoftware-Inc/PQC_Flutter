@@ -2,12 +2,15 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pqc_chat_app/core/device/device_identity_service.dart';
+import 'package:pqc_chat_app/core/device/device_key_service.dart';
 import 'package:pqc_chat_app/core/device/device_pqc_key_service.dart';
 import 'package:pqc_chat_app/core/device/device_pqc_signing_key_service.dart';
 import 'package:pqc_chat_app/core/models/app_user.dart';
 import 'package:pqc_chat_app/core/models/conversation.dart';
 import 'package:pqc_chat_app/core/storage/local_secret_store.dart';
 import 'package:pqc_chat_app/features/crypto/message_codec.dart';
+import 'package:pqc_chat_app/features/crypto/durability/key_material_registry.dart';
+import 'package:crypto_core/crypto_core.dart' show SdkV2PrivateMessageCodec;
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -93,6 +96,38 @@ void main() {
     },
   );
 
+  test(
+    'frozen V2 SDK adapter encrypts and decrypts through app key storage',
+    () async {
+      final fixture = await _buildFixture(useSdkAdapter: true);
+      final payload = await fixture.aliceCodec.encrypt(
+        currentUserId: 1,
+        conversation: fixture.conversation,
+        plaintext: 'SDK V2 message',
+        usersById: fixture.usersById,
+      );
+
+      expect(payload, startsWith('pqc:v2:'));
+      expect(
+        await fixture.bobCodec.decrypt(
+          currentUserId: 2,
+          conversation: fixture.conversation,
+          payload: payload,
+          usersById: fixture.usersById,
+        ),
+        'SDK V2 message',
+      );
+      expect(
+        await fixture.aliceCodec.decrypt(
+          currentUserId: 1,
+          conversation: fixture.conversation,
+          payload: payload,
+          usersById: fixture.usersById,
+        ),
+        'SDK V2 message',
+      );
+    },
+  );
 }
 
 Map<String, dynamic> _decodePayload(String payload) {
@@ -105,18 +140,36 @@ Map<String, dynamic> _decodePayload(String payload) {
       as Map<String, dynamic>;
 }
 
-Future<_Fixture> _buildFixture() async {
+Future<_Fixture> _buildFixture({bool useSdkAdapter = false}) async {
   final aliceSecrets = _MemorySecretStore();
   final bobSecrets = _MemorySecretStore();
   final alicePqc = DevicePqcKeyService(secretStore: aliceSecrets);
   final bobPqc = DevicePqcKeyService(secretStore: bobSecrets);
   final aliceSigning = DevicePqcSigningKeyService(secretStore: aliceSecrets);
   final bobSigning = DevicePqcSigningKeyService(secretStore: bobSecrets);
+  final aliceIdentity = _FakeDeviceIdentityService('alice-device');
+  final bobIdentity = _FakeDeviceIdentityService('bob-device');
+  final aliceRegistry = KeyMaterialRegistry(
+    deviceIdentityService: aliceIdentity,
+    deviceKeyService: DeviceKeyService(secretStore: aliceSecrets),
+    devicePqcKeyService: alicePqc,
+    devicePqcSigningKeyService: aliceSigning,
+    secretStore: aliceSecrets,
+  );
+  final bobRegistry = KeyMaterialRegistry(
+    deviceIdentityService: bobIdentity,
+    deviceKeyService: DeviceKeyService(secretStore: bobSecrets),
+    devicePqcKeyService: bobPqc,
+    devicePqcSigningKeyService: bobSigning,
+    secretStore: bobSecrets,
+  );
 
   final alicePqcMaterial = await alicePqc.getOrCreateKeyMaterial();
   final bobPqcMaterial = await bobPqc.getOrCreateKeyMaterial();
   final aliceSigningMaterial = await aliceSigning.getOrCreateKeyMaterial();
   final bobSigningMaterial = await bobSigning.getOrCreateKeyMaterial();
+  await aliceRegistry.ensureCurrentKeysetRegistered();
+  await bobRegistry.ensureCurrentKeysetRegistered();
 
   final conversation = Conversation(
     id: 2,
@@ -168,16 +221,30 @@ Future<_Fixture> _buildFixture() async {
   return _Fixture(
     conversation: conversation,
     usersById: usersById,
-    aliceCodec: PqcPrivateMessageCodec(
-      deviceIdentityService: _FakeDeviceIdentityService('alice-device'),
-      devicePqcKeyService: alicePqc,
-      devicePqcSigningKeyService: aliceSigning,
-    ),
-    bobCodec: PqcPrivateMessageCodec(
-      deviceIdentityService: _FakeDeviceIdentityService('bob-device'),
-      devicePqcKeyService: bobPqc,
-      devicePqcSigningKeyService: bobSigning,
-    ),
+    aliceCodec: useSdkAdapter
+        ? SdkV2PrivateMessageCodec(
+            deviceIdentityService: aliceIdentity,
+            devicePqcKeyService: alicePqc,
+            devicePqcSigningKeyService: aliceSigning,
+            keyMaterialRegistry: aliceRegistry,
+          )
+        : PqcPrivateMessageCodec(
+            deviceIdentityService: aliceIdentity,
+            devicePqcKeyService: alicePqc,
+            devicePqcSigningKeyService: aliceSigning,
+          ),
+    bobCodec: useSdkAdapter
+        ? SdkV2PrivateMessageCodec(
+            deviceIdentityService: bobIdentity,
+            devicePqcKeyService: bobPqc,
+            devicePqcSigningKeyService: bobSigning,
+            keyMaterialRegistry: bobRegistry,
+          )
+        : PqcPrivateMessageCodec(
+            deviceIdentityService: bobIdentity,
+            devicePqcKeyService: bobPqc,
+            devicePqcSigningKeyService: bobSigning,
+          ),
   );
 }
 
