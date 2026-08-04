@@ -35,6 +35,13 @@ migrate_working_dir/
 /coverage/
 backend/db.sqlite3
 
+# The SDK is an independent Git repository. The Flutter application consumes
+# it through a pinned Git release rather than committing a nested checkout.
+/packages/pqc_engine_sdk/
+
+# Runtime attachment data belongs to the configured media volume/server.
+/shared/media/
+
 # Symbolication related
 app.*.symbols
 
