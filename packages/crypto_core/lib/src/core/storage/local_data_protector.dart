@@ -78,7 +78,10 @@ class LocalDataProtector {
       return secretKey;
     }
     final keyBytes = List<int>.generate(32, (_) => _random.nextInt(256));
-    await _secretStore.write(key: _keyStorageKey, value: base64Encode(keyBytes));
+    await _secretStore.write(
+      key: _keyStorageKey,
+      value: base64Encode(keyBytes),
+    );
     final secretKey = SecretKey(keyBytes);
     _cachedKey = secretKey;
     return secretKey;
