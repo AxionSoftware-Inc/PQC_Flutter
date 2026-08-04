@@ -4,7 +4,16 @@ set -euo pipefail
 # Run this on the server from the release checkout. The explicit PostgreSQL
 # environment is intentional: migrations must never silently target SQLite.
 ROOT="${ROOT:-/root/pqc-chat-app/current}"
-: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+ENV_FILE="${ENV_FILE:-/etc/antiq/backend.env}"
+
+if [[ -r "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+fi
+
+: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set through the environment file}"
 cd "$ROOT"
 
 export DB_BACKEND=postgres
@@ -20,4 +29,5 @@ python_bin="${PYTHON_BIN:-$ROOT/.venv/bin/python}"
 systemctl restart pqc-chat.service
 systemctl is-active --quiet pqc-chat.service
 curl --fail --silent --show-error http://127.0.0.1:8020/api/crypto/protocols >/dev/null
+curl --fail --silent --show-error http://127.0.0.1:8020/api/health >/dev/null
 echo "Backend deployed and healthy."
