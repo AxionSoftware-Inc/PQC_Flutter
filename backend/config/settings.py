@@ -17,6 +17,12 @@ if DEPLOYMENT_ENV not in {'development', 'test', 'production'}:
     raise ImproperlyConfigured(
         'DJANGO_ENV must be one of: development, test, production.'
     )
+
+# Wire writers are deliberately opt-in.  v2 remains accepted in every mode
+# so an application rollback never makes already-deployed clients unusable.
+CRYPTO_PROTOCOL_MODE = os.environ.get('CRYPTO_PROTOCOL_MODE', 'v2').strip().lower()
+if CRYPTO_PROTOCOL_MODE not in {'v2', 'v3'}:
+    raise ImproperlyConfigured('CRYPTO_PROTOCOL_MODE must be either v2 or v3.')
 IS_PRODUCTION = DEPLOYMENT_ENV == 'production'
 
 # Development has an explicit, recognizable placeholder. Production refuses

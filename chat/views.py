@@ -32,7 +32,6 @@ from chat.serializers import (
     AttachmentSessionCompleteSerializer,
     AttachmentSessionCreateSerializer,
     AttachmentUploadSessionSerializer,
-    CRYPTO_PROTOCOL_CAPABILITIES,
     ConversationSerializer,
     GROUP_ENVELOPE_ALGORITHM,
     ConversationKeyEnvelopeSerializer,
@@ -42,6 +41,7 @@ from chat.serializers import (
     MessageSerializer,
     PrivateConversationSerializer,
     get_or_create_private_conversation,
+    get_crypto_protocol_capabilities,
 )
 from users.models import UserDevice, WorkspaceMember
 from users.serializers import is_valid_ml_kem_768_public_key
@@ -59,7 +59,7 @@ class CryptoProtocolCapabilitiesView(APIView):
     permission_classes = []
 
     def get(self, request):
-        return Response(CRYPTO_PROTOCOL_CAPABILITIES)
+        return Response(get_crypto_protocol_capabilities())
 
 
 def get_user_conversation_or_404(request, conversation_id):

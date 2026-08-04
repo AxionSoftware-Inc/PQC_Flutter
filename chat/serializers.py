@@ -16,21 +16,40 @@ from chat.models import (
 
 
 User = get_user_model()
-PRIVATE_MESSAGE_PREFIX = ('pqc:v2:',)
-GROUP_MESSAGE_PREFIX = ('group:v2:',)
+V2_PRIVATE_MESSAGE_PREFIX = 'pqc:v2:'
+V2_GROUP_MESSAGE_PREFIX = 'group:v2:'
+V3_PRIVATE_MESSAGE_PREFIX = 'pqc:v3:'
+V3_GROUP_MESSAGE_PREFIX = 'group:v3:'
+PRIVATE_MESSAGE_PREFIX = (V2_PRIVATE_MESSAGE_PREFIX,)
+GROUP_MESSAGE_PREFIX = (V2_GROUP_MESSAGE_PREFIX,)
 GROUP_ENVELOPE_PREFIX = 'group-wrap:pqc:v2:'
 GROUP_ENVELOPE_ALGORITHM = 'group-ml-kem-768-aesgcm-v2'
 
 # This is a public wire-protocol contract.  Existing payload readers stay in
 # clients, while this list tells clients which current writers this deployment
 # can accept.  A client must check it before encrypting a new outgoing message.
-CRYPTO_PROTOCOL_CAPABILITIES = {
-    'protocol_version': 2,
-    'private_message_prefixes': list(PRIVATE_MESSAGE_PREFIX),
-    'group_message_prefixes': list(GROUP_MESSAGE_PREFIX),
-    'attachment_cipher_versions': ['attachment:v2'],
-    'backup_schema_revision': 2,
-}
+def get_crypto_protocol_capabilities():
+    """Return the enabled writer contract without dropping legacy readers."""
+    v3_enabled = settings.CRYPTO_PROTOCOL_MODE == 'v3'
+    return {
+        'protocol_version': 3 if v3_enabled else 2,
+        'private_message_prefixes': [V2_PRIVATE_MESSAGE_PREFIX]
+        + ([V3_PRIVATE_MESSAGE_PREFIX] if v3_enabled else []),
+        'group_message_prefixes': [V2_GROUP_MESSAGE_PREFIX]
+        + ([V3_GROUP_MESSAGE_PREFIX] if v3_enabled else []),
+        'attachment_cipher_versions': ['attachment:v2'],
+        'backup_schema_revision': 2,
+    }
+
+
+def active_private_message_prefixes():
+    capabilities = get_crypto_protocol_capabilities()
+    return tuple(capabilities['private_message_prefixes'])
+
+
+def active_group_message_prefixes():
+    capabilities = get_crypto_protocol_capabilities()
+    return tuple(capabilities['group_message_prefixes'])
 
 
 class PrivateConversationSerializer(serializers.Serializer):
@@ -65,7 +84,7 @@ class MessageCreateSerializer(serializers.Serializer):
         if conversation is None or not body:
             return attrs
         if conversation.type == Conversation.ConversationType.PRIVATE:
-            if not body.startswith(PRIVATE_MESSAGE_PREFIX):
+            if not body.startswith(active_private_message_prefixes()):
                 raise serializers.ValidationError(
                     {'body': 'Private chat messages must use pqc:v2 payloads.'}
                 )
@@ -78,7 +97,7 @@ class MessageCreateSerializer(serializers.Serializer):
                 raise serializers.ValidationError(
                     {'body': 'Group rekey is required before sending after device revoke.'}
                 )
-            if not body.startswith(GROUP_MESSAGE_PREFIX):
+            if not body.startswith(active_group_message_prefixes()):
                 raise serializers.ValidationError(
                     {'body': 'Group chat messages must use group:v2 payloads.'}
                 )
