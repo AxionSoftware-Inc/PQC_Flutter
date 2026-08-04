@@ -97,6 +97,7 @@ class ChatFacade {
 
   final Map<int, AppUser> _usersById = {};
   DateTime? _lastSecureSendUsersRefreshAt;
+  Future<void>? _secureUsersRefreshInFlight;
   final Map<int, DateTime> _privateUsersRefreshAt = {};
   final Map<int, Conversation> _conversationsById = {};
   final Map<int, int> _lastMessageIdByConversation = {};
@@ -122,6 +123,7 @@ class ChatFacade {
     _usersById
       ..clear()
       ..addEntries(users.map((user) => MapEntry(user.id, user)));
+    _lastSecureSendUsersRefreshAt = DateTime.now();
     return users;
   }
 
@@ -424,9 +426,24 @@ class ChatFacade {
         DateTime.now().difference(last) < const Duration(seconds: 15)) {
       return;
     }
+    final inFlight = _secureUsersRefreshInFlight;
+    if (inFlight != null) {
+      return inFlight;
+    }
+    final operation = _refreshSecureUsersOnce();
+    _secureUsersRefreshInFlight = operation;
+    try {
+      await operation;
+    } finally {
+      if (identical(_secureUsersRefreshInFlight, operation)) {
+        _secureUsersRefreshInFlight = null;
+      }
+    }
+  }
+
+  Future<void> _refreshSecureUsersOnce() async {
     try {
       await fetchUsers();
-      _lastSecureSendUsersRefreshAt = DateTime.now();
     } on ApiException catch (error) {
       if (!error.isRetryable) {
         rethrow;
@@ -452,6 +469,7 @@ class ChatFacade {
       usersById: _usersById,
     );
     if (resolution.isReady) {
+      _privateUsersRefreshAt[conversation.id] = DateTime.now();
       return;
     }
     await fetchUsers();

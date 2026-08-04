@@ -628,6 +628,7 @@ class OutgoingMessageService {
   DateTime? _capabilitiesFetchedAt;
 
   static const _capabilitiesCacheLifetime = Duration(minutes: 5);
+  final Map<String, Future<ChatMessage>> _inFlightSends = {};
 
   Future<ChatMessage> sendMessage({
     required SendMessageCommand command,
@@ -809,6 +810,38 @@ class OutgoingMessageService {
   }
 
   Future<ChatMessage> _sendQueuedMessage(
+    QueuedOutgoingMessage queued, {
+    required Conversation conversation,
+    required int currentUserId,
+    required Map<int, AppUser> usersById,
+    required Future<void> Function() refreshUsers,
+    required Future<void> Function(Conversation conversation)
+    persistConversation,
+    SendPipelineProgress? onProgress,
+  }) async {
+    final inFlight = _inFlightSends[queued.clientMessageId];
+    if (inFlight != null) {
+      return inFlight;
+    }
+    late final Future<ChatMessage> operation;
+    operation = _sendQueuedMessageOnce(
+      queued,
+      conversation: conversation,
+      currentUserId: currentUserId,
+      usersById: usersById,
+      refreshUsers: refreshUsers,
+      persistConversation: persistConversation,
+      onProgress: onProgress,
+    );
+    _inFlightSends[queued.clientMessageId] = operation;
+    return operation.whenComplete(() {
+      if (identical(_inFlightSends[queued.clientMessageId], operation)) {
+        _inFlightSends.remove(queued.clientMessageId);
+      }
+    });
+  }
+
+  Future<ChatMessage> _sendQueuedMessageOnce(
     QueuedOutgoingMessage queued, {
     required Conversation conversation,
     required int currentUserId,
