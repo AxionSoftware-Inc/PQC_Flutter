@@ -1,6 +1,7 @@
 import hashlib
 import json
 import base64
+import logging
 import secrets
 from datetime import timedelta
 from urllib.parse import urlencode
@@ -58,6 +59,7 @@ from users.roles import CorporateRole, DEFAULT_CORPORATE_ROLE, role_catalog
 
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 def _issue_recovery_access_grant(*, user, device_id):
@@ -916,7 +918,26 @@ def _write_recovery_manifest(request, max_payload_length):
             'sequence': manifest.sequence,
             'vector_clock': manifest.vector_clock,
         }, status=status.HTTP_412_PRECONDITION_FAILED)
-    envelope = get_key_escrow_provider().encrypt(account_id=request.user.id, plaintext=payload)
+    try:
+        envelope = get_key_escrow_provider().encrypt(
+            account_id=request.user.id,
+            plaintext=payload,
+        )
+    except Exception:
+        # Escrow availability is an operational retry condition, not an
+        # application crash.  Roll back the manifest row created above so a
+        # retry sees the same sequence and cannot mistake a partial write for
+        # a successful recovery snapshot.
+        logger.exception('Recovery escrow write failed for account %s', request.user.id)
+        transaction.set_rollback(True)
+        return Response(
+            {
+                'detail': 'Recovery storage is temporarily unavailable. Retry safely.',
+                'code': 'recovery_escrow_unavailable',
+                'retryable': True,
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
     AccountKeysetEscrowRecord.objects.get_or_create(
         user=request.user,
         source_device_id=source_device_id,

@@ -18,6 +18,7 @@ from django.contrib import admin
 from django.urls import include, path
 
 from config.health import health_view
+from config.plugins import plugin_urlpatterns
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -27,3 +28,6 @@ urlpatterns = [
     path('api/', include('chat.urls')),
     path('api/rbac/', include('users.access_control.urls')),
 ]
+
+# Optional tenant modules are mounted only when explicitly enabled.
+urlpatterns += plugin_urlpatterns()
