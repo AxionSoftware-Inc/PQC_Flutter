@@ -2,7 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:crypto_core/crypto_core.dart'
-    show GroupCipherMessageCodec, PqcPrivateMessageCodec, V3ChatCipherAlgorithm;
+    show
+        SdkV2GroupCipherMessageCodec,
+        SdkV2PrivateMessageCodec,
+        V3ChatCipherAlgorithm;
 
 import 'app/app.dart';
 import 'app/design_system/app_design_system.dart';
@@ -105,14 +108,14 @@ Future<void> main() async {
       ),
     GroupChatCipherAlgorithm(
       groupKeyStore: groupKeyStore,
-      codec: GroupCipherMessageCodec(groupKeyStore: groupKeyStore),
+      codec: SdkV2GroupCipherMessageCodec(groupKeyStore: groupKeyStore),
     ),
     PqcPrivateChatAlgorithm(
       deviceIdentityService: deviceIdentityService,
       devicePqcKeyService: devicePqcKeyService,
       devicePqcSigningKeyService: devicePqcSigningKeyService,
       keyMaterialRegistry: keyMaterialRegistry,
-      codec: PqcPrivateMessageCodec(
+      codec: SdkV2PrivateMessageCodec(
         deviceIdentityService: deviceIdentityService,
         devicePqcKeyService: devicePqcKeyService,
         devicePqcSigningKeyService: devicePqcSigningKeyService,
