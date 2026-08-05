@@ -19,16 +19,46 @@ class AdminPanelPage extends StatefulWidget {
 }
 
 class _AdminPanelPageState extends State<AdminPanelPage> {
+  final TextEditingController _memberSearchController = TextEditingController();
   bool _loading = true;
   bool _isAdmin = false;
   String? _error;
   List<Map<String, dynamic>> _roles = const [];
   List<Map<String, dynamic>> _members = const [];
+  String _memberStatusFilter = 'active';
+  int? _memberRoleFilter;
 
   @override
   void initState() {
     super.initState();
+    _memberSearchController.addListener(() => setState(() {}));
     _load();
+  }
+
+  @override
+  void dispose() {
+    _memberSearchController.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> get _filteredMembers {
+    final query = _memberSearchController.text.trim().toLowerCase();
+    return _members.where((member) {
+      final isActive = member['is_active'] == true;
+      if (_memberStatusFilter == 'active' && !isActive) return false;
+      if (_memberStatusFilter == 'inactive' && isActive) return false;
+      final role = member['role'] as Map<String, dynamic>?;
+      if (_memberRoleFilter != null && role?['id'] != _memberRoleFilter) {
+        return false;
+      }
+      if (query.isEmpty) return true;
+      final haystack = [
+        member['display_name'],
+        member['email'],
+        role?['name'],
+      ].whereType<String>().join(' ').toLowerCase();
+      return haystack.contains(query);
+    }).toList();
   }
 
   Future<void> _load() async {
@@ -101,6 +131,7 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
         .where((member) => member['is_active'] == true)
         .length;
     final inactiveMembers = _members.length - activeMembers;
+    final filteredMembers = _filteredMembers;
     final content = RefreshIndicator(
       onRefresh: _load,
       child: ListView(
@@ -165,10 +196,78 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
           SizedBox(height: spacing.lg),
           AppSectionHeader(
             title: 'Xodimlar',
-            subtitle: '$activeMembers ta faol xodim',
+            subtitle: '${filteredMembers.length} / ${_members.length} xodim',
           ),
           SizedBox(height: spacing.xs),
-          for (final member in _members) _memberTile(member),
+          AppSurfaceCard(
+            padding: EdgeInsets.symmetric(
+              horizontal: spacing.sm,
+              vertical: spacing.xs,
+            ),
+            child: TextField(
+              controller: _memberSearchController,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search_rounded),
+                hintText: 'Ism, email yoki lavozim bo‘yicha qidirish',
+                border: InputBorder.none,
+              ),
+            ),
+          ),
+          SizedBox(height: spacing.sm),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _memberFilterChip('Faol', 'active'),
+                SizedBox(width: spacing.xs),
+                _memberFilterChip('Ishdan olingan', 'inactive'),
+                SizedBox(width: spacing.xs),
+                _memberFilterChip('Barchasi', 'all'),
+                for (final role in _roles) ...[
+                  SizedBox(width: spacing.xs),
+                  FilterChip(
+                    label: Text(role['name'] as String? ?? ''),
+                    selected: _memberRoleFilter == role['id'],
+                    onSelected: (selected) => setState(
+                      () => _memberRoleFilter = selected
+                          ? role['id'] as int
+                          : null,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          SizedBox(height: spacing.sm),
+          if (filteredMembers.isEmpty)
+            const AppEmptyState(
+              message: 'Bu qidiruv bo‘yicha xodim topilmadi.',
+              icon: Icons.person_search_outlined,
+            )
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                final count = width >= 1120
+                    ? 4
+                    : width >= 720
+                    ? 3
+                    : 1;
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: filteredMembers.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: count,
+                    mainAxisSpacing: spacing.sm,
+                    crossAxisSpacing: spacing.sm,
+                    childAspectRatio: count == 1 ? 5.4 : 2.8,
+                  ),
+                  itemBuilder: (context, index) =>
+                      _memberTile(filteredMembers[index]),
+                );
+              },
+            ),
         ],
       ),
     );
@@ -221,39 +320,153 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     final role = member['role'] as Map<String, dynamic>?;
     final isActive = member['is_active'] == true;
     return Card(
-      child: ListTile(
-        leading: AppAvatar(label: member['display_name'] as String? ?? ''),
-        title: Text(member['display_name'] as String? ?? ''),
-        subtitle: Text(
-          isActive
-              ? (role?['name'] as String? ?? 'Lavozim berilmagan')
-              : 'Ishdan olingan',
-          style: isActive ? null : TextStyle(color: context.appColors.danger),
-        ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) {
-            if (value == 'role') _assignRole(member);
-            if (value == 'fire') _deactivate(member);
-            if (value == 'rehire') _reactivate(member);
-          },
-          itemBuilder: (_) => isActive
-              ? const [
-                  PopupMenuItem(
-                    value: 'role',
-                    child: Text('Lavozim tayinlash'),
-                  ),
-                  PopupMenuItem(value: 'fire', child: Text('Ishdan olish')),
-                ]
-              : const [
-                  PopupMenuItem(
-                    value: 'rehire',
-                    child: Text('Qayta ishga olish'),
-                  ),
-                ],
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _showMemberDetails(member),
+        child: ListTile(
+          leading: AppAvatar(label: member['display_name'] as String? ?? ''),
+          title: Text(member['display_name'] as String? ?? ''),
+          subtitle: Text(
+            isActive
+                ? (role?['name'] as String? ?? 'Lavozim berilmagan')
+                : 'Ishdan olingan',
+            style: isActive ? null : TextStyle(color: context.appColors.danger),
+          ),
+          trailing: Icon(
+            isActive ? Icons.chevron_right_rounded : Icons.person_off_outlined,
+            color: isActive
+                ? context.appColors.textMuted
+                : context.appColors.danger,
+          ),
         ),
       ),
     );
   }
+
+  Widget _memberFilterChip(String label, String value) => FilterChip(
+    label: Text(label),
+    selected: _memberStatusFilter == value,
+    onSelected: (_) => setState(() => _memberStatusFilter = value),
+  );
+
+  Future<void> _showMemberDetails(Map<String, dynamic> member) async {
+    final role = member['role'] as Map<String, dynamic>?;
+    final isActive = member['is_active'] == true;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        final spacing = sheetContext.appSpacing;
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              spacing.lg,
+              spacing.xs,
+              spacing.lg,
+              spacing.lg,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    AppAvatar(
+                      label: member['display_name'] as String? ?? '',
+                      radius: 28,
+                    ),
+                    SizedBox(width: spacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            member['display_name'] as String? ?? '',
+                            style: Theme.of(sheetContext).textTheme.titleMedium,
+                          ),
+                          if ((member['email'] as String? ?? '').isNotEmpty)
+                            Text(
+                              member['email'] as String,
+                              style: Theme.of(sheetContext).textTheme.bodySmall,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: spacing.lg),
+                AppSurfaceCard(
+                  child: Column(
+                    children: [
+                      _detailRow(
+                        'Lavozim',
+                        role?['name'] as String? ?? 'Biriktirilmagan',
+                      ),
+                      _detailRow(
+                        'Holat',
+                        isActive ? 'Faol xodim' : 'Ishdan olingan',
+                      ),
+                      _detailRow(
+                        'Tizim roli',
+                        member['system_role'] as String? ?? 'member',
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: spacing.md),
+                if (isActive) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: AppPrimaryButton(
+                      onPressed: () async {
+                        Navigator.pop(sheetContext);
+                        await _assignRole(member);
+                      },
+                      icon: const Icon(Icons.badge_outlined),
+                      label: const Text('Lavozimni o‘zgartirish'),
+                    ),
+                  ),
+                  SizedBox(height: spacing.sm),
+                  SizedBox(
+                    width: double.infinity,
+                    child: AppSecondaryButton(
+                      onPressed: () async {
+                        Navigator.pop(sheetContext);
+                        await _deactivate(member);
+                      },
+                      label: const Text('Ishdan olish'),
+                    ),
+                  ),
+                ] else
+                  SizedBox(
+                    width: double.infinity,
+                    child: AppPrimaryButton(
+                      onPressed: () async {
+                        Navigator.pop(sheetContext);
+                        await _reactivate(member);
+                      },
+                      icon: const Icon(Icons.person_add_alt_1_rounded),
+                      label: const Text('Qayta ishga olish'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _detailRow(String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      children: [
+        SizedBox(width: 96, child: Text(label)),
+        Expanded(child: Text(value, textAlign: TextAlign.right)),
+      ],
+    ),
+  );
 
   Widget _statChip(IconData icon, String label) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
