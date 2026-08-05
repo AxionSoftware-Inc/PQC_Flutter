@@ -20,6 +20,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
   List<Map<String, dynamic>> _tasks = const [];
   List<Map<String, dynamic>> _goals = const [];
   List<Map<String, dynamic>> _assignees = const [];
+  bool _boardMode = true;
 
   @override
   void initState() {
@@ -81,6 +82,14 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
               AppSectionHeader(
                 title: 'Vazifalar',
                 subtitle: '$done / ${_tasks.length} bajarilgan',
+                trailing: IconButton.filledTonal(
+                  onPressed: () => setState(() => _boardMode = !_boardMode),
+                  icon: Icon(
+                    _boardMode
+                        ? Icons.view_list_rounded
+                        : Icons.view_kanban_outlined,
+                  ),
+                ),
               ),
               SizedBox(height: spacing.xs),
               if (_tasks.isEmpty)
@@ -88,6 +97,8 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
                   message: 'Hozircha vazifa yo‘q.',
                   icon: Icons.task_alt_outlined,
                 )
+              else if (_boardMode)
+                _buildKanban()
               else
                 ..._tasks.map(_taskTile),
               SizedBox(height: spacing.lg),
@@ -122,9 +133,67 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
       title: Text(task['title'] as String? ?? ''),
       subtitle: Text(task['assignee_name'] as String? ?? 'Biriktirilmagan'),
       trailing: Text(_statusLabel(task['status'] as String? ?? 'todo')),
-      onTap: () => _advanceTask(task),
+      onTap: () => _showTaskDetail(task),
     ),
   );
+
+  Widget _buildKanban() {
+    const columns = [
+      ('todo', 'Yangi'),
+      ('in_progress', 'Jarayonda'),
+      ('submitted', 'Tekshiruv'),
+      ('done', 'Qabul qilingan'),
+    ];
+    return SizedBox(
+      height: 330,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: columns.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final column = columns[index];
+          final tasks = _tasks
+              .where((task) => task['status'] == column.$1)
+              .toList();
+          return SizedBox(
+            width: 260,
+            child: AppSurfaceCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${column.$2} · ${tasks.length}',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: tasks.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (_, itemIndex) => Material(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => _showTaskDetail(tasks[itemIndex]),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Text(
+                              tasks[itemIndex]['title'] as String? ?? '',
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   Widget _goalTile(Map<String, dynamic> goal) {
     final progress = (goal['progress'] as num? ?? 0).toDouble() / 100;
@@ -139,6 +208,77 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
       ),
     );
   }
+
+  Future<void> _showTaskDetail(Map<String, dynamic> task) async {
+    final status = task['status'] as String? ?? 'todo';
+    final action = _nextAction(status);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                task['title'] as String? ?? '',
+                style: Theme.of(sheetContext).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              Text(task['description'] as String? ?? ''),
+              const SizedBox(height: 16),
+              _detailLine(
+                'Bajaruvchi',
+                task['assignee_name'] as String? ?? '—',
+              ),
+              _detailLine('Holat', _statusLabel(status)),
+              _detailLine(
+                'Muhimlik',
+                _priorityLabel(task['priority'] as String? ?? 'normal'),
+              ),
+              if (task['completion_note']?.toString().isNotEmpty == true)
+                _detailLine('Xodim izohi', task['completion_note'] as String),
+              if (task['review_note']?.toString().isNotEmpty == true)
+                _detailLine('Rahbar izohi', task['review_note'] as String),
+              const SizedBox(height: 20),
+              if (action != null)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(sheetContext);
+                      await _advanceTask(task);
+                    },
+                    icon: const Icon(Icons.arrow_forward_rounded),
+                    label: Text(action),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _detailLine(String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      children: [
+        SizedBox(width: 112, child: Text(label)),
+        Expanded(child: Text(value)),
+      ],
+    ),
+  );
+
+  String? _nextAction(String status) => switch (status) {
+    'todo' => 'Ishni boshlash',
+    'in_progress' => 'Ishni topshirish',
+    'submitted' when _assignees.isNotEmpty => 'Qabul qilish',
+    _ => null,
+  };
 
   Future<void> _createTask() async {
     final title = TextEditingController();
@@ -218,10 +358,40 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     if (next == null) {
       return;
     }
+    String? note;
+    if (next == 'submitted') {
+      final controller = TextEditingController();
+      note = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Ishni topshirish'),
+          content: TextField(
+            controller: controller,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Bajarilgan ish bo‘yicha izoh',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Bekor qilish'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('Topshirish'),
+            ),
+          ],
+        ),
+      );
+      if (note == null) return;
+    }
     try {
-      await widget.apiClient.patch('/task-kpi/tasks/${task['id']}', {
-        'status': next,
-      });
+      final payload = <String, dynamic>{'status': next};
+      if (note != null) {
+        payload['completion_note'] = note;
+      }
+      await widget.apiClient.patch('/task-kpi/tasks/${task['id']}', payload);
       await _load();
     } catch (error) {
       if (mounted) {
@@ -245,5 +415,12 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     'done' => 'Qabul qilindi',
     'cancelled' => 'Bekor qilingan',
     _ => 'Kutilmoqda',
+  };
+
+  String _priorityLabel(String value) => switch (value) {
+    'low' => 'Past',
+    'high' => 'Yuqori',
+    'urgent' => 'Shoshilinch',
+    _ => 'Oddiy',
   };
 }
