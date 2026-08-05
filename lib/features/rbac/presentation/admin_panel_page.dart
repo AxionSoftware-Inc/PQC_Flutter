@@ -187,7 +187,35 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
             ),
           ),
           SizedBox(height: spacing.xs),
-          for (final role in _roles) _roleTile(role),
+          if (_roles.isNotEmpty)
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth >= 720;
+                if (!isWide) {
+                  return Column(
+                    children: [
+                      for (final role in _roles)
+                        Padding(
+                          padding: EdgeInsets.only(bottom: spacing.xs),
+                          child: _roleTile(role),
+                        ),
+                    ],
+                  );
+                }
+                final columns = constraints.maxWidth >= 1200 ? 4 : 2;
+                final cardWidth =
+                    (constraints.maxWidth - spacing.sm * (columns - 1)) /
+                    columns;
+                return Wrap(
+                  spacing: spacing.sm,
+                  runSpacing: spacing.sm,
+                  children: [
+                    for (final role in _roles)
+                      SizedBox(width: cardWidth, child: _roleTile(role)),
+                  ],
+                );
+              },
+            ),
           if (_roles.isEmpty)
             const AppEmptyState(
               message: 'Lavozim yarating: Direktor, Menejer, Xodim.',
