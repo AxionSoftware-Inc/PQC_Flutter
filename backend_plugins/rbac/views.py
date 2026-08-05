@@ -1,12 +1,15 @@
 from django.db import transaction
+from django.conf import settings
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from users.models import OrganizationMember, WorkspaceMember
+from uuid import uuid4
+
+from users.models import Invitation, OrganizationMember, WorkspaceMember
 
 from .models import JobRole, JobRoleAssignment
-from .serializers import AssignmentWriteSerializer, JobRoleAssignmentSerializer, JobRoleSerializer
+from .serializers import AssignmentWriteSerializer, InvitationWriteSerializer, JobRoleAssignmentSerializer, JobRoleSerializer
 
 
 def _workspace(request):
@@ -18,7 +21,13 @@ def _workspace(request):
 
 
 def _admin(membership):
-    return membership and membership.role in {OrganizationMember.Role.OWNER, OrganizationMember.Role.ADMIN}
+    if not membership:
+        return False
+    if membership.role in {OrganizationMember.Role.OWNER, OrganizationMember.Role.ADMIN}:
+        return True
+    user = membership.organization_member.user
+    email = getattr(getattr(user, 'google_account', None), 'email', '') or getattr(user, 'email', '')
+    return email.strip().lower() in settings.RBAC_BOOTSTRAP_ADMIN_EMAILS
 
 
 def _visible_members(membership):
@@ -86,11 +95,15 @@ class MemberListView(APIView):
         if not membership:
             return Response({'detail': 'Active workspace not found.'}, status=403)
         members = _visible_members(membership).order_by('organization_member__user__first_name', 'id')
-        assignments = {item.workspace_member_id: item for item in JobRoleAssignment.objects.select_related('role', 'workspace_member__organization_member__user').filter(workspace_member__in=members)}
+        assignments = {item.workspace_member_id: item for item in JobRoleAssignment.objects.select_related('role', 'workspace_member__organization_member__user', 'workspace_member__organization_member__user__google_account').filter(workspace_member__in=members)}
         payload = []
         for item in members:
             assignment = assignments.get(item.id)
-            payload.append(JobRoleAssignmentSerializer(assignment).data if assignment else {'member_id': item.id, 'user_id': item.organization_member.user_id, 'display_name': item.organization_member.user.first_name or item.organization_member.user.username, 'role': None})
+            if assignment:
+                payload.append(JobRoleAssignmentSerializer(assignment).data)
+            else:
+                user = item.organization_member.user
+                payload.append({'member_id': item.id, 'user_id': user.id, 'display_name': user.first_name or user.username, 'email': getattr(getattr(user, 'google_account', None), 'email', '') or getattr(user, 'email', ''), 'system_role': item.role, 'is_active': item.is_active, 'role': None})
         return Response(payload)
 
 
@@ -111,3 +124,38 @@ class MemberAssignmentView(APIView):
             return Response({'detail': 'Role not found.'}, status=404)
         assignment, _ = JobRoleAssignment.objects.update_or_create(workspace_member=target, defaults={'role': role, 'assigned_by': request.user})
         return Response(JobRoleAssignmentSerializer(assignment).data)
+
+
+class InvitationCreateView(APIView):
+    @transaction.atomic
+    def post(self, request):
+        membership = _workspace(request)
+        if not _admin(membership):
+            return Response({'detail': 'Administrator rights required.'}, status=403)
+        serializer = InvitationWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        invitation = Invitation.objects.create(
+            organization=membership.workspace.organization,
+            workspace=membership.workspace,
+            invited_by=request.user,
+            email=serializer.validated_data['email'],
+            role=OrganizationMember.Role.MEMBER,
+            invite_code=uuid4().hex,
+        )
+        return Response({'id': invitation.id, 'email': invitation.email, 'invite_code': invitation.invite_code, 'status': invitation.status}, status=status.HTTP_201_CREATED)
+
+
+class MemberDeactivateView(APIView):
+    @transaction.atomic
+    def post(self, request, member_id):
+        membership = _workspace(request)
+        if not _admin(membership):
+            return Response({'detail': 'Administrator rights required.'}, status=403)
+        target = WorkspaceMember.objects.filter(id=member_id, workspace=membership.workspace, is_active=True).first()
+        if not target:
+            return Response({'detail': 'Workspace member not found.'}, status=404)
+        if target.id == membership.id:
+            return Response({'detail': 'You cannot deactivate yourself.'}, status=400)
+        target.is_active = False
+        target.save(update_fields=['is_active', 'updated_at'])
+        return Response(status=204)
