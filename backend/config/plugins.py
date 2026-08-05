@@ -34,6 +34,12 @@ _KNOWN_PLUGINS: dict[str, BackendPlugin] = {
         url_prefix='api/rbac/',
         urlconf='backend_plugins.rbac.urls',
     ),
+    'task_kpi': BackendPlugin(
+        name='task_kpi',
+        app_config='backend_plugins.task_kpi.apps.TaskKpiPluginConfig',
+        url_prefix='api/task-kpi/',
+        urlconf='backend_plugins.task_kpi.urls',
+    ),
 }
 
 

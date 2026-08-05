@@ -137,39 +137,10 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       child: ListView(
         padding: EdgeInsets.all(spacing.md),
         children: [
-          AppSurfaceCard(
-            backgroundColor: context.appColors.primarySoft,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.admin_panel_settings_rounded),
-                  title: Text('Xodimlar va lavozimlar'),
-                  subtitle: Text(
-                    'Lavozim, ko‘rish doirasi va ish holatini shu yerda boshqaring.',
-                  ),
-                ),
-                Wrap(
-                  spacing: spacing.sm,
-                  runSpacing: spacing.sm,
-                  children: [
-                    _statChip(Icons.groups_rounded, '$activeMembers faol'),
-                    _statChip(Icons.badge_outlined, '${_roles.length} lavozim'),
-                    if (inactiveMembers > 0)
-                      _statChip(
-                        Icons.person_off_outlined,
-                        '$inactiveMembers ishdan olingan',
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: spacing.lg),
           AppSectionHeader(
             title: 'Lavozimlar',
-            subtitle: '1 — eng yuqori daraja.',
+            subtitle:
+                '$activeMembers faol · ${_roles.length} lavozim${inactiveMembers > 0 ? ' · $inactiveMembers ishdan olingan' : ''}',
             trailing: Wrap(
               spacing: spacing.xs,
               children: [
@@ -211,7 +182,11 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
                   runSpacing: spacing.sm,
                   children: [
                     for (final role in _roles)
-                      SizedBox(width: cardWidth, child: _roleTile(role)),
+                      SizedBox(
+                        width: cardWidth,
+                        height: 112,
+                        child: _roleTile(role),
+                      ),
                   ],
                 );
               },
@@ -289,7 +264,7 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
                     crossAxisCount: count,
                     mainAxisSpacing: spacing.sm,
                     crossAxisSpacing: spacing.sm,
-                    childAspectRatio: count == 1 ? 5.4 : 2.8,
+                    childAspectRatio: count == 1 ? 5.8 : 4.0,
                   ),
                   itemBuilder: (context, index) =>
                       _memberTile(filteredMembers[index]),
@@ -493,18 +468,6 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
         SizedBox(width: 96, child: Text(label)),
         Expanded(child: Text(value, textAlign: TextAlign.right)),
       ],
-    ),
-  );
-
-  Widget _statChip(IconData icon, String label) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.58),
-      borderRadius: BorderRadius.circular(99),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [Icon(icon, size: 16), const SizedBox(width: 6), Text(label)],
     ),
   );
 
