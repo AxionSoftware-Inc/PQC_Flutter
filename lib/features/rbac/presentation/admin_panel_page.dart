@@ -5,9 +5,14 @@ import '../../../app/design_system/app_design_system.dart';
 import '../../../core/network/api_client.dart';
 
 class AdminPanelPage extends StatefulWidget {
-  const AdminPanelPage({super.key, required this.apiClient});
+  const AdminPanelPage({
+    super.key,
+    required this.apiClient,
+    this.standalone = true,
+  });
 
   final ApiClient apiClient;
+  final bool standalone;
 
   @override
   State<AdminPanelPage> createState() => _AdminPanelPageState();
@@ -92,6 +97,61 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       );
     }
     final spacing = context.appSpacing;
+    final content = RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: EdgeInsets.all(spacing.md),
+        children: [
+          AppSurfaceCard(
+            backgroundColor: context.appColors.primarySoft,
+            child: const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.admin_panel_settings_rounded),
+              title: Text('Xodimlar va lavozimlar'),
+              subtitle: Text(
+                'Lavozim, ko‘rish doirasi va ish holatini shu yerda boshqaring.',
+              ),
+            ),
+          ),
+          SizedBox(height: spacing.lg),
+          AppSectionHeader(
+            title: 'Lavozimlar',
+            subtitle: '1 — eng yuqori daraja.',
+            trailing: IconButton.filledTonal(
+              onPressed: _editRole,
+              icon: const Icon(Icons.add_rounded),
+            ),
+          ),
+          SizedBox(height: spacing.xs),
+          for (final role in _roles) _roleTile(role),
+          if (_roles.isEmpty)
+            const AppEmptyState(
+              message: 'Lavozim yarating: Direktor, Menejer, Xodim.',
+              icon: Icons.badge_outlined,
+            ),
+          SizedBox(height: spacing.lg),
+          AppSectionHeader(
+            title: 'Xodimlar',
+            subtitle: '${_members.length} ta faol xodim',
+          ),
+          SizedBox(height: spacing.xs),
+          for (final member in _members) _memberTile(member),
+        ],
+      ),
+    );
+    final addEmployeeButton = FloatingActionButton.extended(
+      onPressed: _invite,
+      icon: const Icon(Icons.person_add_alt_1_rounded),
+      label: const Text('Xodim qo‘shish'),
+    );
+    if (!widget.standalone) {
+      return Stack(
+        children: [
+          content,
+          Positioned(right: 16, bottom: 16, child: addEmployeeButton),
+        ],
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('Admin panel'),
@@ -99,53 +159,8 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _invite,
-        icon: const Icon(Icons.person_add_alt_1_rounded),
-        label: const Text('Xodim qo‘shish'),
-      ),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: ListView(
-          padding: EdgeInsets.all(spacing.md),
-          children: [
-            AppSurfaceCard(
-              backgroundColor: context.appColors.primarySoft,
-              child: const ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.admin_panel_settings_rounded),
-                title: Text('Xodimlar va lavozimlar'),
-                subtitle: Text(
-                  'Lavozim, ko‘rish doirasi va ish holatini shu yerda boshqaring.',
-                ),
-              ),
-            ),
-            SizedBox(height: spacing.lg),
-            AppSectionHeader(
-              title: 'Lavozimlar',
-              subtitle: '1 — eng yuqori daraja.',
-              trailing: IconButton.filledTonal(
-                onPressed: _editRole,
-                icon: const Icon(Icons.add_rounded),
-              ),
-            ),
-            SizedBox(height: spacing.xs),
-            for (final role in _roles) _roleTile(role),
-            if (_roles.isEmpty)
-              const AppEmptyState(
-                message: 'Lavozim yarating: Direktor, Menejer, Xodim.',
-                icon: Icons.badge_outlined,
-              ),
-            SizedBox(height: spacing.lg),
-            AppSectionHeader(
-              title: 'Xodimlar',
-              subtitle: '${_members.length} ta faol xodim',
-            ),
-            SizedBox(height: spacing.xs),
-            for (final member in _members) _memberTile(member),
-          ],
-        ),
-      ),
+      floatingActionButton: addEmployeeButton,
+      body: content,
     );
   }
 
