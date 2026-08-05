@@ -213,9 +213,37 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       ),
     );
     if (value?.isEmpty != false) return;
-    await _run(() async {
-      await widget.apiClient.post('/rbac/invitations', {'email': value});
-    });
+    try {
+      final invitation = await widget.apiClient.post('/rbac/invitations', {
+        'email': value,
+      });
+      await _load();
+      if (!mounted) return;
+      final code = invitation['invite_code'] as String? ?? '';
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Taklif tayyor'),
+          content: Text(
+            code.isEmpty
+                ? '$value manziliga taklif yaratildi.'
+                : '$value uchun taklif kodi:\n\n$code\n\nKodini xodimga yuboring.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Tayyor'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
   }
 
   Future<void> _editRole({Map<String, dynamic>? role}) async {

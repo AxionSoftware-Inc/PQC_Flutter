@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('users', '0019_quarantine_invalid_ml_kem_devices'),
+        ('users', '0006_organization_organizationmember_workspace_invitation_and_more'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
