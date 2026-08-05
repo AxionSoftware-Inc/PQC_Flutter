@@ -14,6 +14,7 @@ import '../../auth/session_controller.dart';
 import '../../chat/application/chat_facade.dart';
 import '../../crypto/durability/crypto_core_facade.dart';
 import '../../rbac/presentation/admin_panel_page.dart';
+import '../../tasks/presentation/task_kpi_page.dart';
 import 'chat_hub_controller.dart';
 import 'chat_page.dart';
 
@@ -21,6 +22,10 @@ import 'chat_page.dart';
 /// compile-time flag lets the base messenger run without its backend plugin.
 const _rbacModuleEnabled = bool.fromEnvironment(
   'RBAC_MODULE',
+  defaultValue: false,
+);
+const _taskKpiModuleEnabled = bool.fromEnvironment(
+  'TASK_KPI_MODULE',
   defaultValue: false,
 );
 
@@ -61,7 +66,11 @@ class _ChatListPageState extends State<ChatListPage> {
   final Set<int> _selectedConversationIds = <int>{};
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  int get _profileTabIndex => _rbacModuleEnabled ? 4 : 3;
+  int get _taskKpiTabIndex => 2;
+  int get _settingsTabIndex => _taskKpiModuleEnabled ? 3 : 2;
+  int get _adminTabIndex => _settingsTabIndex + 1;
+  int get _profileTabIndex =>
+      _rbacModuleEnabled ? _adminTabIndex + 1 : _settingsTabIndex + 1;
 
   @override
   void initState() {
@@ -793,6 +802,12 @@ class _ChatListPageState extends State<ChatListPage> {
         icon: HugeIcons.strokeRoundedContactBook,
         title: context.antiQText(uz: 'Kontaktlar', en: 'Contacts'),
       ),
+      if (_taskKpiModuleEnabled)
+        _TabMeta(
+          label: context.antiQText(uz: 'Vazifalar', en: 'Tasks'),
+          icon: HugeIcons.strokeRoundedTask01,
+          title: context.antiQText(uz: 'Vazifalar', en: 'Tasks'),
+        ),
       _TabMeta(
         label: context.antiQText(uz: 'Sozlamalar', en: 'Settings'),
         icon: HugeIcons.strokeRoundedSettings02,
@@ -872,6 +887,8 @@ class _ChatListPageState extends State<ChatListPage> {
                     onRefresh: _refresh,
                     child: _buildContactsTab(contactsState),
                   ),
+                  if (_taskKpiModuleEnabled)
+                    TaskKpiPage(apiClient: widget.apiClient),
                   RefreshIndicator(
                     onRefresh: _refresh,
                     child: _buildSettingsOverview(settingsState),
@@ -1585,6 +1602,18 @@ class _ChatListPageState extends State<ChatListPage> {
                 setState(() => _selectedTabIndex = 1);
               },
             ),
+            if (_taskKpiModuleEnabled)
+              ListTile(
+                leading: const HugeIcon(
+                  icon: HugeIcons.strokeRoundedTask01,
+                  size: 21,
+                ),
+                title: Text(context.antiQText(uz: 'Vazifalar', en: 'Tasks')),
+                onTap: () {
+                  _scaffoldKey.currentState?.closeDrawer();
+                  setState(() => _selectedTabIndex = _taskKpiTabIndex);
+                },
+              ),
             ListTile(
               leading: const HugeIcon(
                 icon: HugeIcons.strokeRoundedSettings02,
@@ -1593,7 +1622,7 @@ class _ChatListPageState extends State<ChatListPage> {
               title: Text(context.antiQText(uz: 'Sozlamalar', en: 'Settings')),
               onTap: () {
                 _scaffoldKey.currentState?.closeDrawer();
-                setState(() => _selectedTabIndex = 2);
+                setState(() => _selectedTabIndex = _settingsTabIndex);
               },
             ),
             if (_rbacModuleEnabled)
@@ -1607,7 +1636,7 @@ class _ChatListPageState extends State<ChatListPage> {
                 ),
                 onTap: () {
                   _scaffoldKey.currentState?.closeDrawer();
-                  setState(() => _selectedTabIndex = 3);
+                  setState(() => _selectedTabIndex = _adminTabIndex);
                 },
               ),
             const Divider(),
