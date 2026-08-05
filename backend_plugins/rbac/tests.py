@@ -47,3 +47,14 @@ class RbacPluginApiTests(APITestCase):
         members = self.client.get('/api/rbac/members', **self.headers)
         self.assertEqual(members.status_code, 200)
         self.assertEqual({item['member_id'] for item in members.data}, {self.manager_member.id})
+
+    def test_admin_can_bootstrap_roles_and_rehire_member(self):
+        roles = self.client.post('/api/rbac/roles/bootstrap-defaults', {}, format='json', **self.headers)
+        self.assertEqual(roles.status_code, 200)
+        self.assertEqual({item['name'] for item in roles.data}, {'Direktor', 'Rahbar', 'Menejer', 'Xodim'})
+        self.worker_member.is_active = False
+        self.worker_member.save(update_fields=['is_active'])
+        restored = self.client.post(f'/api/rbac/members/{self.worker_member.id}/reactivate', {}, format='json', **self.headers)
+        self.assertEqual(restored.status_code, 204)
+        self.worker_member.refresh_from_db()
+        self.assertTrue(self.worker_member.is_active)

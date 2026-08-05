@@ -31,9 +31,13 @@ def _admin(membership):
 
 
 def _visible_members(membership):
-    base = WorkspaceMember.objects.select_related('organization_member__user').filter(workspace=membership.workspace, is_active=True, organization_member__is_active=True)
+    base = WorkspaceMember.objects.select_related('organization_member__user').filter(
+        workspace=membership.workspace,
+        organization_member__is_active=True,
+    )
     if _admin(membership):
         return base
+    base = base.filter(is_active=True)
     own = JobRoleAssignment.objects.select_related('role').filter(workspace_member=membership).first()
     if own is None or own.role is None or own.role.visibility == JobRole.Visibility.SELF:
         return base.filter(id=membership.id)
@@ -87,6 +91,31 @@ class RoleDetailView(APIView):
             return Response({'detail': 'Administrator rights required.'}, status=403)
         deleted, _ = JobRole.objects.filter(id=role_id, workspace=membership.workspace).delete()
         return Response(status=204 if deleted else 404)
+
+
+class DefaultRoleBootstrapView(APIView):
+    """Create a practical editable starter hierarchy without replacing roles."""
+
+    @transaction.atomic
+    def post(self, request):
+        membership = _workspace(request)
+        if not _admin(membership):
+            return Response({'detail': 'Administrator rights required.'}, status=403)
+        defaults = (
+            ('Direktor', 1, JobRole.Visibility.ALL),
+            ('Rahbar', 10, JobRole.Visibility.LOWER),
+            ('Menejer', 20, JobRole.Visibility.LOWER),
+            ('Xodim', 100, JobRole.Visibility.SELF),
+        )
+        roles = []
+        for name, rank, visibility in defaults:
+            role, _ = JobRole.objects.get_or_create(
+                workspace=membership.workspace,
+                name=name,
+                defaults={'rank': rank, 'visibility': visibility},
+            )
+            roles.append(role)
+        return Response(JobRoleSerializer(roles, many=True).data)
 
 
 class MemberListView(APIView):
@@ -157,5 +186,22 @@ class MemberDeactivateView(APIView):
         if target.id == membership.id:
             return Response({'detail': 'You cannot deactivate yourself.'}, status=400)
         target.is_active = False
+        target.save(update_fields=['is_active', 'updated_at'])
+        return Response(status=204)
+
+
+class MemberReactivateView(APIView):
+    @transaction.atomic
+    def post(self, request, member_id):
+        membership = _workspace(request)
+        if not _admin(membership):
+            return Response({'detail': 'Administrator rights required.'}, status=403)
+        target = WorkspaceMember.objects.filter(
+            id=member_id,
+            workspace=membership.workspace,
+        ).first()
+        if not target:
+            return Response({'detail': 'Workspace member not found.'}, status=404)
+        target.is_active = True
         target.save(update_fields=['is_active', 'updated_at'])
         return Response(status=204)
