@@ -97,6 +97,10 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       );
     }
     final spacing = context.appSpacing;
+    final activeMembers = _members
+        .where((member) => member['is_active'] == true)
+        .length;
+    final inactiveMembers = _members.length - activeMembers;
     final content = RefreshIndicator(
       onRefresh: _load,
       child: ListView(
@@ -104,22 +108,51 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
         children: [
           AppSurfaceCard(
             backgroundColor: context.appColors.primarySoft,
-            child: const ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.admin_panel_settings_rounded),
-              title: Text('Xodimlar va lavozimlar'),
-              subtitle: Text(
-                'Lavozim, ko‘rish doirasi va ish holatini shu yerda boshqaring.',
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.admin_panel_settings_rounded),
+                  title: Text('Xodimlar va lavozimlar'),
+                  subtitle: Text(
+                    'Lavozim, ko‘rish doirasi va ish holatini shu yerda boshqaring.',
+                  ),
+                ),
+                Wrap(
+                  spacing: spacing.sm,
+                  runSpacing: spacing.sm,
+                  children: [
+                    _statChip(Icons.groups_rounded, '$activeMembers faol'),
+                    _statChip(Icons.badge_outlined, '${_roles.length} lavozim'),
+                    if (inactiveMembers > 0)
+                      _statChip(
+                        Icons.person_off_outlined,
+                        '$inactiveMembers ishdan olingan',
+                      ),
+                  ],
+                ),
+              ],
             ),
           ),
           SizedBox(height: spacing.lg),
           AppSectionHeader(
             title: 'Lavozimlar',
             subtitle: '1 — eng yuqori daraja.',
-            trailing: IconButton.filledTonal(
-              onPressed: _editRole,
-              icon: const Icon(Icons.add_rounded),
+            trailing: Wrap(
+              spacing: spacing.xs,
+              children: [
+                if (_roles.isEmpty)
+                  TextButton.icon(
+                    onPressed: _bootstrapDefaultRoles,
+                    icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                    label: const Text('Standart'),
+                  ),
+                IconButton.filledTonal(
+                  onPressed: _editRole,
+                  icon: const Icon(Icons.add_rounded),
+                ),
+              ],
             ),
           ),
           SizedBox(height: spacing.xs),
@@ -132,7 +165,7 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
           SizedBox(height: spacing.lg),
           AppSectionHeader(
             title: 'Xodimlar',
-            subtitle: '${_members.length} ta faol xodim',
+            subtitle: '$activeMembers ta faol xodim',
           ),
           SizedBox(height: spacing.xs),
           for (final member in _members) _memberTile(member),
@@ -186,24 +219,53 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
 
   Widget _memberTile(Map<String, dynamic> member) {
     final role = member['role'] as Map<String, dynamic>?;
+    final isActive = member['is_active'] == true;
     return Card(
       child: ListTile(
         leading: AppAvatar(label: member['display_name'] as String? ?? ''),
         title: Text(member['display_name'] as String? ?? ''),
-        subtitle: Text(role?['name'] as String? ?? 'Lavozim berilmagan'),
+        subtitle: Text(
+          isActive
+              ? (role?['name'] as String? ?? 'Lavozim berilmagan')
+              : 'Ishdan olingan',
+          style: isActive ? null : TextStyle(color: context.appColors.danger),
+        ),
         trailing: PopupMenuButton<String>(
           onSelected: (value) {
             if (value == 'role') _assignRole(member);
             if (value == 'fire') _deactivate(member);
+            if (value == 'rehire') _reactivate(member);
           },
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'role', child: Text('Lavozim tayinlash')),
-            PopupMenuItem(value: 'fire', child: Text('Ishdan olish')),
-          ],
+          itemBuilder: (_) => isActive
+              ? const [
+                  PopupMenuItem(
+                    value: 'role',
+                    child: Text('Lavozim tayinlash'),
+                  ),
+                  PopupMenuItem(value: 'fire', child: Text('Ishdan olish')),
+                ]
+              : const [
+                  PopupMenuItem(
+                    value: 'rehire',
+                    child: Text('Qayta ishga olish'),
+                  ),
+                ],
         ),
       ),
     );
   }
+
+  Widget _statChip(IconData icon, String label) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.58),
+      borderRadius: BorderRadius.circular(99),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [Icon(icon, size: 16), const SizedBox(width: 6), Text(label)],
+    ),
+  );
 
   String _visibilityLabel(String value) => switch (value) {
     'all' => 'Barcha xodimlar ko‘rinadi',
@@ -360,6 +422,12 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     });
   }
 
+  Future<void> _bootstrapDefaultRoles() async {
+    await _run(() async {
+      await widget.apiClient.post('/rbac/roles/bootstrap-defaults', {});
+    });
+  }
+
   Future<void> _assignRole(Map<String, dynamic> member) async {
     final roleId = await showModalBottomSheet<int>(
       context: context,
@@ -444,5 +512,14 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
         );
       });
     }
+  }
+
+  Future<void> _reactivate(Map<String, dynamic> member) async {
+    await _run(() async {
+      await widget.apiClient.post(
+        '/rbac/members/${member['member_id']}/reactivate',
+        {},
+      );
+    });
   }
 }
