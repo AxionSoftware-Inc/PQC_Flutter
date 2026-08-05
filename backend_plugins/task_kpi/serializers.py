@@ -10,8 +10,8 @@ class WorkTaskSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WorkTask
-        fields = ['id', 'title', 'description', 'status', 'priority', 'assignee_id', 'assignee_name', 'due_at', 'completed_at', 'created_at', 'updated_at']
-        read_only_fields = ['completed_at', 'created_at', 'updated_at']
+        fields = ['id', 'title', 'description', 'status', 'priority', 'assignee_id', 'assignee_name', 'due_at', 'completion_note', 'review_note', 'submitted_at', 'reviewed_at', 'completed_at', 'created_at', 'updated_at']
+        read_only_fields = ['completed_at', 'submitted_at', 'reviewed_at', 'created_at', 'updated_at']
 
     def get_assignee_name(self, obj):
         if not obj.assignee_id:

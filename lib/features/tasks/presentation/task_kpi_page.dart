@@ -19,6 +19,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
   String? _error;
   List<Map<String, dynamic>> _tasks = const [];
   List<Map<String, dynamic>> _goals = const [];
+  List<Map<String, dynamic>> _assignees = const [];
 
   @override
   void initState() {
@@ -35,11 +36,13 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
       final values = await Future.wait<dynamic>([
         widget.apiClient.get('/task-kpi/tasks'),
         widget.apiClient.get('/task-kpi/kpi-goals'),
+        widget.apiClient.get('/task-kpi/assignees'),
       ]);
       if (!mounted) return;
       setState(() {
         _tasks = List<Map<String, dynamic>>.from(values[0] as List);
         _goals = List<Map<String, dynamic>>.from(values[1] as List);
+        _assignees = List<Map<String, dynamic>>.from(values[2] as List);
         _loading = false;
       });
     } catch (error) {
@@ -139,32 +142,61 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
 
   Future<void> _createTask() async {
     final title = TextEditingController();
+    var assigneeId = _assignees.isEmpty
+        ? null
+        : _assignees.first['member_id'] as int;
     final value = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Yangi vazifa'),
-        content: TextField(
-          controller: title,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Vazifa nomi'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: const Text('Yangi vazifa'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: title,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Vazifa nomi'),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                initialValue: assigneeId,
+                items: _assignees
+                    .map(
+                      (member) => DropdownMenuItem(
+                        value: member['member_id'] as int,
+                        child: Text(member['name'] as String),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) => update(() => assigneeId = value),
+                decoration: const InputDecoration(labelText: 'Bajaruvchi'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Bekor qilish'),
+            ),
+            FilledButton(
+              onPressed: assigneeId == null
+                  ? null
+                  : () => Navigator.pop(context, title.text.trim()),
+              child: const Text('Yaratish'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Bekor qilish'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, title.text.trim()),
-            child: const Text('Yaratish'),
-          ),
-        ],
       ),
     );
     if (value?.isEmpty != false) {
       return;
     }
     try {
-      await widget.apiClient.post('/task-kpi/tasks', {'title': value});
+      await widget.apiClient.post('/task-kpi/tasks', {
+        'title': value,
+        'assignee_id': assigneeId,
+      });
       await _load();
     } catch (error) {
       if (mounted) {
@@ -179,8 +211,8 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     final current = task['status'] as String? ?? 'todo';
     final next = switch (current) {
       'todo' => 'in_progress',
-      'in_progress' => 'review',
-      'review' => 'done',
+      'in_progress' => 'submitted',
+      'submitted' => 'done',
       _ => null,
     };
     if (next == null) {
@@ -203,14 +235,14 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
   IconData _statusIcon(String value) => switch (value) {
     'done' => Icons.task_alt_rounded,
     'in_progress' => Icons.pending_actions_rounded,
-    'review' => Icons.rate_review_outlined,
+    'submitted' => Icons.rate_review_outlined,
     _ => Icons.radio_button_unchecked_rounded,
   };
 
   String _statusLabel(String value) => switch (value) {
     'in_progress' => 'Jarayonda',
-    'review' => 'Tekshiruvda',
-    'done' => 'Bajarildi',
+    'submitted' => 'Rahbar tekshiradi',
+    'done' => 'Qabul qilindi',
     'cancelled' => 'Bekor qilingan',
     _ => 'Kutilmoqda',
   };
