@@ -13,7 +13,7 @@ import '../../../app/theme_controller.dart';
 import '../../auth/session_controller.dart';
 import '../../chat/application/chat_facade.dart';
 import '../../crypto/durability/crypto_core_facade.dart';
-import 'access_control_settings_page.dart';
+import '../../rbac/presentation/admin_panel_page.dart';
 import 'chat_hub_controller.dart';
 import 'chat_page.dart';
 
@@ -1697,10 +1697,7 @@ class _ChatListPageState extends State<ChatListPage> {
             en: 'Member access and custom roles',
           ),
           Icons.admin_panel_settings_outlined,
-          (_) => AccessControlSettingsPage(
-            apiClient: widget.apiClient,
-            users: _controller.users,
-          ),
+          (_) => AdminPanelPage(apiClient: widget.apiClient),
         ),
         _settingsSection(
           context.antiQText(uz: 'Xavfsizlik', en: 'Security'),
