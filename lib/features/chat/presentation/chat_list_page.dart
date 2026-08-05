@@ -61,6 +61,8 @@ class _ChatListPageState extends State<ChatListPage> {
   final Set<int> _selectedConversationIds = <int>{};
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  int get _profileTabIndex => _rbacModuleEnabled ? 4 : 3;
+
   @override
   void initState() {
     super.initState();
@@ -796,6 +798,12 @@ class _ChatListPageState extends State<ChatListPage> {
         icon: HugeIcons.strokeRoundedSettings02,
         title: context.antiQText(uz: 'Sozlamalar', en: 'Settings'),
       ),
+      if (_rbacModuleEnabled)
+        _TabMeta(
+          label: context.antiQText(uz: 'Admin', en: 'Admin'),
+          icon: HugeIcons.strokeRoundedShieldUser,
+          title: context.antiQText(uz: 'Admin panel', en: 'Admin panel'),
+        ),
       _TabMeta(
         label: context.antiQText(uz: 'Profil', en: 'Profile'),
         icon: HugeIcons.strokeRoundedUserCircle,
@@ -868,6 +876,11 @@ class _ChatListPageState extends State<ChatListPage> {
                     onRefresh: _refresh,
                     child: _buildSettingsOverview(settingsState),
                   ),
+                  if (_rbacModuleEnabled)
+                    AdminPanelPage(
+                      apiClient: widget.apiClient,
+                      standalone: false,
+                    ),
                   _buildAccountTab(settingsState),
                 ],
               ),
@@ -1583,6 +1596,20 @@ class _ChatListPageState extends State<ChatListPage> {
                 setState(() => _selectedTabIndex = 2);
               },
             ),
+            if (_rbacModuleEnabled)
+              ListTile(
+                leading: const HugeIcon(
+                  icon: HugeIcons.strokeRoundedShieldUser,
+                  size: 21,
+                ),
+                title: Text(
+                  context.antiQText(uz: 'Admin panel', en: 'Admin panel'),
+                ),
+                onTap: () {
+                  _scaffoldKey.currentState?.closeDrawer();
+                  setState(() => _selectedTabIndex = 3);
+                },
+              ),
             const Divider(),
             ListTile(
               leading: const HugeIcon(
@@ -1592,7 +1619,7 @@ class _ChatListPageState extends State<ChatListPage> {
               title: Text(context.antiQText(uz: 'Profil', en: 'Profile')),
               onTap: () {
                 _scaffoldKey.currentState?.closeDrawer();
-                setState(() => _selectedTabIndex = 3);
+                setState(() => _selectedTabIndex = _profileTabIndex);
               },
             ),
             ListTile(
@@ -1694,16 +1721,6 @@ class _ChatListPageState extends State<ChatListPage> {
           Icons.person_outline_rounded,
           _buildAccountSettings,
         ),
-        if (_rbacModuleEnabled)
-          _settingsSection(
-            context.antiQText(uz: 'Admin panel', en: 'Admin panel'),
-            context.antiQText(
-              uz: 'Xodimlar, lavozimlar va vakolatlar',
-              en: 'People, positions and access',
-            ),
-            Icons.admin_panel_settings_outlined,
-            (_) => AdminPanelPage(apiClient: widget.apiClient),
-          ),
         _settingsSection(
           context.antiQText(uz: 'Xavfsizlik', en: 'Security'),
           context.antiQText(
