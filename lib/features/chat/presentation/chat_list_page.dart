@@ -17,6 +17,13 @@ import '../../rbac/presentation/admin_panel_page.dart';
 import 'chat_hub_controller.dart';
 import 'chat_page.dart';
 
+/// RBAC is an optional business module.  Keeping the entry point behind a
+/// compile-time flag lets the base messenger run without its backend plugin.
+const _rbacModuleEnabled = bool.fromEnvironment(
+  'RBAC_MODULE',
+  defaultValue: false,
+);
+
 class ChatListPage extends StatefulWidget {
   const ChatListPage({
     super.key,
@@ -1687,18 +1694,16 @@ class _ChatListPageState extends State<ChatListPage> {
           Icons.person_outline_rounded,
           _buildAccountSettings,
         ),
-        _settingsSection(
-          context.antiQText(
-            uz: 'Rollar va ruxsatlar',
-            en: 'Roles & permissions',
+        if (_rbacModuleEnabled)
+          _settingsSection(
+            context.antiQText(uz: 'Admin panel', en: 'Admin panel'),
+            context.antiQText(
+              uz: 'Xodimlar, lavozimlar va vakolatlar',
+              en: 'People, positions and access',
+            ),
+            Icons.admin_panel_settings_outlined,
+            (_) => AdminPanelPage(apiClient: widget.apiClient),
           ),
-          context.antiQText(
-            uz: 'Xodimlar vakolati va maxsus rollar',
-            en: 'Member access and custom roles',
-          ),
-          Icons.admin_panel_settings_outlined,
-          (_) => AdminPanelPage(apiClient: widget.apiClient),
-        ),
         _settingsSection(
           context.antiQText(uz: 'Xavfsizlik', en: 'Security'),
           context.antiQText(
