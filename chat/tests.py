@@ -4,6 +4,7 @@ import os
 from unittest.mock import patch
 
 from django.test import SimpleTestCase, override_settings
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework.test import APITestCase
@@ -15,6 +16,7 @@ from chat.models import (
     ConversationParticipant,
     MessageAttachment,
 )
+from chat.serializers import AttachmentUploadSerializer
 from users.models import UserDevice
 
 
@@ -51,6 +53,33 @@ class CryptoProtocolContractTests(SimpleTestCase):
         )
         self.assertEqual(response.data['private_message_prefixes'], ['pqc:v2:', 'pqc:v3:'])
         self.assertEqual(response.data['backup_schema_revision'], 3)
+
+
+class SimpleAttachmentUploadContractTests(SimpleTestCase):
+    @override_settings(ATTACHMENTS_SIMPLE_UPLOAD_MAX_BYTES=3)
+    def test_whole_upload_rejects_files_over_configured_limit(self):
+        serializer = AttachmentUploadSerializer(
+            data={
+                'file': SimpleUploadedFile(
+                    'clip.mp4', b'1234', content_type='video/mp4'
+                ),
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('file', serializer.errors)
+
+    @override_settings(ATTACHMENTS_SIMPLE_UPLOAD_MAX_BYTES=4)
+    def test_whole_upload_accepts_video_content_type_within_limit(self):
+        serializer = AttachmentUploadSerializer(
+            data={
+                'file': SimpleUploadedFile(
+                    'clip.mp4', b'1234', content_type='video/mp4'
+                ),
+            }
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
 
 
 class ChatApiTests(APITestCase):

@@ -29,18 +29,31 @@ extension point; it is not enabled and has no effect on the core API.
 
 ## Fresh-server procedure
 
-1. Install PostgreSQL and Python 3 with `venv` support.
+1. Install PostgreSQL, Python 3 with `venv` support and Nginx.
 2. Create the database and a database user.
 3. Copy `deploy/backend.env.example` to `/etc/antiq/backend.env`, set secrets,
    allowed hosts and database values, then run `chmod 600` on it.
-4. Run `ENV_FILE=/etc/antiq/backend.env deploy/bootstrap_backend.sh` from the
-   release checkout.
-5. Place Daphne behind Nginx (or another TLS reverse proxy) and expose only the
-   proxy port.
+4. Run `PUBLIC_HOST=chat.example.com ENV_FILE=/etc/antiq/backend.env
+   deploy/install_server.sh` as root from the release checkout.
+
+The installer creates the virtual environment, validates and migrates Django,
+installs a systemd unit and renders the API/WebSocket Nginx site. The only
+per-server inputs are the environment file, host name and database; optional
+plugins stay disabled by default. Add TLS before exposing the host publicly.
 
 The bootstrap runs Django validation and migrations before starting any
 application process. Production settings reject missing KMS, PostgreSQL,
 approval policy, allowed hosts and strong secrets.
+
+## Flutter composition boundary
+
+The mobile application has one composition root and a strict module registry.
+Only the `core` module is enabled by default. Optional modules are selected by
+the compile-time `ANTIQ_APP_MODULES` list and unknown names fail at startup.
+This prevents a tenant extension from silently changing the chat, session or
+crypto core. Future RBAC, task/KPI and viewer packages register their routes,
+navigation entries and permission adapters through this boundary rather than
+being imported into chat widgets.
 
 ## Versioned engines
 

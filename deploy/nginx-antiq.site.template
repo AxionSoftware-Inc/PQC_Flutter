@@ -1,0 +1,34 @@
+server {
+    listen 80;
+    server_name __ANTIQ_HOST__;
+
+    # Keep this aligned with ATTACHMENTS_SIMPLE_UPLOAD_MAX_BYTES.
+    client_max_body_size 512m;
+    client_body_timeout 600s;
+
+    location /api/ws/chat {
+        proxy_pass http://127.0.0.1:8020/ws/chat;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8020;
+        proxy_http_version 1.1;
+        proxy_request_buffering off;
+        proxy_connect_timeout 30s;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

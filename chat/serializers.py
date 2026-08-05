@@ -88,6 +88,16 @@ class MessageCreateSerializer(serializers.Serializer):
 class AttachmentUploadSerializer(serializers.Serializer):
     file = serializers.FileField()
 
+    def validate_file(self, uploaded):
+        if uploaded.size <= 0:
+            raise serializers.ValidationError('Attachment file is empty.')
+        if uploaded.size > settings.ATTACHMENTS_SIMPLE_UPLOAD_MAX_BYTES:
+            limit = settings.ATTACHMENTS_SIMPLE_UPLOAD_MAX_BYTES
+            raise serializers.ValidationError(
+                f'Attachment exceeds the simple upload limit ({limit} bytes).'
+            )
+        return uploaded
+
 
 class AttachmentSessionCreateSerializer(serializers.Serializer):
     filename = serializers.CharField()
