@@ -5,6 +5,8 @@ from urllib.parse import unquote, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
 
+from config.plugins import enabled_plugin_app_configs
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -136,7 +138,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'users.apps.UsersConfig',
     'chat',
-]
+] + enabled_plugin_app_configs()
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

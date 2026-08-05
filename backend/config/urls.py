@@ -26,7 +26,6 @@ urlpatterns = [
     path('api/health', health_view, name='api-health'),
     path('api/', include('users.urls')),
     path('api/', include('chat.urls')),
-    path('api/rbac/', include('users.access_control.urls')),
 ]
 
 # Optional tenant modules are mounted only when explicitly enabled.
