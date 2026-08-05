@@ -56,3 +56,12 @@ class KpiGoal(models.Model):
     class Meta:
         ordering = ['period_end', 'id']
         indexes = [models.Index(fields=['workspace', 'owner', 'is_active'])]
+
+
+class TaskAttachment(models.Model):
+    task = models.ForeignKey(WorkTask, on_delete=models.CASCADE, related_name='attachments')
+    file = models.FileField(upload_to='task-kpi/%Y/%m/')
+    filename = models.CharField(max_length=255)
+    size_bytes = models.PositiveBigIntegerField()
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)

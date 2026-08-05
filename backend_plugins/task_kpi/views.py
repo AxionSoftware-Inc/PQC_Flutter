@@ -9,8 +9,8 @@ from rest_framework.views import APIView
 
 from users.models import OrganizationMember, WorkspaceMember
 
-from .models import KpiGoal, WorkTask
-from .serializers import KpiGoalSerializer, WorkTaskSerializer
+from .models import KpiGoal, TaskAttachment, WorkTask
+from .serializers import KpiGoalSerializer, TaskAttachmentSerializer, WorkTaskSerializer
 
 
 def _membership(request):
@@ -115,6 +115,21 @@ class TaskDetailView(APIView):
         serializer = WorkTaskSerializer(task, data=request.data, partial=True, context={'workspace': member.workspace})
         serializer.is_valid(raise_exception=True)
         return Response(WorkTaskSerializer(serializer.save(), context={'workspace': member.workspace}).data)
+
+
+class TaskAttachmentCreateView(APIView):
+    def post(self, request, task_id):
+        member = _membership(request)
+        task = WorkTask.objects.filter(id=task_id, workspace=member.workspace if member else None).first()
+        if not member or not task or (task.assignee_id != member.id and task.created_by_id != request.user.id and not _manager(member)):
+            return Response({'detail': 'Task access denied.'}, status=403)
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'detail': 'file is required.'}, status=400)
+        if file.size > 25 * 1024 * 1024:
+            return Response({'detail': 'Task attachment must not exceed 25 MB.'}, status=400)
+        attachment = TaskAttachment.objects.create(task=task, file=file, filename=file.name, size_bytes=file.size, uploaded_by=request.user)
+        return Response(TaskAttachmentSerializer(attachment).data, status=status.HTTP_201_CREATED)
 
 
 class AssignableMemberView(APIView):

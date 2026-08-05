@@ -1,16 +1,26 @@
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import KpiGoal, WorkTask
+from .models import KpiGoal, TaskAttachment, WorkTask
+
+
+class TaskAttachmentSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+    class Meta:
+        model = TaskAttachment
+        fields = ['id', 'filename', 'size_bytes', 'url', 'created_at']
+    def get_url(self, obj):
+        return obj.file.url
 
 
 class WorkTaskSerializer(serializers.ModelSerializer):
     assignee_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
     assignee_name = serializers.SerializerMethodField()
+    attachments = TaskAttachmentSerializer(many=True, read_only=True)
 
     class Meta:
         model = WorkTask
-        fields = ['id', 'title', 'description', 'status', 'priority', 'assignee_id', 'assignee_name', 'due_at', 'completion_note', 'review_note', 'submitted_at', 'reviewed_at', 'completed_at', 'created_at', 'updated_at']
+        fields = ['id', 'title', 'description', 'status', 'priority', 'assignee_id', 'assignee_name', 'due_at', 'completion_note', 'review_note', 'submitted_at', 'reviewed_at', 'completed_at', 'attachments', 'created_at', 'updated_at']
         read_only_fields = ['completed_at', 'submitted_at', 'reviewed_at', 'created_at', 'updated_at']
 
     def get_assignee_name(self, obj):
