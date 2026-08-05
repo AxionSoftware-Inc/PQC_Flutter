@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../app/design_system/app_design_system.dart';
 import '../../../core/network/api_client.dart';
@@ -155,9 +156,15 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       subtitle: Text(
         _visibilityLabel(role['visibility'] as String? ?? 'lower'),
       ),
-      trailing: IconButton(
-        icon: const Icon(Icons.edit_outlined),
-        onPressed: () => _editRole(role: role),
+      trailing: PopupMenuButton<String>(
+        onSelected: (value) {
+          if (value == 'edit') _editRole(role: role);
+          if (value == 'delete') _deleteRole(role);
+        },
+        itemBuilder: (_) => const [
+          PopupMenuItem(value: 'edit', child: Text('Tahrirlash')),
+          PopupMenuItem(value: 'delete', child: Text('O‘chirish')),
+        ],
       ),
     ),
   );
@@ -224,12 +231,35 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Taklif tayyor'),
-          content: Text(
-            code.isEmpty
-                ? '$value manziliga taklif yaratildi.'
-                : '$value uchun taklif kodi:\n\n$code\n\nKodini xodimga yuboring.',
-          ),
+          content: code.isEmpty
+              ? Text('$value manziliga taklif yaratildi.')
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$value uchun taklif kodi:'),
+                    const SizedBox(height: 12),
+                    SelectableText(
+                      code,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('Kodini xodimga yuboring.'),
+                  ],
+                ),
           actions: [
+            if (code.isNotEmpty)
+              TextButton(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: code));
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Taklif kodi nusxalandi.')),
+                    );
+                  }
+                },
+                child: const Text('Nusxalash'),
+              ),
             FilledButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Tayyor'),
@@ -316,29 +346,61 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
   }
 
   Future<void> _assignRole(Map<String, dynamic> member) async {
-    final role = await showModalBottomSheet<Map<String, dynamic>>(
+    final roleId = await showModalBottomSheet<int>(
       context: context,
       showDragHandle: true,
       builder: (context) => ListView(
         shrinkWrap: true,
         children: [
           const ListTile(title: Text('Lavozim tanlang')),
+          ListTile(
+            leading: const Icon(Icons.remove_circle_outline_rounded),
+            title: const Text('Lavozimni olib tashlash'),
+            onTap: () => Navigator.pop(context, -1),
+          ),
           ..._roles.map(
             (item) => ListTile(
               title: Text(item['name'] as String),
               subtitle: Text(_visibilityLabel(item['visibility'] as String)),
-              onTap: () => Navigator.pop(context, item),
+              onTap: () => Navigator.pop(context, item['id'] as int),
             ),
           ),
         ],
       ),
     );
-    if (role == null) return;
+    if (roleId == null) return;
     await _run(() async {
       await widget.apiClient.put('/rbac/members/${member['member_id']}/role', {
-        'role_id': role['id'],
+        'role_id': roleId < 0 ? null : roleId,
       });
     });
+  }
+
+  Future<void> _deleteRole(Map<String, dynamic> role) async {
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Lavozim o‘chirilsinmi?'),
+        content: Text(
+          '${role['name']} lavozimi o‘chiriladi. Biriktirilgan xodimlar lavozimsiz qoladi.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Bekor qilish'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('O‘chirish'),
+          ),
+        ],
+      ),
+    );
+    if (approved == true) {
+      await _run(() async {
+        await widget.apiClient.delete('/rbac/roles/${role['id']}');
+      });
+    }
   }
 
   Future<void> _deactivate(Map<String, dynamic> member) async {
