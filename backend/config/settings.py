@@ -48,6 +48,11 @@ CRYPTO_RECOVERY_GRANT_TTL_SECONDS = int(
     os.environ.get('CRYPTO_RECOVERY_GRANT_TTL_SECONDS', '300')
 )
 LOCAL_ESCROW_TEST_SECRET = os.environ.get('LOCAL_ESCROW_TEST_SECRET', SECRET_KEY)
+RBAC_BOOTSTRAP_ADMIN_EMAILS = frozenset(
+    item.strip().lower()
+    for item in os.environ.get('RBAC_BOOTSTRAP_ADMIN_EMAILS', '').split(',')
+    if item.strip()
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', '').lower() == 'true'
