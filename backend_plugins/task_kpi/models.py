@@ -8,8 +8,9 @@ class WorkTask(models.Model):
     class Status(models.TextChoices):
         TODO = 'todo', 'Bajarilishi kerak'
         IN_PROGRESS = 'in_progress', 'Jarayonda'
-        REVIEW = 'review', 'Tekshiruvda'
-        DONE = 'done', 'Bajarildi'
+        SUBMITTED = 'submitted', 'Topshirildi'
+        DONE = 'done', 'Qabul qilindi'
+        RETURNED = 'returned', 'Qayta ishlashda'
         CANCELLED = 'cancelled', 'Bekor qilindi'
 
     class Priority(models.TextChoices):
@@ -27,6 +28,10 @@ class WorkTask(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='created_work_tasks', null=True)
     due_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    completion_note = models.TextField(blank=True)
+    review_note = models.TextField(blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
