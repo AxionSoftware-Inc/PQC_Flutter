@@ -101,12 +101,22 @@ class TaskDetailView(APIView):
             return Response({'detail': 'Task access denied.'}, status=403)
         requested_status = request.data.get('status')
         if task.assignee_id == member.id and not is_creator:
-            allowed = {'in_progress', 'submitted'}
+            allowed = {'accepted', 'in_progress', 'submitted'}
             if requested_status not in allowed or set(request.data).difference({'status', 'completion_note'}):
-                return Response({'detail': 'Assignee can start or submit only their assigned work.'}, status=403)
+                return Response({'detail': 'Assignee can accept, start or submit only their assigned work.'}, status=403)
+            expected = {
+                'todo': 'accepted',
+                'returned': 'in_progress',
+                'accepted': 'in_progress',
+                'in_progress': 'submitted',
+            }.get(task.status)
+            if requested_status != expected:
+                return Response({'detail': 'Invalid task status transition.'}, status=409)
             if requested_status == 'submitted':
                 task.submitted_at = timezone.now()
         elif is_creator or _manager(member):
+            if requested_status not in {'done', 'returned'} or task.status != 'submitted':
+                return Response({'detail': 'Only submitted tasks can be reviewed.'}, status=409)
             if requested_status == 'done':
                 task.reviewed_at = timezone.now()
                 task.completed_at = timezone.now()
