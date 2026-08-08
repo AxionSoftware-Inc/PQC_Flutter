@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -10,6 +11,8 @@ from users.models import Invitation, OrganizationMember, WorkspaceMember
 
 from .models import JobRole, JobRoleAssignment
 from .serializers import AssignmentWriteSerializer, InvitationWriteSerializer, JobRoleAssignmentSerializer, JobRoleSerializer
+
+User = get_user_model()
 
 
 def _workspace(request):
@@ -134,6 +137,59 @@ class MemberListView(APIView):
                 user = item.organization_member.user
                 payload.append({'member_id': item.id, 'user_id': user.id, 'display_name': user.first_name or user.username, 'email': getattr(getattr(user, 'google_account', None), 'email', '') or getattr(user, 'email', ''), 'system_role': item.role, 'is_active': item.is_active, 'role': None})
         return Response(payload)
+
+
+class RegisteredUserListView(APIView):
+    """Users who registered but have not yet been added to this organization."""
+
+    def get(self, request):
+        membership = _workspace(request)
+        if not _admin(membership):
+            return Response({'detail': 'Administrator rights required.'}, status=403)
+        users = User.objects.exclude(
+            organization_memberships__organization=membership.workspace.organization,
+        ).order_by('-date_joined', '-id')[:200]
+        return Response([
+            {
+                'user_id': user.id,
+                'display_name': user.first_name or user.username,
+                'email': getattr(getattr(user, 'google_account', None), 'email', '') or getattr(user, 'email', ''),
+                'avatar_url': getattr(user, 'avatar_url', '') or '',
+            }
+            for user in users
+        ])
+
+
+class AddRegisteredUserView(APIView):
+    @transaction.atomic
+    def post(self, request):
+        membership = _workspace(request)
+        if not _admin(membership):
+            return Response({'detail': 'Administrator rights required.'}, status=403)
+        try:
+            user = User.objects.get(id=request.data.get('user_id'))
+        except (User.DoesNotExist, TypeError, ValueError):
+            return Response({'detail': 'Registered user not found.'}, status=404)
+        organization_member, _ = OrganizationMember.objects.get_or_create(
+            organization=membership.workspace.organization,
+            user=user,
+            defaults={'role': OrganizationMember.Role.MEMBER},
+        )
+        workspace_member, _ = WorkspaceMember.objects.get_or_create(
+            workspace=membership.workspace,
+            organization_member=organization_member,
+            defaults={'role': OrganizationMember.Role.MEMBER},
+        )
+        role_id = request.data.get('role_id')
+        role = JobRole.objects.filter(id=role_id, workspace=membership.workspace, is_active=True).first() if role_id else None
+        if role_id and not role:
+            return Response({'detail': 'Role not found.'}, status=404)
+        if role:
+            JobRoleAssignment.objects.update_or_create(
+                workspace_member=workspace_member,
+                defaults={'role': role, 'assigned_by': request.user},
+            )
+        return Response({'member_id': workspace_member.id, 'user_id': user.id}, status=201)
 
 
 class MemberAssignmentView(APIView):
