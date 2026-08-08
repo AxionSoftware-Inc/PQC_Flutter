@@ -137,9 +137,27 @@ class AssignableMemberView(APIView):
         member = _membership(request)
         if not member:
             return Response({'detail': 'Active workspace not found.'}, status=403)
-        rows = _assignable_members(member)
+        rows = _assignable_members(member).select_related(
+            'organization_member__user',
+        )
+        try:
+            from backend_plugins.rbac.models import JobRoleAssignment
+            assignments = {
+                item.workspace_member_id: item
+                for item in JobRoleAssignment.objects.select_related('role').filter(
+                    workspace_member__in=rows,
+                )
+            }
+        except Exception:
+            assignments = {}
         return Response([
-            {'member_id': item.id, 'name': item.organization_member.user.first_name or item.organization_member.user.username}
+            {
+                'member_id': item.id,
+                'name': item.organization_member.user.first_name or item.organization_member.user.username,
+                'role_name': getattr(assignments.get(item.id), 'role', None).name
+                if getattr(assignments.get(item.id), 'role', None) else 'Lavozim belgilanmagan',
+                'avatar_url': getattr(item.organization_member.user, 'avatar_url', '') or '',
+            }
             for item in rows
         ])
 
