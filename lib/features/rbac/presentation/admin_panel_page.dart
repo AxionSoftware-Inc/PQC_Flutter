@@ -26,7 +26,6 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
   List<Map<String, dynamic>> _roles = const [];
   List<Map<String, dynamic>> _members = const [];
   String _memberStatusFilter = 'active';
-  int? _memberRoleFilter;
 
   @override
   void initState() {
@@ -48,9 +47,6 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       if (_memberStatusFilter == 'active' && !isActive) return false;
       if (_memberStatusFilter == 'inactive' && isActive) return false;
       final role = member['role'] as Map<String, dynamic>?;
-      if (_memberRoleFilter != null && role?['id'] != _memberRoleFilter) {
-        return false;
-      }
       if (query.isEmpty) return true;
       final haystack = [
         member['display_name'],
@@ -127,150 +123,75 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       );
     }
     final spacing = context.appSpacing;
-    final activeMembers = _members
-        .where((member) => member['is_active'] == true)
-        .length;
-    final inactiveMembers = _members.length - activeMembers;
     final filteredMembers = _filteredMembers;
     final content = RefreshIndicator(
       onRefresh: _load,
       child: ListView(
         padding: EdgeInsets.all(spacing.md),
         children: [
-          AppSectionHeader(
-            title: 'Lavozimlar',
-            subtitle:
-                '$activeMembers faol · ${_roles.length} lavozim${inactiveMembers > 0 ? ' · $inactiveMembers ishdan olingan' : ''}',
-            trailing: Wrap(
-              spacing: spacing.xs,
-              children: [
-                if (_roles.isEmpty)
-                  TextButton.icon(
-                    onPressed: _bootstrapDefaultRoles,
-                    icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                    label: const Text('Standart'),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _memberSearchController,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search_rounded),
+                    hintText: 'Xodim yoki lavozimni qidirish',
                   ),
-                IconButton.filledTonal(
-                  onPressed: _editRole,
-                  icon: const Icon(Icons.add_rounded),
                 ),
-              ],
-            ),
-          ),
-          SizedBox(height: spacing.xs),
-          if (_roles.isNotEmpty)
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final isWide = constraints.maxWidth >= 720;
-                if (!isWide) {
-                  return Column(
-                    children: [
-                      for (final role in _roles)
-                        Padding(
-                          padding: EdgeInsets.only(bottom: spacing.xs),
-                          child: _roleTile(role),
-                        ),
-                    ],
-                  );
-                }
-                final columns = constraints.maxWidth >= 1200 ? 4 : 2;
-                final cardWidth =
-                    (constraints.maxWidth - spacing.sm * (columns - 1)) /
-                    columns;
-                return Wrap(
-                  spacing: spacing.sm,
-                  runSpacing: spacing.sm,
-                  children: [
-                    for (final role in _roles)
-                      SizedBox(
-                        width: cardWidth,
-                        height: 112,
-                        child: _roleTile(role),
-                      ),
-                  ],
-                );
-              },
-            ),
-          if (_roles.isEmpty)
-            const AppEmptyState(
-              message: 'Lavozim yarating: Direktor, Menejer, Xodim.',
-              icon: Icons.badge_outlined,
-            ),
-          SizedBox(height: spacing.lg),
-          AppSectionHeader(
-            title: 'Xodimlar',
-            subtitle: '${filteredMembers.length} / ${_members.length} xodim',
-          ),
-          SizedBox(height: spacing.xs),
-          AppSurfaceCard(
-            padding: EdgeInsets.symmetric(
-              horizontal: spacing.sm,
-              vertical: spacing.xs,
-            ),
-            child: TextField(
-              controller: _memberSearchController,
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search_rounded),
-                hintText: 'Ism, email yoki lavozim bo‘yicha qidirish',
-                border: InputBorder.none,
               ),
-            ),
-          ),
-          SizedBox(height: spacing.sm),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _memberFilterChip('Faol', 'active'),
-                SizedBox(width: spacing.xs),
-                _memberFilterChip('Ishdan olingan', 'inactive'),
-                SizedBox(width: spacing.xs),
-                _memberFilterChip('Barchasi', 'all'),
-                for (final role in _roles) ...[
-                  SizedBox(width: spacing.xs),
-                  FilterChip(
-                    label: Text(role['name'] as String? ?? ''),
-                    selected: _memberRoleFilter == role['id'],
-                    onSelected: (selected) => setState(
-                      () => _memberRoleFilter = selected
-                          ? role['id'] as int
-                          : null,
-                    ),
+              const SizedBox(width: 6),
+              PopupMenuButton<String>(
+                tooltip: 'Holat filtri',
+                onSelected: (value) =>
+                    setState(() => _memberStatusFilter = value),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'active', child: Text('Faol xodimlar')),
+                  PopupMenuItem(
+                    value: 'inactive',
+                    child: Text('Ishdan olinganlar'),
                   ),
+                  PopupMenuItem(value: 'all', child: Text('Barchasi')),
                 ],
-              ],
-            ),
+                child: IconButton.filledTonal(
+                  onPressed: () {},
+                  icon: Icon(
+                    _memberStatusFilter == 'active'
+                        ? Icons.filter_list_rounded
+                        : Icons.filter_alt_rounded,
+                  ),
+                ),
+              ),
+              IconButton.filledTonal(
+                tooltip: 'Xodim qo‘shish',
+                onPressed: _invite,
+                icon: const Icon(Icons.person_add_alt_1_rounded),
+              ),
+            ],
           ),
           SizedBox(height: spacing.sm),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${filteredMembers.length} xodim',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _showRoleManager,
+                icon: const Icon(Icons.badge_outlined, size: 17),
+                label: Text('${_roles.length} lavozim'),
+              ),
+            ],
+          ),
           if (filteredMembers.isEmpty)
             const AppEmptyState(
               message: 'Bu qidiruv bo‘yicha xodim topilmadi.',
               icon: Icons.person_search_outlined,
             )
           else
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final width = constraints.maxWidth;
-                final count = width >= 1120
-                    ? 4
-                    : width >= 720
-                    ? 3
-                    : 1;
-                return GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: filteredMembers.length,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: count,
-                    mainAxisSpacing: spacing.sm,
-                    crossAxisSpacing: spacing.sm,
-                    childAspectRatio: count == 1 ? 5.8 : 4.0,
-                  ),
-                  itemBuilder: (context, index) =>
-                      _memberTile(filteredMembers[index]),
-                );
-              },
-            ),
+            ...filteredMembers.map(_memberTile),
         ],
       ),
     );
@@ -296,6 +217,55 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       ),
       floatingActionButton: addEmployeeButton,
       body: content,
+    );
+  }
+
+  Future<void> _showRoleManager() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Lavozimlar',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (_roles.isEmpty)
+                  IconButton(
+                    tooltip: 'Standart lavozimlar',
+                    onPressed: () async {
+                      Navigator.pop(sheetContext);
+                      await _bootstrapDefaultRoles();
+                    },
+                    icon: const Icon(Icons.auto_awesome_rounded),
+                  ),
+                IconButton(
+                  tooltip: 'Lavozim qo‘shish',
+                  onPressed: () async {
+                    Navigator.pop(sheetContext);
+                    await _editRole();
+                  },
+                  icon: const Icon(Icons.add_rounded),
+                ),
+              ],
+            ),
+            if (_roles.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Text('Hozircha lavozim yaratilmagan.'),
+              )
+            else
+              ..._roles.map(_roleTile),
+          ],
+        ),
+      ),
     );
   }
 
@@ -345,12 +315,6 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       ),
     );
   }
-
-  Widget _memberFilterChip(String label, String value) => FilterChip(
-    label: Text(label),
-    selected: _memberStatusFilter == value,
-    onSelected: (_) => setState(() => _memberStatusFilter = value),
-  );
 
   Future<void> _showMemberDetails(Map<String, dynamic> member) async {
     final role = member['role'] as Map<String, dynamic>?;
