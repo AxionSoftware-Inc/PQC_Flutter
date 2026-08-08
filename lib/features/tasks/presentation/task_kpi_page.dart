@@ -16,6 +16,307 @@ class TaskKpiPage extends StatefulWidget {
   State<TaskKpiPage> createState() => _TaskKpiPageState();
 }
 
+class _CreateTaskPage extends StatefulWidget {
+  const _CreateTaskPage({required this.apiClient, required this.assignees});
+
+  final ApiClient apiClient;
+  final List<Map<String, dynamic>> assignees;
+
+  @override
+  State<_CreateTaskPage> createState() => _CreateTaskPageState();
+}
+
+class _CreateTaskPageState extends State<_CreateTaskPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  int? _assigneeId;
+  String _priority = 'normal';
+  DateTime? _dueAt;
+  PlatformFile? _attachment;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.assignees.isNotEmpty) {
+      _assigneeId = widget.assignees.first['member_id'] as int?;
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  Map<String, dynamic>? get _selectedAssignee {
+    for (final member in widget.assignees) {
+      if (member['member_id'] == _assigneeId) return member;
+    }
+    return null;
+  }
+
+  Future<void> _pickDeadline() async {
+    final date = await showDatePicker(
+      context: context,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 3650)),
+      initialDate: _dueAt ?? DateTime.now(),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: _dueAt == null
+          ? TimeOfDay.now()
+          : TimeOfDay.fromDateTime(_dueAt!),
+    );
+    if (time == null) return;
+    setState(() {
+      _dueAt = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
+    });
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate() || _assigneeId == null) return;
+    setState(() => _saving = true);
+    try {
+      final created = await widget.apiClient.post('/task-kpi/tasks', {
+        'title': _titleController.text.trim(),
+        'description': _descriptionController.text.trim(),
+        'assignee_id': _assigneeId,
+        'priority': _priority,
+        if (_dueAt != null) 'due_at': _dueAt!.toUtc().toIso8601String(),
+      });
+      if (_attachment != null && created is Map && created['id'] != null) {
+        final file = _attachment!;
+        final files = file.path != null
+            ? [
+                await http.MultipartFile.fromPath(
+                  'file',
+                  file.path!,
+                  filename: file.name,
+                ),
+              ]
+            : [
+                http.MultipartFile.fromBytes(
+                  'file',
+                  file.bytes ?? const [],
+                  filename: file.name,
+                ),
+              ];
+        await widget.apiClient.multipartPost(
+          '/task-kpi/tasks/${created['id']}/attachments',
+          files: files,
+        );
+      }
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = context.appSpacing;
+    final selected = _selectedAssignee;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Yangi vazifa'),
+        actions: [
+          TextButton(
+            onPressed: _saving ? null : _save,
+            child: const Text('Saqlash'),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            padding: EdgeInsets.all(spacing.md),
+            children: [
+              TextFormField(
+                controller: _titleController,
+                autofocus: true,
+                maxLines: 2,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Vazifa nomi',
+                  hintText: 'Masalan: Haftalik hisobotni tayyorlash',
+                ),
+                validator: (value) => value?.trim().isEmpty == true
+                    ? 'Vazifa nomini kiriting'
+                    : null,
+              ),
+              SizedBox(height: spacing.md),
+              TextFormField(
+                controller: _descriptionController,
+                minLines: 6,
+                maxLines: 10,
+                decoration: const InputDecoration(
+                  labelText: 'Vazifa tafsiloti',
+                  hintText:
+                      'Nima qilish kerakligi va kutilayotgan natijani yozing',
+                  alignLabelWithHint: true,
+                ),
+              ),
+              SizedBox(height: spacing.lg),
+              Text('Bajaruvchi', style: Theme.of(context).textTheme.titleSmall),
+              SizedBox(height: spacing.xs),
+              DropdownButtonFormField<int>(
+                initialValue: _assigneeId,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.person_outline_rounded),
+                ),
+                items: widget.assignees.map((member) {
+                  final name = member['name'] as String? ?? 'Xodim';
+                  final role =
+                      member['role_name'] as String? ?? 'Lavozim belgilanmagan';
+                  return DropdownMenuItem<int>(
+                    value: member['member_id'] as int,
+                    child: Row(
+                      children: [
+                        AppAvatar(
+                          label: name,
+                          imageUrl: member['avatar_url'] as String?,
+                          radius: 18,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(name, overflow: TextOverflow.ellipsis),
+                              Text(
+                                role,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                onChanged: (value) => setState(() => _assigneeId = value),
+                validator: (_) =>
+                    _assigneeId == null ? 'Bajaruvchini tanlang' : null,
+              ),
+              if (selected != null) ...[
+                SizedBox(height: spacing.sm),
+                AppSurfaceCard(
+                  padding: EdgeInsets.all(spacing.sm),
+                  child: Row(
+                    children: [
+                      AppAvatar(
+                        label: selected['name'] as String? ?? 'Xodim',
+                        imageUrl: selected['avatar_url'] as String?,
+                        radius: 22,
+                      ),
+                      SizedBox(width: spacing.sm),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            selected['name'] as String? ?? 'Xodim',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          Text(
+                            selected['role_name'] as String? ??
+                                'Lavozim belgilanmagan',
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              SizedBox(height: spacing.lg),
+              Text(
+                'Muhimlik va muddat',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              SizedBox(height: spacing.xs),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _priority,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.flag_outlined),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'low', child: Text('Past')),
+                        DropdownMenuItem(value: 'normal', child: Text('Oddiy')),
+                        DropdownMenuItem(value: 'high', child: Text('Yuqori')),
+                        DropdownMenuItem(
+                          value: 'urgent',
+                          child: Text('Shoshilinch'),
+                        ),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _priority = value ?? 'normal'),
+                    ),
+                  ),
+                  SizedBox(width: spacing.sm),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _pickDeadline,
+                      icon: const Icon(Icons.event_outlined),
+                      label: Text(
+                        _dueAt == null ? 'Deadline' : _formatDate(_dueAt!),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: spacing.md),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final result = await FilePicker.platform.pickFiles(
+                    withData: false,
+                  );
+                  if (result != null && result.files.isNotEmpty) {
+                    setState(() => _attachment = result.files.first);
+                  }
+                },
+                icon: const Icon(Icons.attach_file_rounded),
+                label: Text(
+                  _attachment == null
+                      ? 'Fayl biriktirish (ixtiyoriy)'
+                      : _attachment!.name,
+                ),
+              ),
+              if (_saving) ...[
+                SizedBox(height: spacing.md),
+                const LinearProgressIndicator(),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime value) =>
+      '${value.day.toString().padLeft(2, '0')}.${value.month.toString().padLeft(2, '0')} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+}
+
 class _TaskKpiPageState extends State<TaskKpiPage> {
   bool _loading = true;
   String? _error;
@@ -107,18 +408,34 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
           child: ListView(
             padding: EdgeInsets.all(spacing.md),
             children: [
-              AppSectionHeader(
-                title: 'Vazifalar',
-                subtitle:
-                    '$done / ${_tasks.length} bajarilgan • ${visibleTasks.length} ta ko‘rsatilmoqda',
-                trailing: IconButton.filledTonal(
-                  onPressed: () => setState(() => _boardMode = !_boardMode),
-                  icon: Icon(
-                    _boardMode
-                        ? Icons.view_list_rounded
-                        : Icons.view_kanban_outlined,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '$done / ${_tasks.length} bajarilgan • ${visibleTasks.length} ta',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                   ),
-                ),
+                  IconButton.filledTonal(
+                    tooltip: _boardMode
+                        ? 'Ro‘yxat ko‘rinishi'
+                        : 'Kanban ko‘rinishi',
+                    onPressed: () => setState(() => _boardMode = !_boardMode),
+                    icon: Icon(
+                      _boardMode
+                          ? Icons.view_list_rounded
+                          : Icons.view_kanban_outlined,
+                    ),
+                  ),
+                  if (_assignees.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    FilledButton.icon(
+                      onPressed: _openCreateTaskPage,
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text('Yangi'),
+                    ),
+                  ],
+                ],
               ),
               SizedBox(height: spacing.sm),
               _buildTaskFilters(),
@@ -154,15 +471,6 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
               else
                 ..._goals.map(_goalTile),
             ],
-          ),
-        ),
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: FloatingActionButton.extended(
-            onPressed: _assignees.isEmpty ? null : _createTask,
-            icon: const Icon(Icons.add_task_rounded),
-            label: const Text('Vazifa qo‘shish'),
           ),
         ),
       ],
@@ -467,6 +775,9 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     _ => null,
   };
 
+  // Kept as a compatibility fallback for older callers; the visible action
+  // now opens the dedicated create page above.
+  // ignore: unused_element
   Future<void> _createTask() async {
     final title = TextEditingController();
     final description = TextEditingController();
@@ -757,5 +1068,15 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  Future<void> _openCreateTaskPage() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) =>
+            _CreateTaskPage(apiClient: widget.apiClient, assignees: _assignees),
+      ),
+    );
+    if (mounted) await _load();
   }
 }
