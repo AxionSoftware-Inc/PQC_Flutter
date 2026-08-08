@@ -71,8 +71,6 @@ class _ChatListPageState extends State<ChatListPage> {
   int get _settingsTabIndex => _taskKpiModuleEnabled ? 3 : 2;
   int get _adminTabIndex => _settingsTabIndex + 1;
   bool get _showAdminTab => _rbacModuleEnabled && _isWorkspaceAdmin;
-  int get _profileTabIndex =>
-      _showAdminTab ? _adminTabIndex + 1 : _settingsTabIndex + 1;
 
   @override
   void initState() {
@@ -153,14 +151,9 @@ class _ChatListPageState extends State<ChatListPage> {
     try {
       final result = await widget.apiClient.get('/rbac/me');
       if (!mounted) return;
-      final wasProfile =
-          !_showAdminTab && _selectedTabIndex == _profileTabIndex;
       setState(() {
         _isWorkspaceAdmin =
             result is Map<String, dynamic> && result['is_admin'] == true;
-        if (wasProfile && _showAdminTab) {
-          _selectedTabIndex++;
-        }
       });
     } catch (_) {
       if (mounted) setState(() => _isWorkspaceAdmin = false);
@@ -790,6 +783,17 @@ class _ChatListPageState extends State<ChatListPage> {
     }
   }
 
+  void _openProfile(SettingsViewState state) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('Profil')),
+          body: SafeArea(child: _buildAccountTab(state)),
+        ),
+      ),
+    );
+  }
+
   void _showMessage(String message, {required AppStatusTone tone}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -842,11 +846,6 @@ class _ChatListPageState extends State<ChatListPage> {
           icon: HugeIcons.strokeRoundedShieldUser,
           title: context.antiQText(uz: 'Admin panel', en: 'Admin panel'),
         ),
-      _TabMeta(
-        label: context.antiQText(uz: 'Profil', en: 'Profile'),
-        icon: HugeIcons.strokeRoundedUserCircle,
-        title: context.antiQText(uz: 'Profil', en: 'Profile'),
-      ),
     ];
 
     return AppScaffold(
@@ -872,10 +871,14 @@ class _ChatListPageState extends State<ChatListPage> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: AppAvatar(
-              label: sessionUser.displayName,
-              imageUrl: sessionUser.avatarUrl,
-              radius: 17,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => _openProfile(settingsState),
+              child: AppAvatar(
+                label: sessionUser.displayName,
+                imageUrl: sessionUser.avatarUrl,
+                radius: 17,
+              ),
             ),
           ),
         ],
@@ -921,7 +924,6 @@ class _ChatListPageState extends State<ChatListPage> {
                       apiClient: widget.apiClient,
                       standalone: false,
                     ),
-                  _buildAccountTab(settingsState),
                 ],
               ),
             ),
@@ -1671,7 +1673,7 @@ class _ChatListPageState extends State<ChatListPage> {
               title: Text(context.antiQText(uz: 'Profil', en: 'Profile')),
               onTap: () {
                 _scaffoldKey.currentState?.closeDrawer();
-                setState(() => _selectedTabIndex = _profileTabIndex);
+                _openProfile(state);
               },
             ),
             ListTile(

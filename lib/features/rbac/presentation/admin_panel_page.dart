@@ -164,7 +164,7 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
               ),
               IconButton.filledTonal(
                 tooltip: 'Xodim qo‘shish',
-                onPressed: _invite,
+                onPressed: _addRegisteredUser,
                 icon: const Icon(Icons.person_add_alt_1_rounded),
               ),
             ],
@@ -441,6 +441,87 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     _ => 'O‘zi va past lavozimdagilar ko‘rinadi',
   };
 
+  Future<void> _addRegisteredUser() async {
+    try {
+      final users = List<Map<String, dynamic>>.from(
+        await widget.apiClient.get('/rbac/registered-users') as List,
+      );
+      if (!mounted) return;
+      if (users.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Yangi ro‘yxatdan o‘tgan foydalanuvchi topilmadi.'),
+          ),
+        );
+        return;
+      }
+      final selected = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+            children: [
+              const Text(
+                'Yangi ro‘yxatdan o‘tganlar',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              ...users.map(
+                (user) => ListTile(
+                  leading: AppAvatar(
+                    label: user['display_name'] as String? ?? 'U',
+                    imageUrl: user['avatar_url'] as String?,
+                    radius: 21,
+                  ),
+                  title: Text(
+                    user['display_name'] as String? ?? 'Foydalanuvchi',
+                  ),
+                  subtitle: Text(user['email'] as String? ?? ''),
+                  onTap: () => Navigator.pop(sheetContext, user),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (selected == null || !mounted) return;
+      final roleId = await showDialog<int?>(
+        context: context,
+        builder: (dialogContext) => SimpleDialog(
+          title: Text('${selected['display_name']} uchun lavozim'),
+          children: [
+            for (final role in _roles)
+              SimpleDialogOption(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, role['id'] as int),
+                child: Text(role['name'] as String? ?? ''),
+              ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Keyinroq belgilayman'),
+            ),
+          ],
+        ),
+      );
+      await _run(() async {
+        await widget.apiClient.post('/rbac/members/add', {
+          'user_id': selected['user_id'],
+          ...?roleId == null ? null : {'role_id': roleId},
+        });
+      });
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
+  }
+
+  // Kept for backwards compatibility with older callers.
+  // ignore: unused_element
   Future<void> _invite() async {
     final email = TextEditingController();
     final value = await showDialog<String>(
