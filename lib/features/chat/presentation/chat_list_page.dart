@@ -26,7 +26,7 @@ const _rbacModuleEnabled = bool.fromEnvironment(
 );
 const _taskKpiModuleEnabled = bool.fromEnvironment(
   'TASK_KPI_MODULE',
-  defaultValue: false,
+  defaultValue: true,
 );
 
 class ChatListPage extends StatefulWidget {
@@ -63,14 +63,16 @@ class _ChatListPageState extends State<ChatListPage> {
   String _lastSeenVisibility = 'contacts';
   String _onlineVisibility = 'contacts';
   bool _accountSettingsHydrated = false;
+  bool _isWorkspaceAdmin = false;
   final Set<int> _selectedConversationIds = <int>{};
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   int get _taskKpiTabIndex => 2;
   int get _settingsTabIndex => _taskKpiModuleEnabled ? 3 : 2;
   int get _adminTabIndex => _settingsTabIndex + 1;
+  bool get _showAdminTab => _rbacModuleEnabled && _isWorkspaceAdmin;
   int get _profileTabIndex =>
-      _rbacModuleEnabled ? _adminTabIndex + 1 : _settingsTabIndex + 1;
+      _showAdminTab ? _adminTabIndex + 1 : _settingsTabIndex + 1;
 
   @override
   void initState() {
@@ -84,6 +86,9 @@ class _ChatListPageState extends State<ChatListPage> {
       apiClient: widget.apiClient,
     )..addListener(_onControllerChanged);
     _load();
+    if (_rbacModuleEnabled) {
+      _loadAdminAccess();
+    }
   }
 
   @override
@@ -141,6 +146,24 @@ class _ChatListPageState extends State<ChatListPage> {
       if (error is UnauthorizedApiException) {
         await widget.sessionController.invalidateSession();
       }
+    }
+  }
+
+  Future<void> _loadAdminAccess() async {
+    try {
+      final result = await widget.apiClient.get('/rbac/me');
+      if (!mounted) return;
+      final wasProfile =
+          !_showAdminTab && _selectedTabIndex == _profileTabIndex;
+      setState(() {
+        _isWorkspaceAdmin =
+            result is Map<String, dynamic> && result['is_admin'] == true;
+        if (wasProfile && _showAdminTab) {
+          _selectedTabIndex++;
+        }
+      });
+    } catch (_) {
+      if (mounted) setState(() => _isWorkspaceAdmin = false);
     }
   }
 
@@ -813,7 +836,7 @@ class _ChatListPageState extends State<ChatListPage> {
         icon: HugeIcons.strokeRoundedSettings02,
         title: context.antiQText(uz: 'Sozlamalar', en: 'Settings'),
       ),
-      if (_rbacModuleEnabled)
+      if (_showAdminTab)
         _TabMeta(
           label: context.antiQText(uz: 'Admin', en: 'Admin'),
           icon: HugeIcons.strokeRoundedShieldUser,
@@ -893,7 +916,7 @@ class _ChatListPageState extends State<ChatListPage> {
                     onRefresh: _refresh,
                     child: _buildSettingsOverview(settingsState),
                   ),
-                  if (_rbacModuleEnabled)
+                  if (_showAdminTab)
                     AdminPanelPage(
                       apiClient: widget.apiClient,
                       standalone: false,
@@ -1625,7 +1648,7 @@ class _ChatListPageState extends State<ChatListPage> {
                 setState(() => _selectedTabIndex = _settingsTabIndex);
               },
             ),
-            if (_rbacModuleEnabled)
+            if (_showAdminTab)
               ListTile(
                 leading: const HugeIcon(
                   icon: HugeIcons.strokeRoundedShieldUser,
