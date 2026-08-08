@@ -666,7 +666,31 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
                   ),
               ],
               const SizedBox(height: 20),
-              if (action != null)
+              if (status == 'submitted' && _assignees.isNotEmpty) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(sheetContext);
+                      await _reviewTask(task, accepted: true);
+                    },
+                    icon: const Icon(Icons.check_rounded),
+                    label: const Text('Tugatildi deb qabul qilish'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(sheetContext);
+                      await _reviewTask(task, accepted: false);
+                    },
+                    icon: const Icon(Icons.replay_rounded),
+                    label: const Text('Qayta ishlashga qaytarish'),
+                  ),
+                ),
+              ] else if (action != null)
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
@@ -685,6 +709,56 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     );
   }
 
+  Future<void> _reviewTask(
+    Map<String, dynamic> task, {
+    required bool accepted,
+  }) async {
+    String? reviewNote;
+    if (!accepted) {
+      final controller = TextEditingController();
+      reviewNote = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Qayta ishlash sababi'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              hintText: 'Nimani tuzatish kerakligini yozing',
+              alignLabelWithHint: true,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Bekor qilish'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text.trim()),
+              child: const Text('Qaytarish'),
+            ),
+          ],
+        ),
+      );
+      if (reviewNote?.trim().isEmpty != false) return;
+    }
+    try {
+      await widget.apiClient.patch('/task-kpi/tasks/${task['id']}', {
+        'status': accepted ? 'done' : 'returned',
+        ...?reviewNote == null ? null : {'review_note': reviewNote},
+      });
+      await _load();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
+  }
+
   Widget _detailLine(String label, String value) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 4),
     child: Row(
@@ -696,9 +770,10 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
   );
 
   String? _nextAction(String status) => switch (status) {
-    'todo' => 'Ishni boshlash',
+    'todo' => 'Qabul qildim',
+    'accepted' => 'Ishni boshladim',
+    'returned' => 'Qayta ishlashni boshlash',
     'in_progress' => 'Ishni topshirish',
-    'submitted' when _assignees.isNotEmpty => 'Qabul qilish',
     _ => null,
   };
 
@@ -903,9 +978,10 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
   Future<void> _advanceTask(Map<String, dynamic> task) async {
     final current = task['status'] as String? ?? 'todo';
     final next = switch (current) {
-      'todo' => 'in_progress',
+      'todo' => 'accepted',
+      'accepted' => 'in_progress',
+      'returned' => 'in_progress',
       'in_progress' => 'submitted',
-      'submitted' => 'done',
       _ => null,
     };
     if (next == null) {
@@ -957,12 +1033,14 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
 
   IconData _statusIcon(String value) => switch (value) {
     'done' => Icons.task_alt_rounded,
+    'accepted' => Icons.check_circle_outline_rounded,
     'in_progress' => Icons.pending_actions_rounded,
     'submitted' => Icons.rate_review_outlined,
     _ => Icons.radio_button_unchecked_rounded,
   };
 
   String _statusLabel(String value) => switch (value) {
+    'accepted' => 'Qabul qilingan',
     'in_progress' => 'Jarayonda',
     'submitted' => 'Rahbar tekshiradi',
     'done' => 'Qabul qilindi',
@@ -979,6 +1057,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
 
   Color _statusColor(String value) => switch (value) {
     'done' => Colors.green,
+    'accepted' => Colors.teal,
     'submitted' => Colors.orange,
     'in_progress' => Colors.blue,
     'cancelled' => Colors.red,

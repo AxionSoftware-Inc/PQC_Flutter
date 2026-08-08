@@ -7,6 +7,7 @@ from users.models import Workspace, WorkspaceMember
 class WorkTask(models.Model):
     class Status(models.TextChoices):
         TODO = 'todo', 'Bajarilishi kerak'
+        ACCEPTED = 'accepted', 'Qabul qilindi'
         IN_PROGRESS = 'in_progress', 'Jarayonda'
         SUBMITTED = 'submitted', 'Topshirildi'
         DONE = 'done', 'Qabul qilindi'
