@@ -321,10 +321,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _tasks = const [];
-  List<Map<String, dynamic>> _goals = const [];
   List<Map<String, dynamic>> _assignees = const [];
-  List<Map<String, dynamic>> _summary = const [];
-  bool _boardMode = true;
   final TextEditingController _searchController = TextEditingController();
   String _statusFilter = 'all';
 
@@ -362,16 +359,12 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     try {
       final values = await Future.wait<dynamic>([
         widget.apiClient.get('/task-kpi/tasks'),
-        widget.apiClient.get('/task-kpi/kpi-goals'),
         widget.apiClient.get('/task-kpi/assignees'),
-        widget.apiClient.get('/task-kpi/kpi-summary'),
       ]);
       if (!mounted) return;
       setState(() {
         _tasks = List<Map<String, dynamic>>.from(values[0] as List);
-        _goals = List<Map<String, dynamic>>.from(values[1] as List);
-        _assignees = List<Map<String, dynamic>>.from(values[2] as List);
-        _summary = List<Map<String, dynamic>>.from(values[3] as List);
+        _assignees = List<Map<String, dynamic>>.from(values[1] as List);
         _loading = false;
       });
     } catch (error) {
@@ -399,7 +392,6 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
       );
     }
     final spacing = context.appSpacing;
-    final done = _tasks.where((task) => task['status'] == 'done').length;
     final visibleTasks = _visibleTasks;
     return Stack(
       children: [
@@ -408,36 +400,6 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
           child: ListView(
             padding: EdgeInsets.all(spacing.md),
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '$done / ${_tasks.length} bajarilgan • ${visibleTasks.length} ta',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
-                  IconButton.filledTonal(
-                    tooltip: _boardMode
-                        ? 'Ro‘yxat ko‘rinishi'
-                        : 'Kanban ko‘rinishi',
-                    onPressed: () => setState(() => _boardMode = !_boardMode),
-                    icon: Icon(
-                      _boardMode
-                          ? Icons.view_list_rounded
-                          : Icons.view_kanban_outlined,
-                    ),
-                  ),
-                  if (_assignees.isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    FilledButton.icon(
-                      onPressed: _openCreateTaskPage,
-                      icon: const Icon(Icons.add_rounded, size: 18),
-                      label: const Text('Yangi'),
-                    ),
-                  ],
-                ],
-              ),
-              SizedBox(height: spacing.sm),
               _buildTaskFilters(),
               SizedBox(height: spacing.sm),
               if (_tasks.isEmpty)
@@ -450,26 +412,8 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
                   message: 'Qidiruv yoki filtrga mos vazifa topilmadi.',
                   icon: Icons.search_off_rounded,
                 )
-              else if (_boardMode)
-                _buildKanban()
               else
                 ...visibleTasks.map(_taskTile),
-              SizedBox(height: spacing.lg),
-              if (_summary.isNotEmpty) ...[
-                AppSectionHeader(title: 'Jamoa bajarilishi'),
-                SizedBox(height: spacing.xs),
-                _buildSummaryGrid(),
-                SizedBox(height: spacing.lg),
-              ],
-              AppSectionHeader(title: 'KPI ko‘rsatkichlari'),
-              SizedBox(height: spacing.xs),
-              if (_goals.isEmpty)
-                const AppEmptyState(
-                  message: 'KPI ko‘rsatkichi belgilanmagan.',
-                  icon: Icons.insights_outlined,
-                )
-              else
-                ..._goals.map(_goalTile),
             ],
           ),
         ),
@@ -534,6 +478,14 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
             ),
           ),
         ),
+        if (_assignees.isNotEmpty) ...[
+          const SizedBox(width: 6),
+          IconButton.filledTonal(
+            tooltip: 'Yangi vazifa',
+            onPressed: _openCreateTaskPage,
+            icon: const Icon(Icons.add_rounded),
+          ),
+        ],
       ],
     );
   }
@@ -565,38 +517,12 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     return parts.join(' • ');
   }
 
+  // ignore: unused_element
   Widget _buildSummaryGrid() {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: _summary.map((item) {
-        final total = item['total'] as num? ?? 0;
-        final done = item['done'] as num? ?? 0;
-        final percent = total == 0 ? 0 : ((done / total) * 100).round();
-        return SizedBox(
-          width: 190,
-          child: AppSurfaceCard(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item['name'] as String? ?? 'Xodim',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 6),
-                LinearProgressIndicator(value: (percent / 100).clamp(0, 1)),
-                const SizedBox(height: 5),
-                Text('$done / $total bajarilgan • $percent%'),
-              ],
-            ),
-          ),
-        );
-      }).toList(),
-    );
+    return const SizedBox.shrink();
   }
 
+  // ignore: unused_element
   Widget _buildKanban() {
     const columns = [
       ('todo', 'Yangi'),
@@ -671,6 +597,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     );
   }
 
+  // ignore: unused_element
   Widget _goalTile(Map<String, dynamic> goal) {
     final progress = (goal['progress'] as num? ?? 0).toDouble() / 100;
     return Card(
