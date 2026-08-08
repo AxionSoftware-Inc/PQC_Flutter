@@ -1,4 +1,6 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../../../app/design_system/app_design_system.dart';
 import '../../../core/network/api_client.dart';
@@ -20,12 +22,35 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
   List<Map<String, dynamic>> _tasks = const [];
   List<Map<String, dynamic>> _goals = const [];
   List<Map<String, dynamic>> _assignees = const [];
+  List<Map<String, dynamic>> _summary = const [];
   bool _boardMode = true;
+  final TextEditingController _searchController = TextEditingController();
+  String _statusFilter = 'all';
+
+  List<Map<String, dynamic>> get _visibleTasks {
+    final query = _searchController.text.trim().toLowerCase();
+    return _tasks.where((task) {
+      final status = task['status'] as String? ?? 'todo';
+      final title = (task['title'] as String? ?? '').toLowerCase();
+      final description = (task['description'] as String? ?? '').toLowerCase();
+      final matchesStatus = _statusFilter == 'all' || status == _statusFilter;
+      return matchesStatus &&
+          (query.isEmpty ||
+              title.contains(query) ||
+              description.contains(query));
+    }).toList();
+  }
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -38,12 +63,14 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
         widget.apiClient.get('/task-kpi/tasks'),
         widget.apiClient.get('/task-kpi/kpi-goals'),
         widget.apiClient.get('/task-kpi/assignees'),
+        widget.apiClient.get('/task-kpi/kpi-summary'),
       ]);
       if (!mounted) return;
       setState(() {
         _tasks = List<Map<String, dynamic>>.from(values[0] as List);
         _goals = List<Map<String, dynamic>>.from(values[1] as List);
         _assignees = List<Map<String, dynamic>>.from(values[2] as List);
+        _summary = List<Map<String, dynamic>>.from(values[3] as List);
         _loading = false;
       });
     } catch (error) {
@@ -72,6 +99,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     }
     final spacing = context.appSpacing;
     final done = _tasks.where((task) => task['status'] == 'done').length;
+    final visibleTasks = _visibleTasks;
     return Stack(
       children: [
         RefreshIndicator(
@@ -81,7 +109,8 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
             children: [
               AppSectionHeader(
                 title: 'Vazifalar',
-                subtitle: '$done / ${_tasks.length} bajarilgan',
+                subtitle:
+                    '$done / ${_tasks.length} bajarilgan • ${visibleTasks.length} ta ko‘rsatilmoqda',
                 trailing: IconButton.filledTonal(
                   onPressed: () => setState(() => _boardMode = !_boardMode),
                   icon: Icon(
@@ -91,17 +120,30 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
                   ),
                 ),
               ),
-              SizedBox(height: spacing.xs),
+              SizedBox(height: spacing.sm),
+              _buildTaskFilters(),
+              SizedBox(height: spacing.sm),
               if (_tasks.isEmpty)
                 const AppEmptyState(
                   message: 'Hozircha vazifa yo‘q.',
                   icon: Icons.task_alt_outlined,
                 )
+              else if (visibleTasks.isEmpty)
+                const AppEmptyState(
+                  message: 'Qidiruv yoki filtrga mos vazifa topilmadi.',
+                  icon: Icons.search_off_rounded,
+                )
               else if (_boardMode)
                 _buildKanban()
               else
-                ..._tasks.map(_taskTile),
+                ...visibleTasks.map(_taskTile),
               SizedBox(height: spacing.lg),
+              if (_summary.isNotEmpty) ...[
+                AppSectionHeader(title: 'Jamoa bajarilishi'),
+                SizedBox(height: spacing.xs),
+                _buildSummaryGrid(),
+                SizedBox(height: spacing.lg),
+              ],
               AppSectionHeader(title: 'KPI ko‘rsatkichlari'),
               SizedBox(height: spacing.xs),
               if (_goals.isEmpty)
@@ -118,7 +160,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
           right: 16,
           bottom: 16,
           child: FloatingActionButton.extended(
-            onPressed: _createTask,
+            onPressed: _assignees.isEmpty ? null : _createTask,
             icon: const Icon(Icons.add_task_rounded),
             label: const Text('Vazifa qo‘shish'),
           ),
@@ -131,11 +173,121 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     child: ListTile(
       leading: Icon(_statusIcon(task['status'] as String? ?? 'todo')),
       title: Text(task['title'] as String? ?? ''),
-      subtitle: Text(task['assignee_name'] as String? ?? 'Biriktirilmagan'),
-      trailing: Text(_statusLabel(task['status'] as String? ?? 'todo')),
+      subtitle: Text(
+        '${task['assignee_name'] as String? ?? 'Biriktirilmagan'}${_taskMeta(task).isEmpty ? '' : ' • ${_taskMeta(task)}'}',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: _statusPill(task['status'] as String? ?? 'todo'),
       onTap: () => _showTaskDetail(task),
     ),
   );
+
+  Widget _buildTaskFilters() {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _searchController,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              hintText: 'Vazifalarni qidirish',
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: _searchController.text.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.clear_rounded),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() {});
+                      },
+                    ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        PopupMenuButton<String>(
+          tooltip: 'Status bo‘yicha filtr',
+          initialValue: _statusFilter,
+          onSelected: (value) => setState(() => _statusFilter = value),
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'all', child: Text('Barchasi')),
+            PopupMenuItem(value: 'todo', child: Text('Yangi')),
+            PopupMenuItem(value: 'in_progress', child: Text('Jarayonda')),
+            PopupMenuItem(value: 'submitted', child: Text('Tekshiruvda')),
+            PopupMenuItem(value: 'done', child: Text('Qabul qilingan')),
+          ],
+          child: IconButton.filledTonal(
+            onPressed: () {},
+            icon: Icon(
+              _statusFilter == 'all'
+                  ? Icons.filter_list_rounded
+                  : Icons.filter_alt_rounded,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _statusPill(String status) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: _statusColor(status).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        _statusLabel(status),
+        style: TextStyle(
+          color: _statusColor(status),
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  String _taskMeta(Map<String, dynamic> task) {
+    final due = task['due_at']?.toString();
+    final priority = task['priority'] as String? ?? 'normal';
+    final parts = <String>[];
+    if (due?.isNotEmpty == true) parts.add('Muddat: ${_formatDate(due!)}');
+    if (priority != 'normal') parts.add(_priorityLabel(priority));
+    return parts.join(' • ');
+  }
+
+  Widget _buildSummaryGrid() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _summary.map((item) {
+        final total = item['total'] as num? ?? 0;
+        final done = item['done'] as num? ?? 0;
+        final percent = total == 0 ? 0 : ((done / total) * 100).round();
+        return SizedBox(
+          width: 190,
+          child: AppSurfaceCard(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item['name'] as String? ?? 'Xodim',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+                LinearProgressIndicator(value: (percent / 100).clamp(0, 1)),
+                const SizedBox(height: 5),
+                Text('$done / $total bajarilgan • $percent%'),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
 
   Widget _buildKanban() {
     const columns = [
@@ -152,7 +304,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
         separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (context, index) {
           final column = columns[index];
-          final tasks = _tasks
+          final tasks = _visibleTasks
               .where((task) => task['status'] == column.$1)
               .toList();
           return SizedBox(
@@ -178,8 +330,24 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
                           onTap: () => _showTaskDetail(tasks[itemIndex]),
                           child: Padding(
                             padding: const EdgeInsets.all(12),
-                            child: Text(
-                              tasks[itemIndex]['title'] as String? ?? '',
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  tasks[itemIndex]['title'] as String? ?? '',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (_taskMeta(tasks[itemIndex]).isNotEmpty) ...[
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    _taskMeta(tasks[itemIndex]),
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
                         ),
@@ -239,10 +407,29 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
                 'Muhimlik',
                 _priorityLabel(task['priority'] as String? ?? 'normal'),
               ),
+              if (task['due_at']?.toString().isNotEmpty == true)
+                _detailLine('Muddat', _formatDate(task['due_at'] as String)),
               if (task['completion_note']?.toString().isNotEmpty == true)
                 _detailLine('Xodim izohi', task['completion_note'] as String),
               if (task['review_note']?.toString().isNotEmpty == true)
                 _detailLine('Rahbar izohi', task['review_note'] as String),
+              if ((task['attachments'] as List?)?.isNotEmpty == true) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'Biriktirilgan fayllar',
+                  style: Theme.of(sheetContext).textTheme.titleSmall,
+                ),
+                for (final attachment in (task['attachments'] as List))
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.attach_file_rounded),
+                    title: Text(attachment['filename'] as String? ?? 'Fayl'),
+                    subtitle: Text(
+                      _formatBytes(attachment['size_bytes'] as int? ?? 0),
+                    ),
+                  ),
+              ],
               const SizedBox(height: 20),
               if (action != null)
                 SizedBox(
@@ -282,37 +469,133 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
 
   Future<void> _createTask() async {
     final title = TextEditingController();
+    final description = TextEditingController();
     var assigneeId = _assignees.isEmpty
         ? null
         : _assignees.first['member_id'] as int;
-    final value = await showDialog<String>(
+    var priority = 'normal';
+    DateTime? dueAt;
+    PlatformFile? attachment;
+    final value = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
           title: const Text('Yangi vazifa'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: title,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Vazifa nomi'),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<int>(
-                initialValue: assigneeId,
-                items: _assignees
-                    .map(
-                      (member) => DropdownMenuItem(
-                        value: member['member_id'] as int,
-                        child: Text(member['name'] as String),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: title,
+                  autofocus: true,
+                  maxLines: 2,
+                  decoration: const InputDecoration(labelText: 'Vazifa nomi'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: description,
+                  minLines: 3,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    labelText: 'Vazifa matni va kutilayotgan natija',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  initialValue: assigneeId,
+                  items: _assignees
+                      .map(
+                        (member) => DropdownMenuItem(
+                          value: member['member_id'] as int,
+                          child: Text(member['name'] as String),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => update(() => assigneeId = value),
+                  decoration: const InputDecoration(labelText: 'Bajaruvchi'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: priority,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'low',
+                      child: Text('Past ustuvorlik'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'normal',
+                      child: Text('Oddiy ustuvorlik'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'high',
+                      child: Text('Yuqori ustuvorlik'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'urgent',
+                      child: Text('Shoshilinch'),
+                    ),
+                  ],
+                  onChanged: (value) =>
+                      update(() => priority = value ?? 'normal'),
+                  decoration: const InputDecoration(labelText: 'Ustuvorlik'),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.event_outlined),
+                  title: Text(
+                    dueAt == null
+                        ? 'Muddat belgilanmagan'
+                        : _formatDate(dueAt!.toIso8601String()),
+                  ),
+                  trailing: dueAt == null
+                      ? const Icon(Icons.chevron_right_rounded)
+                      : IconButton(
+                          icon: const Icon(Icons.clear_rounded),
+                          onPressed: () => update(() => dueAt = null),
+                        ),
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 3650)),
+                      initialDate: dueAt ?? DateTime.now(),
+                    );
+                    if (date == null || !context.mounted) return;
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: TimeOfDay.now(),
+                    );
+                    if (time == null) return;
+                    update(
+                      () => dueAt = DateTime(
+                        date.year,
+                        date.month,
+                        date.day,
+                        time.hour,
+                        time.minute,
                       ),
-                    )
-                    .toList(),
-                onChanged: (value) => update(() => assigneeId = value),
-                decoration: const InputDecoration(labelText: 'Bajaruvchi'),
-              ),
-            ],
+                    );
+                  },
+                ),
+                TextButton.icon(
+                  onPressed: () async {
+                    final result = await FilePicker.platform.pickFiles(
+                      withData: false,
+                    );
+                    if (result != null && result.files.isNotEmpty) {
+                      update(() => attachment = result.files.first);
+                    }
+                  },
+                  icon: const Icon(Icons.attach_file_rounded),
+                  label: Text(
+                    attachment == null
+                        ? 'Fayl biriktirish (ixtiyoriy)'
+                        : attachment!.name,
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -322,21 +605,53 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
             FilledButton(
               onPressed: assigneeId == null
                   ? null
-                  : () => Navigator.pop(context, title.text.trim()),
+                  : () => Navigator.pop(context, {
+                      'title': title.text.trim(),
+                      'description': description.text.trim(),
+                      'assignee_id': assigneeId,
+                      'priority': priority,
+                      'due_at': dueAt?.toUtc().toIso8601String(),
+                      'attachment': attachment,
+                    }),
               child: const Text('Yaratish'),
             ),
           ],
         ),
       ),
     );
-    if (value?.isEmpty != false) {
+    if (value == null || (value['title'] as String? ?? '').isEmpty) {
       return;
     }
     try {
-      await widget.apiClient.post('/task-kpi/tasks', {
-        'title': value,
-        'assignee_id': assigneeId,
+      final created = await widget.apiClient.post('/task-kpi/tasks', {
+        'title': value['title'],
+        'description': value['description'],
+        'assignee_id': value['assignee_id'],
+        'priority': value['priority'],
+        if (value['due_at'] != null) 'due_at': value['due_at'],
       });
+      final selected = value['attachment'] as PlatformFile?;
+      if (selected != null && created is Map && created['id'] != null) {
+        final files = selected.path != null
+            ? [
+                await http.MultipartFile.fromPath(
+                  'file',
+                  selected.path!,
+                  filename: selected.name,
+                ),
+              ]
+            : [
+                http.MultipartFile.fromBytes(
+                  'file',
+                  selected.bytes ?? const [],
+                  filename: selected.name,
+                ),
+              ];
+        await widget.apiClient.multipartPost(
+          '/task-kpi/tasks/${created['id']}/attachments',
+          files: files,
+        );
+      }
       await _load();
     } catch (error) {
       if (mounted) {
@@ -423,4 +738,24 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     'urgent' => 'Shoshilinch',
     _ => 'Oddiy',
   };
+
+  Color _statusColor(String value) => switch (value) {
+    'done' => Colors.green,
+    'submitted' => Colors.orange,
+    'in_progress' => Colors.blue,
+    'cancelled' => Colors.red,
+    _ => Colors.grey,
+  };
+
+  String _formatDate(String value) {
+    final parsed = DateTime.tryParse(value)?.toLocal();
+    if (parsed == null) return value;
+    return '${parsed.day.toString().padLeft(2, '0')}.${parsed.month.toString().padLeft(2, '0')}.${parsed.year} ${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
 }
