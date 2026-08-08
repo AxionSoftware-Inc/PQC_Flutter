@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../app/design_system/app_design_system.dart';
 import '../../../core/network/api_client.dart';
@@ -25,6 +24,7 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
   String? _error;
   List<Map<String, dynamic>> _roles = const [];
   List<Map<String, dynamic>> _members = const [];
+  int _registeredUserCount = 0;
   String _memberStatusFilter = 'active';
 
   @override
@@ -75,12 +75,25 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
         _members = List<Map<String, dynamic>>.from(results[2] as List);
         _loading = false;
       });
+      _refreshRegisteredUserCount();
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _error = error.toString();
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _refreshRegisteredUserCount() async {
+    if (!_isAdmin) return;
+    try {
+      final users = await widget.apiClient.get('/rbac/registered-users');
+      if (mounted && users is List) {
+        setState(() => _registeredUserCount = users.length);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _registeredUserCount = 0);
     }
   }
 
@@ -165,7 +178,25 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
               IconButton.filledTonal(
                 tooltip: 'Xodim qo‘shish',
                 onPressed: _addRegisteredUser,
-                icon: const Icon(Icons.person_add_alt_1_rounded),
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.person_add_alt_1_rounded),
+                    if (_registeredUserCount > 0)
+                      Positioned(
+                        right: -3,
+                        top: -3,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -195,18 +226,8 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
         ],
       ),
     );
-    final addEmployeeButton = FloatingActionButton.extended(
-      onPressed: _invite,
-      icon: const Icon(Icons.person_add_alt_1_rounded),
-      label: const Text('Xodim qo‘shish'),
-    );
     if (!widget.standalone) {
-      return Stack(
-        children: [
-          content,
-          Positioned(right: 16, bottom: 16, child: addEmployeeButton),
-        ],
-      );
+      return content;
     }
     return Scaffold(
       appBar: AppBar(
@@ -215,7 +236,6 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
         ],
       ),
-      floatingActionButton: addEmployeeButton,
       body: content,
     );
   }
@@ -511,88 +531,6 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
           ...?roleId == null ? null : {'role_id': roleId},
         });
       });
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(error.toString())));
-      }
-    }
-  }
-
-  // Kept for backwards compatibility with older callers.
-  // ignore: unused_element
-  Future<void> _invite() async {
-    final email = TextEditingController();
-    final value = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Yangi xodimni taklif qilish'),
-        content: TextField(
-          controller: email,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(labelText: 'Email manzil'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Bekor qilish'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, email.text.trim()),
-            child: const Text('Taklif yuborish'),
-          ),
-        ],
-      ),
-    );
-    if (value?.isEmpty != false) return;
-    try {
-      final invitation = await widget.apiClient.post('/rbac/invitations', {
-        'email': value,
-      });
-      await _load();
-      if (!mounted) return;
-      final code = invitation['invite_code'] as String? ?? '';
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Taklif tayyor'),
-          content: code.isEmpty
-              ? Text('$value manziliga taklif yaratildi.')
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('$value uchun taklif kodi:'),
-                    const SizedBox(height: 12),
-                    SelectableText(
-                      code,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text('Kodini xodimga yuboring.'),
-                  ],
-                ),
-          actions: [
-            if (code.isNotEmpty)
-              TextButton(
-                onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: code));
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Taklif kodi nusxalandi.')),
-                    );
-                  }
-                },
-                child: const Text('Nusxalash'),
-              ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Tayyor'),
-            ),
-          ],
-        ),
-      );
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(
