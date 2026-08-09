@@ -229,11 +229,26 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
   PlatformFile? _attachment;
   bool _saving = false;
 
+  /// The assignee endpoint is scoped by workspace, but older server builds
+  /// could return the same member more than once after a role change. Keep the
+  /// picker deterministic and show each employee only once.
+  List<Map<String, dynamic>> get _uniqueAssignees {
+    final byMemberId = <int, Map<String, dynamic>>{};
+    for (final member in widget.assignees) {
+      final id = (member['member_id'] as num?)?.toInt();
+      if (id != null) {
+        byMemberId.putIfAbsent(id, () => member);
+      }
+    }
+    return byMemberId.values.toList(growable: false);
+  }
+
   @override
   void initState() {
     super.initState();
-    if (widget.assignees.isNotEmpty) {
-      _assigneeId = widget.assignees.first['member_id'] as int?;
+    final assignees = _uniqueAssignees;
+    if (assignees.isNotEmpty) {
+      _assigneeId = (assignees.first['member_id'] as num?)?.toInt();
     }
   }
 
@@ -242,13 +257,6 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
     _titleController.dispose();
     _descriptionController.dispose();
     super.dispose();
-  }
-
-  Map<String, dynamic>? get _selectedAssignee {
-    for (final member in widget.assignees) {
-      if (member['member_id'] == _assigneeId) return member;
-    }
-    return null;
   }
 
   Future<void> _pickDeadline() async {
@@ -324,7 +332,6 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
   @override
   Widget build(BuildContext context) {
     final spacing = context.appSpacing;
-    final selected = _selectedAssignee;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Yangi vazifa'),
@@ -375,12 +382,12 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
                 decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.person_outline_rounded),
                 ),
-                items: widget.assignees.map((member) {
+                items: _uniqueAssignees.map((member) {
                   final name = member['name'] as String? ?? 'Xodim';
                   final role =
                       member['role_name'] as String? ?? 'Lavozim belgilanmagan';
                   return DropdownMenuItem<int>(
-                    value: member['member_id'] as int,
+                    value: (member['member_id'] as num).toInt(),
                     child: Row(
                       children: [
                         AppAvatar(
@@ -410,35 +417,6 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
                 validator: (_) =>
                     _assigneeId == null ? 'Bajaruvchini tanlang' : null,
               ),
-              if (selected != null) ...[
-                SizedBox(height: spacing.sm),
-                AppSurfaceCard(
-                  padding: EdgeInsets.all(spacing.sm),
-                  child: Row(
-                    children: [
-                      AppAvatar(
-                        label: selected['name'] as String? ?? 'Xodim',
-                        imageUrl: selected['avatar_url'] as String?,
-                        radius: 22,
-                      ),
-                      SizedBox(width: spacing.sm),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            selected['name'] as String? ?? 'Xodim',
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          Text(
-                            selected['role_name'] as String? ??
-                                'Lavozim belgilanmagan',
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
               SizedBox(height: spacing.lg),
               Text(
                 'Muhimlik va muddat',
@@ -574,6 +552,18 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
         .toList(growable: false);
   }
 
+  List<Map<String, dynamic>> _dedupeAssignees(dynamic response) {
+    if (response is! List) return const [];
+    final byMemberId = <int, Map<String, dynamic>>{};
+    for (final raw in response) {
+      if (raw is! Map) continue;
+      final member = Map<String, dynamic>.from(raw);
+      final id = (member['member_id'] as num?)?.toInt();
+      if (id != null) byMemberId.putIfAbsent(id, () => member);
+    }
+    return byMemberId.values.toList(growable: false);
+  }
+
   Future<void> _load({bool append = false}) async {
     if (append && (_loadingMore || !_hasMore || _nextOffset == null)) return;
     setState(() {
@@ -613,9 +603,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
       setState(() {
         _tasks = append ? [..._tasks, ...taskItems] : taskItems;
         if (!append) {
-          _assignees = values[1] is List
-              ? List<Map<String, dynamic>>.from(values[1] as List)
-              : const [];
+          _assignees = _dedupeAssignees(values[1]);
           final notifications = values[2];
           if (notifications is Map) {
             _unreadNotifications =
