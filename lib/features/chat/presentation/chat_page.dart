@@ -23,6 +23,7 @@ import '../application/chat_models.dart';
 import '../application/chat_services.dart';
 import '../../transfers/application/attachment_transfer.dart';
 import 'chat_local_image.dart';
+import 'chat_thread_widget.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -451,7 +452,7 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                     ),
                   )
-                : ListView.builder(
+                : ChatThreadWidget(
                     controller: _scrollController,
                     padding: EdgeInsets.fromLTRB(
                       spacing.sm,
@@ -459,17 +460,45 @@ class _ChatPageState extends State<ChatPage> {
                       spacing.sm,
                       spacing.xs,
                     ),
-                    itemCount: _controller.messages.length,
-                    itemBuilder: (context, index) {
-                      final message = _controller.messages[index];
-                      final isMine = message.senderId == widget.currentUserId;
-                      return _buildMessageItem(
-                        message: message,
-                        isMine: isMine,
-                        colors: colors,
-                        spacing: spacing,
-                      );
+                    messages: _controller.messages
+                        .map(_toThreadMessage)
+                        .toList(),
+                    currentUserId: widget.currentUserId,
+                    isGroup: widget.conversation.isGroup,
+                    attachmentBuilder:
+                        (
+                          context,
+                          attachment, {
+                          required message,
+                          required showDeliveryOverlay,
+                        }) {
+                          final raw = attachment.raw as ChatAttachment;
+                          return _buildAttachmentChip(
+                            raw,
+                            message: message.raw as ChatMessage,
+                            isMine: message.isMine,
+                            showDeliveryOverlay: showDeliveryOverlay,
+                          );
+                        },
+                    footerBuilder: (context, message) => _buildMessageFooter(
+                      message: message.raw as ChatMessage,
+                      isMine: message.isMine,
+                    ),
+                    bodyLabelBuilder: (message) {
+                      final body = message.body;
+                      if (body ==
+                              ChatCryptoService
+                                  .decryptNeedsBackupRestoreMarker ||
+                          body == ChatCryptoService.decryptKeyMissingMarker) {
+                        return 'Bu qurilmada eski xabar kaliti topilmadi. Zaxira nusxasini tiklang.';
+                      }
+                      if (body == ChatCryptoService.decryptErrorMarker) {
+                        return 'Bu xabarni shifrdan chiqarib bo‘lmadi.';
+                      }
+                      return body;
                     },
+                    onRetry: (message) =>
+                        _retryMessage(message.raw as ChatMessage),
                   ),
           ),
           SafeArea(
@@ -704,6 +733,34 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  ChatThreadMessage _toThreadMessage(ChatMessage message) {
+    return ChatThreadMessage(
+      id: message.id,
+      senderId: message.senderId,
+      senderName: message.senderName,
+      body: message.body,
+      createdAt: message.createdAt,
+      isMine: message.senderId == widget.currentUserId,
+      isRead: message.isRead,
+      canRetry: message.canRetry,
+      deliveryLabel: message.deliveryState.name,
+      attachments: message.attachments
+          .map(
+            (attachment) => ChatThreadAttachment(
+              id: attachment.id,
+              filename: attachment.filename,
+              mimeType: attachment.mimeType,
+              sizeBytes: attachment.sizeBytes,
+              raw: attachment,
+            ),
+          )
+          .toList(),
+      raw: message,
+    );
+  }
+
+  // Kept as a reference for the shared thread widget during the migration.
+  // ignore: unused_element
   Widget _buildMessageItem({
     required ChatMessage message,
     required bool isMine,
