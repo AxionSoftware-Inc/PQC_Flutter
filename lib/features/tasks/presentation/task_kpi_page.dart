@@ -51,8 +51,9 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
   late final TabController _tabController;
   List<Map<String, dynamic>> _activities = const [];
   List<PlatformFile> _selectedAttachments = const [];
-  Map<String, dynamic>? _replyAttachment;
+  Map<String, dynamic>? _replyTarget;
   final Set<int> _openingFileIds = <int>{};
+  Timer? _activityRefreshTimer;
   bool _loadingActivities = true;
   bool _sendingUpdate = false;
   String? _activityError;
@@ -65,6 +66,11 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(_onTabChanged);
     unawaited(_loadActivities());
+    _activityRefreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (mounted && !_loadingActivities) {
+        unawaited(_loadActivities(silent: true));
+      }
+    });
   }
 
   void _onTabChanged() {
@@ -77,6 +83,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
     _tabController
       ..removeListener(_onTabChanged)
       ..dispose();
+    _activityRefreshTimer?.cancel();
     _commentController.dispose();
     super.dispose();
   }
@@ -104,7 +111,8 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
     return '${parsed.day.toString().padLeft(2, '0')}.${parsed.month.toString().padLeft(2, '0')}.${parsed.year} ${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
   }
 
-  Future<void> _loadActivities() async {
+  Future<void> _loadActivities({bool silent = false}) async {
+    if (!silent && mounted) setState(() => _loadingActivities = true);
     try {
       final response = await widget.apiClient.get(
         '/task-kpi/tasks/${task['id']}/activity',
@@ -171,9 +179,15 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
     try {
       if (body.isNotEmpty) {
         final payload = <String, dynamic>{'body': body};
-        final replyId = (_replyAttachment?['id'] as num?)?.toInt();
-        if (replyId != null) {
-          payload['metadata'] = {'reply_to_attachment_id': replyId};
+        final replyId = (_replyTarget?['id'] as num?)?.toInt();
+        final replyKind = _replyTarget?['kind']?.toString();
+        final replyLabel = _replyTarget?['label']?.toString();
+        if (replyId != null && replyKind != null) {
+          payload['body'] =
+              '${replyKind == 'file' ? 'Faylga' : 'Izohga'} javob: $replyLabel\n$body';
+          payload['metadata'] = replyKind == 'file'
+              ? {'reply_to_attachment_id': replyId}
+              : {'reply_to_activity_id': replyId};
         }
         await widget.apiClient.post(
           '/task-kpi/tasks/${task['id']}/activity',
@@ -187,7 +201,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
       if (mounted) {
         setState(() {
           _selectedAttachments = const [];
-          _replyAttachment = null;
+          _replyTarget = null;
         });
       }
       await _loadActivities();
@@ -203,7 +217,26 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
   }
 
   void _replyToAttachment(Map<String, dynamic> file) {
-    setState(() => _replyAttachment = file);
+    setState(() {
+      _replyTarget = {
+        'id': file['id'],
+        'kind': 'file',
+        'label': file['filename'] ?? 'Fayl',
+      };
+    });
+    _tabController.animateTo(1);
+  }
+
+  void _replyToActivity(Map<String, dynamic> activity) {
+    final body = activity['body']?.toString().trim() ?? '';
+    if (body.isEmpty) return;
+    setState(() {
+      _replyTarget = {
+        'id': activity['id'],
+        'kind': 'text',
+        'label': body.split('\n').first,
+      };
+    });
     _tabController.animateTo(1);
   }
 
@@ -268,8 +301,12 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
     };
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: 52,
+        toolbarHeight: 58,
         titleSpacing: 0,
+        titleTextStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+        ),
         title: Text(
           task['title'] as String? ?? 'Vazifa',
           maxLines: 1,
@@ -277,27 +314,29 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
         ),
       ),
       body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.fromLTRB(
-            spacing.sm,
-            spacing.xs,
-            spacing.sm,
-            spacing.md,
-          ),
+        child: Column(
           children: [
-            Wrap(
-              spacing: spacing.xs,
-              runSpacing: spacing.xs,
-              children: [
-                _metaPill(context, _statusLabel(status), Icons.flag_outlined),
-                _metaPill(
-                  context,
-                  _priorityLabel(task['priority'] as String? ?? 'normal'),
-                  Icons.bolt_outlined,
-                ),
-              ],
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                spacing.sm,
+                spacing.xs,
+                spacing.sm,
+                0,
+              ),
+              child: Wrap(
+                spacing: spacing.xs,
+                runSpacing: spacing.xs,
+                children: [
+                  _metaPill(context, _statusLabel(status), Icons.flag_outlined),
+                  _metaPill(
+                    context,
+                    _priorityLabel(task['priority'] as String? ?? 'normal'),
+                    Icons.bolt_outlined,
+                  ),
+                ],
+              ),
             ),
-            SizedBox(height: spacing.sm),
+            SizedBox(height: spacing.xs),
             TabBar(
               controller: _tabController,
               isScrollable: true,
@@ -310,17 +349,38 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
                 Tab(text: 'Fayllar (${_fileEntries.length})'),
               ],
             ),
-            SizedBox(height: spacing.sm),
-            if (_tabController.index == 0)
-              _taskSection(
-                description: description,
-                status: status,
-                actionLabel: actionLabel,
-              )
-            else if (_tabController.index == 1)
-              _commentsSection(canComment)
-            else
-              _filesSection(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  spacing.sm,
+                  spacing.xs,
+                  spacing.sm,
+                  spacing.sm,
+                ),
+                child: _tabController.index == 0
+                    ? _taskSection(
+                        description: description,
+                        status: status,
+                        actionLabel: actionLabel,
+                      )
+                    : _tabController.index == 1
+                    ? _commentsSection()
+                    : _filesSection(),
+              ),
+            ),
+            if (_tabController.index == 1 && canComment)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    spacing.sm,
+                    0,
+                    spacing.sm,
+                    spacing.xs,
+                  ),
+                  child: _activityComposer(),
+                ),
+              ),
           ],
         ),
       ),
@@ -458,8 +518,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
     );
   }
 
-  Widget _commentsSection(bool canComment) {
-    final spacing = context.appSpacing;
+  Widget _commentsSection() {
     final comments = _commentActivities;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -500,7 +559,6 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
           )
         else
           ...comments.map(_activityTile),
-        if (canComment) ...[SizedBox(height: spacing.xs), _activityComposer()],
       ],
     );
   }
@@ -617,68 +675,83 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
 
   Widget _activityTile(Map<String, dynamic> activity) {
     final spacing = context.appSpacing;
-    final body = activity['body'] as String? ?? '';
+    var body = activity['body'] as String? ?? '';
     final author = activity['author_name'] as String? ?? 'Tizim';
     final createdAt = activity['created_at']?.toString() ?? '';
     final metadata = (activity['metadata'] as Map?)?.cast<String, dynamic>();
-    final replyFilename = metadata?['reply_to_filename']?.toString();
+    var replyLabel =
+        metadata?['reply_to_filename']?.toString() ??
+        metadata?['reply_to_text']?.toString();
+    if (replyLabel?.isNotEmpty != true) {
+      final firstLine = body.split('\n').first.trim();
+      if (firstLine.startsWith('Faylga javob: ')) {
+        replyLabel = firstLine.substring('Faylga javob: '.length).trim();
+        body = body.substring(firstLine.length).trim();
+      } else if (firstLine.startsWith('Izohga javob: ')) {
+        replyLabel = firstLine.substring('Izohga javob: '.length).trim();
+        body = body.substring(firstLine.length).trim();
+      }
+    }
     return Padding(
       padding: EdgeInsets.only(bottom: spacing.xs),
-      child: AppSurfaceCard(
-        padding: EdgeInsets.symmetric(
-          horizontal: spacing.sm,
-          vertical: spacing.xs,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    author,
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+      child: GestureDetector(
+        onLongPress: () => _replyToActivity(activity),
+        child: AppSurfaceCard(
+          padding: EdgeInsets.symmetric(
+            horizontal: spacing.sm,
+            vertical: spacing.xs,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      author,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                ),
-                Text(
-                  createdAt.isEmpty ? '' : _formatDate(createdAt),
-                  style: Theme.of(context).textTheme.bodySmall,
+                  Text(
+                    createdAt.isEmpty ? '' : _formatDate(createdAt),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+              if (replyLabel?.isNotEmpty == true) ...[
+                SizedBox(height: spacing.xs),
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: spacing.xs,
+                    vertical: spacing.xs,
+                  ),
+                  decoration: BoxDecoration(
+                    color: context.appColors.surfaceMuted,
+                    borderRadius: BorderRadius.circular(context.appRadii.sm),
+                    border: Border(
+                      left: BorderSide(
+                        color: context.appColors.primary,
+                        width: 3,
+                      ),
+                    ),
+                  ),
+                  child: Text(
+                    'Javob: $replyLabel',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                 ),
               ],
-            ),
-            if (replyFilename?.isNotEmpty == true) ...[
-              SizedBox(height: spacing.xs),
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(
-                  horizontal: spacing.xs,
-                  vertical: spacing.xs,
-                ),
-                decoration: BoxDecoration(
-                  color: context.appColors.surfaceMuted,
-                  borderRadius: BorderRadius.circular(context.appRadii.sm),
-                  border: Border(
-                    left: BorderSide(
-                      color: context.appColors.primary,
-                      width: 3,
-                    ),
-                  ),
-                ),
-                child: Text(
-                  'Faylga javob: $replyFilename',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
+              if (body.trim().isNotEmpty) ...[
+                SizedBox(height: spacing.xs),
+                Text(body, style: Theme.of(context).textTheme.bodyMedium),
+              ],
             ],
-            if (body.trim().isNotEmpty) ...[
-              SizedBox(height: spacing.xs),
-              Text(body, style: Theme.of(context).textTheme.bodyMedium),
-            ],
-          ],
+          ),
         ),
       ),
     );
@@ -700,7 +773,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
       ),
       child: Column(
         children: [
-          if (_replyAttachment != null)
+          if (_replyTarget != null)
             Container(
               width: double.infinity,
               margin: EdgeInsets.only(bottom: spacing.xs),
@@ -721,7 +794,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
                   SizedBox(width: spacing.xs),
                   Expanded(
                     child: Text(
-                      'Faylga javob: ${_replyAttachment!['filename'] ?? 'Fayl'}',
+                      '${_replyTarget!['kind'] == 'file' ? 'Faylga' : 'Izohga'} javob: ${_replyTarget!['label'] ?? 'Tanlangan matn'}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall,
@@ -731,7 +804,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
                     visualDensity: VisualDensity.compact,
                     onPressed: _sendingUpdate
                         ? null
-                        : () => setState(() => _replyAttachment = null),
+                        : () => setState(() => _replyTarget = null),
                     icon: const Icon(Icons.close_rounded, size: 17),
                   ),
                 ],
