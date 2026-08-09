@@ -92,14 +92,16 @@ def _get_task(member, task_id, *, for_update=False):
     # ``_visible_tasks`` joins watchers/assignees and therefore uses DISTINCT.
     # PostgreSQL rejects ``SELECT DISTINCT ... FOR UPDATE``. Resolve the row
     # from its workspace first, then apply the visibility policy in Python.
-    tasks = WorkTask.objects.select_related(
-        'assignee__organization_member__user',
-    ).prefetch_related('watchers', 'attachments').filter(
-        workspace=member.workspace,
-        id=task_id,
-    )
+    # A nullable assignee join is also not lockable in PostgreSQL, so the
+    # locking query must contain only the WorkTask table. Related objects are
+    # loaded normally for non-mutating reads.
+    tasks = WorkTask.objects.filter(workspace=member.workspace, id=task_id)
     if for_update:
         tasks = tasks.select_for_update()
+    else:
+        tasks = tasks.select_related(
+            'assignee__organization_member__user',
+        ).prefetch_related('watchers', 'attachments')
     task = tasks.first()
     if not task or not can_view_task(task, member, _assignable_members(member)):
         return None
