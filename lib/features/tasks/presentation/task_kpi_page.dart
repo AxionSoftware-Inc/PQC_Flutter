@@ -44,9 +44,11 @@ class _TaskDetailPage extends StatefulWidget {
   State<_TaskDetailPage> createState() => _TaskDetailPageState();
 }
 
-class _TaskDetailPageState extends State<_TaskDetailPage> {
+class _TaskDetailPageState extends State<_TaskDetailPage>
+    with SingleTickerProviderStateMixin {
   static const _maxAttachmentBytes = 25 * 1024 * 1024;
   final TextEditingController _commentController = TextEditingController();
+  late final TabController _tabController;
   List<Map<String, dynamic>> _activities = const [];
   List<PlatformFile> _selectedAttachments = const [];
   bool _loadingActivities = true;
@@ -58,11 +60,21 @@ class _TaskDetailPageState extends State<_TaskDetailPage> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(_onTabChanged);
     unawaited(_loadActivities());
+  }
+
+  void _onTabChanged() {
+    if (!mounted || _tabController.indexIsChanging) return;
+    setState(() {});
   }
 
   @override
   void dispose() {
+    _tabController
+      ..removeListener(_onTabChanged)
+      ..dispose();
     _commentController.dispose();
     super.dispose();
   }
@@ -211,7 +223,6 @@ class _TaskDetailPageState extends State<_TaskDetailPage> {
     final spacing = context.appSpacing;
     final status = task['status'] as String? ?? 'todo';
     final description = task['description'] as String? ?? '';
-    final attachments = (task['attachments'] as List?) ?? const [];
     final permissions =
         (task['permissions'] as Map?)?.cast<String, dynamic>() ??
         const <String, dynamic>{};
@@ -227,148 +238,329 @@ class _TaskDetailPageState extends State<_TaskDetailPage> {
       _ => null,
     };
     return Scaffold(
-      appBar: AppBar(title: const Text('Vazifa tafsilotlari')),
+      appBar: AppBar(
+        toolbarHeight: 52,
+        titleSpacing: 0,
+        title: const Text('Vazifa tafsilotlari'),
+      ),
       body: SafeArea(
         child: ListView(
-          padding: EdgeInsets.all(spacing.md),
+          padding: EdgeInsets.fromLTRB(
+            spacing.sm,
+            spacing.xs,
+            spacing.sm,
+            spacing.md,
+          ),
           children: [
             Text(
               task['title'] as String? ?? '',
               style: Theme.of(
                 context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
-            SizedBox(height: spacing.sm),
+            SizedBox(height: spacing.xs),
             Wrap(
               spacing: spacing.xs,
               runSpacing: spacing.xs,
               children: [
-                Chip(label: Text(_statusLabel(status))),
-                Chip(
-                  label: Text(
-                    _priorityLabel(task['priority'] as String? ?? 'normal'),
-                  ),
+                _metaPill(context, _statusLabel(status), Icons.flag_outlined),
+                _metaPill(
+                  context,
+                  _priorityLabel(task['priority'] as String? ?? 'normal'),
+                  Icons.bolt_outlined,
                 ),
               ],
             ),
-            SizedBox(height: spacing.md),
-            if (description.trim().isNotEmpty)
-              AppSurfaceCard(
-                child: Text(
-                  description,
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-              ),
-            SizedBox(height: spacing.md),
-            _infoRow(
-              context,
-              'Bajaruvchi',
-              task['assignee_name'] as String? ?? '—',
-            ),
-            if (task['due_at']?.toString().isNotEmpty == true)
-              _infoRow(
-                context,
-                'Deadline',
-                _formatDate(task['due_at'] as String),
-              ),
-            if (task['completion_note']?.toString().isNotEmpty == true)
-              _infoRow(
-                context,
-                'Xodim izohi',
-                task['completion_note'] as String,
-              ),
-            if (task['review_note']?.toString().isNotEmpty == true)
-              _infoRow(context, 'Rahbar izohi', task['review_note'] as String),
-            if (attachments.isNotEmpty) ...[
-              SizedBox(height: spacing.md),
-              Text(
-                'Biriktirilgan fayllar',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              ...attachments.map(
-                (item) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.attach_file_rounded),
-                  title: Text(item['filename'] as String? ?? 'Fayl'),
-                  subtitle: Text(_formatBytes(item['size_bytes'] as int? ?? 0)),
-                  trailing: IconButton(
-                    tooltip: 'Yuklab olish',
-                    onPressed: () => widget.onDownloadAttachment(
-                      Map<String, dynamic>.from(item as Map),
-                    ),
-                    icon: const Icon(Icons.download_rounded),
-                  ),
-                ),
-              ),
-            ],
-            SizedBox(height: spacing.lg),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Ish jarayoni',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Yangilash',
-                  onPressed: _loadingActivities ? null : _loadActivities,
-                  icon: const Icon(Icons.refresh_rounded),
-                ),
+            SizedBox(height: spacing.sm),
+            TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              labelPadding: EdgeInsets.symmetric(horizontal: spacing.sm),
+              indicatorSize: TabBarIndicatorSize.label,
+              tabs: [
+                const Tab(text: 'Topshiriq'),
+                Tab(text: 'Izohlar (${_commentActivities.length})'),
+                Tab(text: 'Fayllar (${_fileEntries.length})'),
               ],
             ),
-            if (_loadingActivities)
-              const LinearProgressIndicator(minHeight: 2)
-            else if (_activityError != null)
-              AppStatusBanner(
-                message: _activityError!,
-                tone: AppStatusTone.danger,
-                action: TextButton(
-                  onPressed: _loadActivities,
-                  child: const Text('Qayta urinish'),
-                ),
+            SizedBox(height: spacing.sm),
+            if (_tabController.index == 0)
+              _taskSection(
+                description: description,
+                status: status,
+                actionLabel: actionLabel,
               )
-            else if (_activities.isEmpty)
-              Text(
-                'Hozircha izoh yoki qo‘shimcha fayl yo‘q.',
-                style: Theme.of(context).textTheme.bodySmall,
-              )
+            else if (_tabController.index == 1)
+              _commentsSection(canComment)
             else
-              ..._activities.map(_activityTile),
-            if (canComment) ...[
-              SizedBox(height: spacing.sm),
-              _activityComposer(),
-            ],
-            SizedBox(height: spacing.lg),
-            if (status == 'submitted' && widget.canReview) ...[
-              FilledButton.icon(
-                onPressed: () async {
-                  await widget.onReview(true);
-                  if (context.mounted) Navigator.pop(context);
-                },
-                icon: const Icon(Icons.check_rounded),
-                label: const Text('Tugatildi deb qabul qilish'),
-              ),
-              SizedBox(height: spacing.sm),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  await widget.onReview(false);
-                  if (context.mounted) Navigator.pop(context);
-                },
-                icon: const Icon(Icons.replay_rounded),
-                label: const Text('Qayta ishlashga qaytarish'),
-              ),
-            ] else if (actionLabel != null)
-              FilledButton.icon(
-                onPressed: () async {
-                  await widget.onAdvance();
-                  if (context.mounted) Navigator.pop(context);
-                },
-                icon: const Icon(Icons.arrow_forward_rounded),
-                label: Text(actionLabel),
-              ),
+              _filesSection(),
           ],
         ),
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> get _commentActivities =>
+      _activities.where((activity) {
+        if (activity['kind'] != 'comment') return false;
+        final body = activity['body']?.toString().trim() ?? '';
+        return body.isNotEmpty && !body.startsWith('Fayl biriktirdi:');
+      }).toList();
+
+  List<Map<String, dynamic>> get _fileEntries {
+    final result = <Map<String, dynamic>>[];
+    final ids = <int>{};
+    for (final raw in (task['attachments'] as List? ?? const [])) {
+      if (raw is! Map) continue;
+      final item = Map<String, dynamic>.from(raw);
+      final id = (item['id'] as num?)?.toInt();
+      if (id != null) ids.add(id);
+      result.add(item);
+    }
+    for (final activity in _activities) {
+      final author = activity['author_name']?.toString() ?? 'Tizim';
+      final createdAt = activity['created_at']?.toString() ?? '';
+      for (final raw in (activity['attachments'] as List? ?? const [])) {
+        if (raw is! Map) continue;
+        final item = Map<String, dynamic>.from(raw);
+        final id = (item['id'] as num?)?.toInt();
+        if (id != null && !ids.add(id)) continue;
+        item['author_name'] = author;
+        item['activity_created_at'] = createdAt;
+        result.add(item);
+      }
+    }
+    result.sort((a, b) {
+      final aDate = DateTime.tryParse(
+        a['activity_created_at']?.toString() ??
+            a['created_at']?.toString() ??
+            '',
+      );
+      final bDate = DateTime.tryParse(
+        b['activity_created_at']?.toString() ??
+            b['created_at']?.toString() ??
+            '',
+      );
+      return (bDate ?? DateTime.fromMillisecondsSinceEpoch(0)).compareTo(
+        aDate ?? DateTime.fromMillisecondsSinceEpoch(0),
+      );
+    });
+    return result;
+  }
+
+  Widget _taskSection({
+    required String description,
+    required String status,
+    required String? actionLabel,
+  }) {
+    final spacing = context.appSpacing;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (description.trim().isNotEmpty)
+          AppSurfaceCard(
+            padding: EdgeInsets.all(spacing.sm),
+            child: Text(
+              description,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          ),
+        SizedBox(height: spacing.xs),
+        _infoRow(
+          context,
+          'Bajaruvchi',
+          task['assignee_name'] as String? ?? '—',
+        ),
+        if (task['due_at']?.toString().isNotEmpty == true)
+          _infoRow(context, 'Deadline', _formatDate(task['due_at'] as String)),
+        if (task['completion_note']?.toString().isNotEmpty == true)
+          _infoRow(context, 'Xodim izohi', task['completion_note'] as String),
+        if (task['review_note']?.toString().isNotEmpty == true)
+          _infoRow(context, 'Rahbar izohi', task['review_note'] as String),
+        SizedBox(height: spacing.sm),
+        if (status == 'submitted' && widget.canReview) ...[
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () async {
+                await widget.onReview(true);
+                if (context.mounted) Navigator.pop(context);
+              },
+              icon: const Icon(Icons.check_rounded),
+              label: const Text('Tugatildi deb qabul qilish'),
+            ),
+          ),
+          SizedBox(height: spacing.xs),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                await widget.onReview(false);
+                if (context.mounted) Navigator.pop(context);
+              },
+              icon: const Icon(Icons.replay_rounded),
+              label: const Text('Qayta ishlashga qaytarish'),
+            ),
+          ),
+        ] else if (actionLabel != null)
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () async {
+                await widget.onAdvance();
+                if (context.mounted) Navigator.pop(context);
+              },
+              icon: const Icon(Icons.arrow_forward_rounded),
+              label: Text(actionLabel),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _commentsSection(bool canComment) {
+    final spacing = context.appSpacing;
+    final comments = _commentActivities;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Izohlar',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Yangilash',
+              onPressed: _loadingActivities ? null : _loadActivities,
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+            ),
+          ],
+        ),
+        if (_loadingActivities)
+          const LinearProgressIndicator(minHeight: 2)
+        else if (_activityError != null)
+          AppStatusBanner(
+            message: _activityError!,
+            tone: AppStatusTone.danger,
+            action: TextButton(
+              onPressed: _loadActivities,
+              child: const Text('Qayta urinish'),
+            ),
+          )
+        else if (comments.isEmpty)
+          Text(
+            'Hozircha izoh yo‘q.',
+            style: Theme.of(context).textTheme.bodySmall,
+          )
+        else
+          ...comments.map(_activityTile),
+        if (canComment) ...[SizedBox(height: spacing.xs), _activityComposer()],
+      ],
+    );
+  }
+
+  Widget _filesSection() {
+    final spacing = context.appSpacing;
+    final files = _fileEntries;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Vazifa fayllari',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Yangilash',
+              onPressed: _loadingActivities ? null : _loadActivities,
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+            ),
+          ],
+        ),
+        if (_loadingActivities)
+          const LinearProgressIndicator(minHeight: 2)
+        else if (files.isEmpty)
+          Text(
+            'Hozircha fayl yo‘q.',
+            style: Theme.of(context).textTheme.bodySmall,
+          )
+        else
+          ...files.map(_fileTile),
+        SizedBox(height: spacing.xs),
+        Text(
+          'Fayllar vaqt bo‘yicha alohida saqlanadi; ularni vazifa ichidan ochish yoki yuklab olish mumkin.',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: context.appColors.textMuted),
+        ),
+      ],
+    );
+  }
+
+  Widget _fileTile(Map<String, dynamic> file) {
+    final spacing = context.appSpacing;
+    final filename = file['filename'] as String? ?? 'Fayl';
+    final mime = _mimeType(filename);
+    final isImage = mime.startsWith('image/');
+    final author = file['author_name']?.toString();
+    final date =
+        file['activity_created_at']?.toString() ??
+        file['created_at']?.toString() ??
+        '';
+    return Padding(
+      padding: EdgeInsets.only(bottom: spacing.xs),
+      child: AppSurfaceCard(
+        padding: EdgeInsets.symmetric(horizontal: spacing.xs, vertical: 2),
+        child: ListTile(
+          dense: true,
+          contentPadding: EdgeInsets.symmetric(horizontal: spacing.xs),
+          leading: Icon(
+            isImage ? Icons.image_outlined : Icons.insert_drive_file_outlined,
+          ),
+          title: Text(filename, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            [
+              _formatBytes(file['size_bytes'] as int? ?? 0),
+              if (author?.isNotEmpty == true) author!,
+              if (date.isNotEmpty) _formatDate(date),
+            ].join(' • '),
+          ),
+          trailing: const Icon(Icons.open_in_new_rounded, size: 19),
+          onTap: () => widget.onDownloadAttachment(file),
+        ),
+      ),
+    );
+  }
+
+  Widget _metaPill(BuildContext context, String label, IconData icon) {
+    final colors = context.appColors;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: colors.surfaceMuted,
+        borderRadius: BorderRadius.circular(context.appRadii.pill),
+        border: Border.all(color: colors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: colors.textMuted),
+          const SizedBox(width: 5),
+          Text(label, style: Theme.of(context).textTheme.labelMedium),
+        ],
       ),
     );
   }
@@ -525,6 +717,20 @@ class _TaskDetailPageState extends State<_TaskDetailPage> {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  String _mimeType(String filename) {
+    final lower = filename.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.heic')) return 'image/heic';
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    if (lower.endsWith('.mp4')) return 'video/mp4';
+    if (lower.endsWith('.mov')) return 'video/quicktime';
+    if (lower.endsWith('.mp3')) return 'audio/mpeg';
+    return 'application/octet-stream';
   }
 }
 
@@ -1325,13 +1531,43 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
       final safeName = rawName.replaceAll(RegExp(r'[\\/]'), '_');
       final file = File(p.join(directory.path, '${id}_$safeName'));
       await file.writeAsBytes(response.bytes, flush: true);
-      await OpenFilex.open(file.path);
+      final mime = _attachmentMimeType(rawName);
+      if (mime.startsWith('image/')) {
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => Dialog(
+            insetPadding: const EdgeInsets.all(12),
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4,
+              child: Image.file(file, fit: BoxFit.contain),
+            ),
+          ),
+        );
+      } else {
+        await OpenFilex.open(file.path, type: mime);
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Faylni yuklab bo‘lmadi: $error')));
     }
+  }
+
+  String _attachmentMimeType(String filename) {
+    final lower = filename.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.heic')) return 'image/heic';
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    if (lower.endsWith('.mp4')) return 'video/mp4';
+    if (lower.endsWith('.mov')) return 'video/quicktime';
+    if (lower.endsWith('.mp3')) return 'audio/mpeg';
+    return 'application/octet-stream';
   }
 
   Widget _buildTaskFilters() {
