@@ -24,7 +24,7 @@ class TaskActivitySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TaskActivity
-        fields = ['id', 'kind', 'body', 'metadata', 'author_id', 'author_name', 'attachments', 'created_at']
+        fields = ['id', 'kind', 'body', 'metadata', 'is_pinned', 'author_id', 'author_name', 'attachments', 'created_at']
 
     def get_author_id(self, obj):
         return obj.created_by_id

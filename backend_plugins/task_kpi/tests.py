@@ -104,6 +104,14 @@ class TaskKpiPluginTests(APITestCase):
             file_reply.data['metadata']['reply_to_attachment_id'],
             upload.data['id'],
         )
+        pin = self.client.post(
+            f'/api/task-kpi/tasks/{task_id}/activity/{file_reply.data["id"]}/pin',
+            {'pinned': True},
+            format='json',
+            **self.headers,
+        )
+        self.assertEqual(pin.status_code, 200)
+        self.assertTrue(pin.data['is_pinned'])
 
         self.client.force_authenticate(self.observer)
         visible = self.client.get('/api/task-kpi/tasks', **self.headers)
