@@ -89,10 +89,18 @@ def _visible_tasks(member):
 
 
 def _get_task(member, task_id, *, for_update=False):
-    tasks = _visible_tasks(member)
+    # ``_visible_tasks`` joins watchers/assignees and therefore uses DISTINCT.
+    # PostgreSQL rejects ``SELECT DISTINCT ... FOR UPDATE``. Resolve the row
+    # from its workspace first, then apply the visibility policy in Python.
+    tasks = WorkTask.objects.select_related(
+        'assignee__organization_member__user',
+    ).prefetch_related('watchers', 'attachments').filter(
+        workspace=member.workspace,
+        id=task_id,
+    )
     if for_update:
         tasks = tasks.select_for_update()
-    task = tasks.filter(id=task_id).first()
+    task = tasks.first()
     if not task or not can_view_task(task, member, _assignable_members(member)):
         return None
     return task
@@ -473,7 +481,13 @@ class TaskReportView(APIView):
             'total': len(rows),
             'done': sum(task.status == 'done' for task in rows),
             'returned': sum(task.status == 'returned' for task in rows),
-            'overdue': sum(task.due_at and task.due_at < now and task.status not in {'done', 'cancelled'} for task in rows),
+            'overdue': sum(
+                1
+                for task in rows
+                if task.due_at
+                and task.due_at < now
+                and task.status not in {'done', 'cancelled'}
+            ),
             'average_completion_hours': round(sum(completed_durations) / len(completed_durations) / 3600, 1) if completed_durations else 0,
         }
         if request.query_params.get('format') != 'csv':

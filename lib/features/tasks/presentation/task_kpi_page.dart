@@ -227,7 +227,7 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
   int? _assigneeId;
   String _priority = 'normal';
   DateTime? _dueAt;
-  PlatformFile? _attachment;
+  List<PlatformFile> _attachments = const [];
   bool _saving = false;
 
   /// The assignee endpoint is scoped by workspace, but older server builds
@@ -288,9 +288,16 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate() || _assigneeId == null) return;
-    if (_attachment != null && _attachment!.size > _maxAttachmentBytes) {
+    final oversized = _attachments.where(
+      (file) => file.size > _maxAttachmentBytes,
+    );
+    if (oversized.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Fayl hajmi 25 MB dan oshmasligi kerak.')),
+        SnackBar(
+          content: Text(
+            '${oversized.first.name} hajmi 25 MB dan oshmasligi kerak.',
+          ),
+        ),
       );
       return;
     }
@@ -303,8 +310,11 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
         'priority': _priority,
         if (_dueAt != null) 'due_at': _dueAt!.toUtc().toIso8601String(),
       });
-      if (_attachment != null && created is Map && created['id'] != null) {
-        await _uploadAttachment((created['id'] as num).toInt(), _attachment!);
+      if (_attachments.isNotEmpty && created is Map && created['id'] != null) {
+        final taskId = (created['id'] as num).toInt();
+        for (final attachment in _attachments) {
+          await _uploadAttachment(taskId, attachment);
+        }
       }
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
@@ -398,6 +408,7 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
               DropdownButtonFormField<int>(
                 initialValue: _assigneeId,
                 isExpanded: true,
+                itemHeight: null,
                 decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.person_outline_rounded),
                 ),
@@ -479,19 +490,63 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
               OutlinedButton.icon(
                 onPressed: () async {
                   final result = await FilePicker.platform.pickFiles(
+                    allowMultiple: true,
                     withData: true,
                   );
                   if (result != null && result.files.isNotEmpty) {
-                    setState(() => _attachment = result.files.first);
+                    final selected = result.files.where(
+                      (file) => file.size > 0,
+                    );
+                    final existing = _attachments
+                        .map((file) => '${file.name}:${file.size}')
+                        .toSet();
+                    final added = selected
+                        .where(
+                          (file) => existing.add('${file.name}:${file.size}'),
+                        )
+                        .toList();
+                    if (added.isNotEmpty) {
+                      setState(
+                        () => _attachments = [..._attachments, ...added],
+                      );
+                    }
                   }
                 },
                 icon: const Icon(Icons.attach_file_rounded),
                 label: Text(
-                  _attachment == null
-                      ? 'Fayl biriktirish (ixtiyoriy)'
-                      : _attachment!.name,
+                  _attachments.isEmpty
+                      ? 'Fayllar biriktirish (ixtiyoriy)'
+                      : '${_attachments.length} ta fayl tanlangan',
                 ),
               ),
+              if (_attachments.isNotEmpty) ...[
+                SizedBox(height: spacing.xs),
+                ..._attachments.asMap().entries.map(
+                  (entry) => ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.insert_drive_file_outlined),
+                    title: Text(
+                      entry.value.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(_formatBytes(entry.value.size)),
+                    trailing: IconButton(
+                      tooltip: 'Olib tashlash',
+                      onPressed: _saving
+                          ? null
+                          : () => setState(
+                              () => _attachments = [
+                                ..._attachments.sublist(0, entry.key),
+                                ..._attachments.sublist(entry.key + 1),
+                              ],
+                            ),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ),
+                ),
+              ],
               if (_saving) ...[
                 SizedBox(height: spacing.md),
                 const LinearProgressIndicator(),
@@ -505,6 +560,12 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
 
   String _formatDate(DateTime value) =>
       '${value.day.toString().padLeft(2, '0')}.${value.month.toString().padLeft(2, '0')} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
 }
 
 class _TaskKpiPageState extends State<TaskKpiPage> {
