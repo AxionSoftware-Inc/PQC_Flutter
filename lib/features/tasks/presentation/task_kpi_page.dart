@@ -652,6 +652,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
             messages: comments.map(_toTaskThreadMessage).toList(),
             currentUserId: widget.currentUserId,
             isGroup: true,
+            showSenderName: false,
             attachmentBuilder:
                 (
                   context,

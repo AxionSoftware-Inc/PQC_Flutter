@@ -78,6 +78,7 @@ class ChatThreadWidget extends StatelessWidget {
     required this.isGroup,
     required this.attachmentBuilder,
     required this.footerBuilder,
+    this.showSenderName = true,
     this.bodyLabelBuilder,
     this.controller,
     this.onRetry,
@@ -92,6 +93,7 @@ class ChatThreadWidget extends StatelessWidget {
   final List<ChatThreadMessage> messages;
   final int currentUserId;
   final bool isGroup;
+  final bool showSenderName;
   final ChatThreadAttachmentBuilder attachmentBuilder;
   final ChatThreadFooterBuilder footerBuilder;
   final ChatThreadBodyLabelBuilder? bodyLabelBuilder;
@@ -178,7 +180,7 @@ class ChatThreadWidget extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (isGroup && !isMine && !isImageOnly)
+                      if (showSenderName && isGroup && !isMine && !isImageOnly)
                         Padding(
                           padding: EdgeInsets.only(bottom: spacing.xs),
                           child: Text(
