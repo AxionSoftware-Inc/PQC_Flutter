@@ -112,7 +112,13 @@ class TaskListCreateView(APIView):
         elif scope == 'overdue':
             tasks = tasks.filter(due_at__lt=timezone.now()).exclude(status__in=['done', 'cancelled'])
         if status_filter := request.query_params.get('status'):
-            tasks = tasks.filter(status=status_filter)
+            if status_filter == 'open':
+                # The inbox omits completed work by default; clients can
+                # still request status=done explicitly when they need the
+                # completed history.
+                tasks = tasks.exclude(status=WorkTask.Status.DONE)
+            else:
+                tasks = tasks.filter(status=status_filter)
         if priority := request.query_params.get('priority'):
             tasks = tasks.filter(priority=priority)
         if query := request.query_params.get('q', '').strip():

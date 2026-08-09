@@ -220,6 +220,7 @@ class _CreateTaskPage extends StatefulWidget {
 }
 
 class _CreateTaskPageState extends State<_CreateTaskPage> {
+  static const _maxAttachmentBytes = 25 * 1024 * 1024;
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -287,6 +288,12 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate() || _assigneeId == null) return;
+    if (_attachment != null && _attachment!.size > _maxAttachmentBytes) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fayl hajmi 25 MB dan oshmasligi kerak.')),
+      );
+      return;
+    }
     setState(() => _saving = true);
     try {
       final created = await widget.apiClient.post('/task-kpi/tasks', {
@@ -297,26 +304,7 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
         if (_dueAt != null) 'due_at': _dueAt!.toUtc().toIso8601String(),
       });
       if (_attachment != null && created is Map && created['id'] != null) {
-        final file = _attachment!;
-        final files = file.path != null
-            ? [
-                await http.MultipartFile.fromPath(
-                  'file',
-                  file.path!,
-                  filename: file.name,
-                ),
-              ]
-            : [
-                http.MultipartFile.fromBytes(
-                  'file',
-                  file.bytes ?? const [],
-                  filename: file.name,
-                ),
-              ];
-        await widget.apiClient.multipartPost(
-          '/task-kpi/tasks/${created['id']}/attachments',
-          files: files,
-        );
+        await _uploadAttachment((created['id'] as num).toInt(), _attachment!);
       }
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
@@ -327,6 +315,27 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
         ).showSnackBar(SnackBar(content: Text(error.toString())));
       }
     }
+  }
+
+  Future<void> _uploadAttachment(int taskId, PlatformFile file) async {
+    final path = file.path?.trim();
+    if (path != null && path.isNotEmpty) {
+      await widget.apiClient.multipartPost(
+        '/task-kpi/tasks/$taskId/attachments',
+        files: [
+          await http.MultipartFile.fromPath('file', path, filename: file.name),
+        ],
+      );
+      return;
+    }
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      throw StateError('Fayl ma’lumotini o‘qib bo‘lmadi. Qayta tanlang.');
+    }
+    await widget.apiClient.multipartPost(
+      '/task-kpi/tasks/$taskId/attachments',
+      files: [http.MultipartFile.fromBytes('file', bytes, filename: file.name)],
+    );
   }
 
   @override
@@ -460,7 +469,7 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
               OutlinedButton.icon(
                 onPressed: () async {
                   final result = await FilePicker.platform.pickFiles(
-                    withData: false,
+                    withData: true,
                   );
                   if (result != null && result.files.isNotEmpty) {
                     setState(() => _attachment = result.files.first);
@@ -500,9 +509,12 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
   int? _nextOffset;
   bool _hasMore = false;
   final TextEditingController _searchController = TextEditingController();
-  String _statusFilter = 'all';
+  // Completed work stays out of the main inbox; it remains available through
+  // the explicit "Tugallangan" filter.
+  String _statusFilter = 'open';
   Timer? _searchDebounce;
   Timer? _refreshTimer;
+  bool _loadInFlight = false;
 
   List<Map<String, dynamic>> get _visibleTasks {
     final query = _searchController.text.trim().toLowerCase();
@@ -510,7 +522,9 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
       final status = task['status'] as String? ?? 'todo';
       final title = (task['title'] as String? ?? '').toLowerCase();
       final description = (task['description'] as String? ?? '').toLowerCase();
-      final matchesStatus = _statusFilter == 'all' || status == _statusFilter;
+      final matchesStatus = _statusFilter == 'open'
+          ? status != 'done'
+          : _statusFilter == 'all' || status == _statusFilter;
       return matchesStatus &&
           (query.isEmpty ||
               title.contains(query) ||
@@ -523,7 +537,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     super.initState();
     _load();
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted && !_loading && !_loadingMore) unawaited(_load());
+      if (mounted) unawaited(_load(background: true));
     });
   }
 
@@ -564,18 +578,22 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     return byMemberId.values.toList(growable: false);
   }
 
-  Future<void> _load({bool append = false}) async {
+  Future<void> _load({bool append = false, bool background = false}) async {
     if (append && (_loadingMore || !_hasMore || _nextOffset == null)) return;
-    setState(() {
-      if (append) {
-        _loadingMore = true;
-      } else {
-        _loading = true;
-        _error = null;
-        _nextOffset = 0;
-        _hasMore = false;
-      }
-    });
+    if (_loadInFlight) return;
+    _loadInFlight = true;
+    if (mounted && !background) {
+      setState(() {
+        if (append) {
+          _loadingMore = true;
+        } else {
+          _loading = true;
+          _error = null;
+          _nextOffset = 0;
+          _hasMore = false;
+        }
+      });
+    }
     try {
       final query = <String, String>{
         'offset': '${append ? _nextOffset : 0}',
@@ -626,10 +644,12 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error.toString();
+        if (!background) _error = error.toString();
         _loading = false;
         _loadingMore = false;
       });
+    } finally {
+      _loadInFlight = false;
     }
   }
 
@@ -657,8 +677,6 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
           child: ListView(
             padding: EdgeInsets.all(spacing.md),
             children: [
-              _buildTaskToolbar(),
-              SizedBox(height: spacing.sm),
               _buildTaskFilters(),
               SizedBox(height: spacing.sm),
               if (_tasks.isEmpty)
@@ -709,60 +727,6 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
       onTap: () => _showTaskDetail(task),
     ),
   );
-
-  Widget _buildTaskToolbar() {
-    final spacing = context.appSpacing;
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            _tasks.isEmpty ? 'Vazifalar' : '${_tasks.length} ta vazifa',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-        ),
-        IconButton.filledTonal(
-          tooltip: 'KPI ko‘rsatkichlari',
-          onPressed: _openKpiAnalytics,
-          icon: const Icon(Icons.insights_rounded),
-        ),
-        SizedBox(width: spacing.xs),
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            IconButton.filledTonal(
-              tooltip: 'Vazifa bildirishnomalari',
-              onPressed: _openNotifications,
-              icon: const Icon(Icons.notifications_none_rounded),
-            ),
-            if (_unreadNotifications > 0)
-              Positioned(
-                right: 0,
-                top: -2,
-                child: Container(
-                  constraints: const BoxConstraints(minWidth: 18),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: context.appColors.danger,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    _unreadNotifications > 99 ? '99+' : '$_unreadNotifications',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ],
-    );
-  }
 
   Future<void> _openNotifications() async {
     final notifications = List<Map<String, dynamic>>.from(_notifications);
@@ -1011,28 +975,61 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
           ),
         ),
         const SizedBox(width: 8),
-        PopupMenuButton<String>(
-          tooltip: 'Status bo‘yicha filtr',
-          initialValue: _statusFilter,
-          onSelected: (value) {
-            setState(() => _statusFilter = value);
-            unawaited(_load());
-          },
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'all', child: Text('Barchasi')),
-            PopupMenuItem(value: 'todo', child: Text('Yangi')),
-            PopupMenuItem(value: 'in_progress', child: Text('Jarayonda')),
-            PopupMenuItem(value: 'submitted', child: Text('Tekshiruvda')),
-            PopupMenuItem(value: 'done', child: Text('Qabul qilingan')),
-          ],
-          child: IconButton.filledTonal(
-            onPressed: () {},
-            icon: Icon(
-              _statusFilter == 'all'
-                  ? Icons.filter_list_rounded
-                  : Icons.filter_alt_rounded,
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            PopupMenuButton<String>(
+              tooltip: 'Status bo‘yicha filtr',
+              initialValue: _statusFilter,
+              onSelected: (value) {
+                if (value == '_notifications') {
+                  unawaited(_openNotifications());
+                  return;
+                }
+                if (value == '_kpi') {
+                  unawaited(_openKpiAnalytics());
+                  return;
+                }
+                setState(() => _statusFilter = value);
+                unawaited(_load());
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'open', child: Text('Faol vazifalar')),
+                PopupMenuItem(value: 'todo', child: Text('Yangi')),
+                PopupMenuItem(value: 'in_progress', child: Text('Jarayonda')),
+                PopupMenuItem(value: 'submitted', child: Text('Tekshiruvda')),
+                PopupMenuItem(value: 'done', child: Text('Tugallangan')),
+                PopupMenuItem(value: 'all', child: Text('Barchasi')),
+                PopupMenuItem(
+                  value: '_notifications',
+                  child: Text('Bildirishnomalar'),
+                ),
+                PopupMenuItem(value: '_kpi', child: Text('KPI analitikasi')),
+              ],
+              icon: Icon(
+                _statusFilter == 'open' || _statusFilter == 'all'
+                    ? Icons.filter_list_rounded
+                    : Icons.filter_alt_rounded,
+              ),
             ),
-          ),
+            if (_unreadNotifications > 0)
+              Positioned(
+                right: 2,
+                top: 2,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: context.appColors.danger,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
         if (_assignees.isNotEmpty) ...[
           const SizedBox(width: 6),
@@ -1499,7 +1496,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
                 TextButton.icon(
                   onPressed: () async {
                     final result = await FilePicker.platform.pickFiles(
-                      withData: false,
+                      withData: true,
                     );
                     if (result != null && result.files.isNotEmpty) {
                       update(() => attachment = result.files.first);
