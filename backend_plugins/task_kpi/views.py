@@ -346,7 +346,32 @@ class TaskActivityView(APIView):
             return Response({'detail': 'Message text is required.'}, status=400)
         if len(body) > 4000:
             return Response({'detail': 'Message must not exceed 4000 characters.'}, status=400)
-        activity = record_activity(task, kind=TaskActivity.Kind.COMMENT, body=body, actor=request.user)
+        raw_metadata = request.data.get('metadata', {})
+        if raw_metadata is None:
+            raw_metadata = {}
+        if not isinstance(raw_metadata, dict):
+            return Response({'detail': 'metadata must be an object.'}, status=400)
+        metadata = {}
+        attachment_id = raw_metadata.get('reply_to_attachment_id')
+        if attachment_id is not None:
+            try:
+                attachment_id = int(attachment_id)
+            except (TypeError, ValueError):
+                return Response({'detail': 'Invalid attachment reference.'}, status=400)
+            attachment = TaskAttachment.objects.filter(task=task, id=attachment_id).first()
+            if not attachment:
+                return Response({'detail': 'Referenced attachment was not found.'}, status=400)
+            metadata = {
+                'reply_to_attachment_id': attachment.id,
+                'reply_to_filename': attachment.filename,
+            }
+        activity = record_activity(
+            task,
+            kind=TaskActivity.Kind.COMMENT,
+            body=body,
+            actor=request.user,
+            metadata=metadata,
+        )
         return Response(TaskActivitySerializer(activity).data, status=status.HTTP_201_CREATED)
 
 

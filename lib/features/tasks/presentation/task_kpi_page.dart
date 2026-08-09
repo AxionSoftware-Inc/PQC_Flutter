@@ -51,6 +51,8 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
   late final TabController _tabController;
   List<Map<String, dynamic>> _activities = const [];
   List<PlatformFile> _selectedAttachments = const [];
+  Map<String, dynamic>? _replyAttachment;
+  final Set<int> _openingFileIds = <int>{};
   bool _loadingActivities = true;
   bool _sendingUpdate = false;
   String? _activityError;
@@ -168,15 +170,26 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
     setState(() => _sendingUpdate = true);
     try {
       if (body.isNotEmpty) {
-        await widget.apiClient.post('/task-kpi/tasks/${task['id']}/activity', {
-          'body': body,
-        });
+        final payload = <String, dynamic>{'body': body};
+        final replyId = (_replyAttachment?['id'] as num?)?.toInt();
+        if (replyId != null) {
+          payload['metadata'] = {'reply_to_attachment_id': replyId};
+        }
+        await widget.apiClient.post(
+          '/task-kpi/tasks/${task['id']}/activity',
+          payload,
+        );
       }
       for (final file in _selectedAttachments) {
         await _uploadActivityAttachment(file);
       }
       _commentController.clear();
-      if (mounted) setState(() => _selectedAttachments = const []);
+      if (mounted) {
+        setState(() {
+          _selectedAttachments = const [];
+          _replyAttachment = null;
+        });
+      }
       await _loadActivities();
     } catch (error) {
       if (mounted) {
@@ -186,6 +199,22 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
       }
     } finally {
       if (mounted) setState(() => _sendingUpdate = false);
+    }
+  }
+
+  void _replyToAttachment(Map<String, dynamic> file) {
+    setState(() => _replyAttachment = file);
+    _tabController.animateTo(1);
+  }
+
+  Future<void> _openAttachment(Map<String, dynamic> file) async {
+    final id = (file['id'] as num?)?.toInt();
+    if (id == null || _openingFileIds.contains(id)) return;
+    setState(() => _openingFileIds.add(id));
+    try {
+      await widget.onDownloadAttachment(file);
+    } finally {
+      if (mounted) setState(() => _openingFileIds.remove(id));
     }
   }
 
@@ -241,7 +270,11 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
       appBar: AppBar(
         toolbarHeight: 52,
         titleSpacing: 0,
-        title: const Text('Vazifa tafsilotlari'),
+        title: Text(
+          task['title'] as String? ?? 'Vazifa',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       body: SafeArea(
         child: ListView(
@@ -252,13 +285,6 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
             spacing.md,
           ),
           children: [
-            Text(
-              task['title'] as String? ?? '',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            SizedBox(height: spacing.xs),
             Wrap(
               spacing: spacing.xs,
               runSpacing: spacing.xs,
@@ -378,6 +404,19 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
           _infoRow(context, 'Xodim izohi', task['completion_note'] as String),
         if (task['review_note']?.toString().isNotEmpty == true)
           _infoRow(context, 'Rahbar izohi', task['review_note'] as String),
+        if ((task['attachments'] as List?)?.isNotEmpty == true) ...[
+          SizedBox(height: spacing.sm),
+          Text(
+            'Topshiriqqa biriktirilgan',
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          SizedBox(height: spacing.xs),
+          ...(task['attachments'] as List).whereType<Map>().map(
+            (item) => _fileTile(Map<String, dynamic>.from(item)),
+          ),
+        ],
         SizedBox(height: spacing.sm),
         if (status == 'submitted' && widget.canReview) ...[
           SizedBox(
@@ -515,6 +554,8 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
     final filename = file['filename'] as String? ?? 'Fayl';
     final mime = _mimeType(filename);
     final isImage = mime.startsWith('image/');
+    final id = (file['id'] as num?)?.toInt();
+    final isOpening = id != null && _openingFileIds.contains(id);
     final author = file['author_name']?.toString();
     final date =
         file['activity_created_at']?.toString() ??
@@ -532,14 +573,23 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
           ),
           title: Text(filename, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(
-            [
-              _formatBytes(file['size_bytes'] as int? ?? 0),
-              if (author?.isNotEmpty == true) author!,
-              if (date.isNotEmpty) _formatDate(date),
-            ].join(' • '),
+            isOpening
+                ? 'Yuklanmoqda…'
+                : [
+                    _formatBytes(file['size_bytes'] as int? ?? 0),
+                    if (author?.isNotEmpty == true) author!,
+                    if (date.isNotEmpty) _formatDate(date),
+                  ].join(' • '),
           ),
-          trailing: const Icon(Icons.open_in_new_rounded, size: 19),
-          onTap: () => widget.onDownloadAttachment(file),
+          trailing: isOpening
+              ? const SizedBox(
+                  width: 19,
+                  height: 19,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.open_in_new_rounded, size: 19),
+          onTap: isOpening ? null : () => _openAttachment(file),
+          onLongPress: isOpening ? null : () => _replyToAttachment(file),
         ),
       ),
     );
@@ -570,7 +620,8 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
     final body = activity['body'] as String? ?? '';
     final author = activity['author_name'] as String? ?? 'Tizim';
     final createdAt = activity['created_at']?.toString() ?? '';
-    final attachments = (activity['attachments'] as List?) ?? const [];
+    final metadata = (activity['metadata'] as Map?)?.cast<String, dynamic>();
+    final replyFilename = metadata?['reply_to_filename']?.toString();
     return Padding(
       padding: EdgeInsets.only(bottom: spacing.xs),
       child: AppSurfaceCard(
@@ -597,32 +648,35 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
                 ),
               ],
             ),
+            if (replyFilename?.isNotEmpty == true) ...[
+              SizedBox(height: spacing.xs),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(
+                  horizontal: spacing.xs,
+                  vertical: spacing.xs,
+                ),
+                decoration: BoxDecoration(
+                  color: context.appColors.surfaceMuted,
+                  borderRadius: BorderRadius.circular(context.appRadii.sm),
+                  border: Border(
+                    left: BorderSide(
+                      color: context.appColors.primary,
+                      width: 3,
+                    ),
+                  ),
+                ),
+                child: Text(
+                  'Faylga javob: $replyFilename',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ],
             if (body.trim().isNotEmpty) ...[
               SizedBox(height: spacing.xs),
-              Text(body),
-            ],
-            if (attachments.isNotEmpty) ...[
-              SizedBox(height: spacing.xs),
-              Wrap(
-                spacing: spacing.xs,
-                runSpacing: spacing.xs,
-                children: attachments
-                    .whereType<Map>()
-                    .map(
-                      (item) => ActionChip(
-                        avatar: const Icon(Icons.attach_file_rounded, size: 16),
-                        label: Text(
-                          item['filename'] as String? ?? 'Fayl',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        onPressed: () => widget.onDownloadAttachment(
-                          Map<String, dynamic>.from(item),
-                        ),
-                      ),
-                    )
-                    .toList(),
-              ),
+              Text(body, style: Theme.of(context).textTheme.bodyMedium),
             ],
           ],
         ),
@@ -632,19 +686,91 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
 
   Widget _activityComposer() {
     final spacing = context.appSpacing;
-    return AppSurfaceCard(
-      padding: EdgeInsets.all(spacing.xs),
+    return Container(
+      decoration: BoxDecoration(
+        color: context.appColors.surface,
+        borderRadius: BorderRadius.circular(context.appRadii.lg),
+        border: Border.all(color: context.appColors.border),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        spacing.sm,
+        spacing.xs,
+        spacing.xs,
+        spacing.xs,
+      ),
       child: Column(
         children: [
-          TextField(
-            controller: _commentController,
-            minLines: 1,
-            maxLines: 4,
-            enabled: !_sendingUpdate,
-            decoration: const InputDecoration(
-              hintText: 'Vazifa bo‘yicha izoh yozing…',
-              border: InputBorder.none,
+          if (_replyAttachment != null)
+            Container(
+              width: double.infinity,
+              margin: EdgeInsets.only(bottom: spacing.xs),
+              padding: EdgeInsets.symmetric(
+                horizontal: spacing.xs,
+                vertical: 5,
+              ),
+              decoration: BoxDecoration(
+                color: context.appColors.surfaceMuted,
+                borderRadius: BorderRadius.circular(context.appRadii.sm),
+                border: Border(
+                  left: BorderSide(color: context.appColors.primary, width: 3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.reply_rounded, size: 17),
+                  SizedBox(width: spacing.xs),
+                  Expanded(
+                    child: Text(
+                      'Faylga javob: ${_replyAttachment!['filename'] ?? 'Fayl'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _sendingUpdate
+                        ? null
+                        : () => setState(() => _replyAttachment = null),
+                    icon: const Icon(Icons.close_rounded, size: 17),
+                  ),
+                ],
+              ),
             ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _commentController,
+                  minLines: 1,
+                  maxLines: 4,
+                  enabled: !_sendingUpdate,
+                  textInputAction: TextInputAction.newline,
+                  decoration: const InputDecoration(
+                    hintText: 'Izoh yozing…',
+                    border: InputBorder.none,
+                    isDense: true,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Rasm yoki fayl biriktirish',
+                onPressed: _sendingUpdate ? null : _pickActivityAttachments,
+                icon: const Icon(Icons.attach_file_rounded),
+              ),
+              IconButton.filled(
+                tooltip: 'Yuborish',
+                onPressed: _sendingUpdate ? null : _sendUpdate,
+                icon: _sendingUpdate
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.arrow_upward_rounded, size: 18),
+              ),
+            ],
           ),
           if (_selectedAttachments.isNotEmpty)
             SizedBox(
@@ -673,27 +799,6 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
                 },
               ),
             ),
-          Row(
-            children: [
-              IconButton(
-                tooltip: 'Rasm yoki fayl biriktirish',
-                onPressed: _sendingUpdate ? null : _pickActivityAttachments,
-                icon: const Icon(Icons.attach_file_rounded),
-              ),
-              const Spacer(),
-              FilledButton.icon(
-                onPressed: _sendingUpdate ? null : _sendUpdate,
-                icon: _sendingUpdate
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.send_rounded, size: 17),
-                label: const Text('Yuborish'),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -1521,16 +1626,18 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     final id = (attachment['id'] as num?)?.toInt();
     if (id == null) return;
     try {
-      final response = await widget.apiClient.getBytes(
-        '/task-kpi/attachments/$id/download',
-      );
       final root = await getApplicationDocumentsDirectory();
       final directory = Directory(p.join(root.path, 'task-kpi'));
       await directory.create(recursive: true);
       final rawName = attachment['filename'] as String? ?? 'attachment';
       final safeName = rawName.replaceAll(RegExp(r'[\\/]'), '_');
       final file = File(p.join(directory.path, '${id}_$safeName'));
-      await file.writeAsBytes(response.bytes, flush: true);
+      if (!await file.exists() || await file.length() == 0) {
+        final response = await widget.apiClient
+            .getBytes('/task-kpi/attachments/$id/download')
+            .timeout(const Duration(seconds: 45));
+        await file.writeAsBytes(response.bytes, flush: true);
+      }
       final mime = _attachmentMimeType(rawName);
       if (mime.startsWith('image/')) {
         if (!mounted) return;

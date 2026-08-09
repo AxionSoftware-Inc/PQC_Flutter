@@ -90,6 +90,20 @@ class TaskKpiPluginTests(APITestCase):
         )
         self.assertEqual(upload.status_code, 201)
         self.assertEqual(upload.data['url'], f"/task-kpi/attachments/{upload.data['id']}/download")
+        file_reply = self.client.post(
+            f'/api/task-kpi/tasks/{task_id}/activity',
+            {
+                'body': 'Hisobot fayliga izoh.',
+                'metadata': {'reply_to_attachment_id': upload.data['id']},
+            },
+            format='json',
+            **self.headers,
+        )
+        self.assertEqual(file_reply.status_code, 201)
+        self.assertEqual(
+            file_reply.data['metadata']['reply_to_attachment_id'],
+            upload.data['id'],
+        )
 
         self.client.force_authenticate(self.observer)
         visible = self.client.get('/api/task-kpi/tasks', **self.headers)
