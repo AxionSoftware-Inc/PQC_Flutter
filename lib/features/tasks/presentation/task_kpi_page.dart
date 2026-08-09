@@ -320,13 +320,23 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
   Future<void> _uploadAttachment(int taskId, PlatformFile file) async {
     final path = file.path?.trim();
     if (path != null && path.isNotEmpty) {
-      await widget.apiClient.multipartPost(
-        '/task-kpi/tasks/$taskId/attachments',
-        files: [
-          await http.MultipartFile.fromPath('file', path, filename: file.name),
-        ],
-      );
-      return;
+      try {
+        await widget.apiClient.multipartPost(
+          '/task-kpi/tasks/$taskId/attachments',
+          files: [
+            await http.MultipartFile.fromPath(
+              'file',
+              path,
+              filename: file.name,
+            ),
+          ],
+        );
+        return;
+      } on FileSystemException {
+        // Android content providers can expose a temporary path that is no
+        // longer readable by the time the multipart stream starts. In that
+        // case use the bytes loaded by FilePicker instead.
+      }
     }
     final bytes = file.bytes;
     if (bytes == null || bytes.isEmpty) {
