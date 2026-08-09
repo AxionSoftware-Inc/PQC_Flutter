@@ -16,6 +16,178 @@ class TaskKpiPage extends StatefulWidget {
   State<TaskKpiPage> createState() => _TaskKpiPageState();
 }
 
+class _TaskDetailPage extends StatelessWidget {
+  const _TaskDetailPage({
+    required this.task,
+    required this.canReview,
+    required this.onAdvance,
+    required this.onReview,
+  });
+
+  final Map<String, dynamic> task;
+  final bool canReview;
+  final Future<void> Function() onAdvance;
+  final Future<void> Function(bool accepted) onReview;
+
+  String _statusLabel(String value) => switch (value) {
+    'accepted' => 'Qabul qilingan',
+    'in_progress' => 'Jarayonda',
+    'submitted' => 'Rahbar tekshiradi',
+    'done' => 'Tugatildi',
+    'returned' => 'Qayta ishlash kerak',
+    'cancelled' => 'Bekor qilingan',
+    _ => 'Yangi',
+  };
+
+  String _priorityLabel(String value) => switch (value) {
+    'low' => 'Past',
+    'high' => 'Yuqori',
+    'urgent' => 'Shoshilinch',
+    _ => 'Oddiy',
+  };
+
+  String _formatDate(String value) {
+    final parsed = DateTime.tryParse(value)?.toLocal();
+    if (parsed == null) return value;
+    return '${parsed.day.toString().padLeft(2, '0')}.${parsed.month.toString().padLeft(2, '0')}.${parsed.year} ${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = context.appSpacing;
+    final status = task['status'] as String? ?? 'todo';
+    final description = task['description'] as String? ?? '';
+    final attachments = (task['attachments'] as List?) ?? const [];
+    final actionLabel = switch (status) {
+      'todo' => 'Qabul qildim',
+      'accepted' => 'Ishni boshladim',
+      'returned' => 'Qayta ishlashni boshlash',
+      'in_progress' => 'Ishni topshirish',
+      _ => null,
+    };
+    return Scaffold(
+      appBar: AppBar(title: const Text('Vazifa tafsilotlari')),
+      body: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.all(spacing.md),
+          children: [
+            Text(
+              task['title'] as String? ?? '',
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            SizedBox(height: spacing.sm),
+            Wrap(
+              spacing: spacing.xs,
+              runSpacing: spacing.xs,
+              children: [
+                Chip(label: Text(_statusLabel(status))),
+                Chip(
+                  label: Text(
+                    _priorityLabel(task['priority'] as String? ?? 'normal'),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: spacing.md),
+            if (description.trim().isNotEmpty)
+              AppSurfaceCard(
+                child: Text(
+                  description,
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+              ),
+            SizedBox(height: spacing.md),
+            _infoRow(
+              context,
+              'Bajaruvchi',
+              task['assignee_name'] as String? ?? '—',
+            ),
+            if (task['due_at']?.toString().isNotEmpty == true)
+              _infoRow(
+                context,
+                'Deadline',
+                _formatDate(task['due_at'] as String),
+              ),
+            if (task['completion_note']?.toString().isNotEmpty == true)
+              _infoRow(
+                context,
+                'Xodim izohi',
+                task['completion_note'] as String,
+              ),
+            if (task['review_note']?.toString().isNotEmpty == true)
+              _infoRow(context, 'Rahbar izohi', task['review_note'] as String),
+            if (attachments.isNotEmpty) ...[
+              SizedBox(height: spacing.md),
+              Text(
+                'Biriktirilgan fayllar',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              ...attachments.map(
+                (item) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.attach_file_rounded),
+                  title: Text(item['filename'] as String? ?? 'Fayl'),
+                  subtitle: Text(_formatBytes(item['size_bytes'] as int? ?? 0)),
+                ),
+              ),
+            ],
+            SizedBox(height: spacing.lg),
+            if (status == 'submitted' && canReview) ...[
+              FilledButton.icon(
+                onPressed: () async {
+                  await onReview(true);
+                  if (context.mounted) Navigator.pop(context);
+                },
+                icon: const Icon(Icons.check_rounded),
+                label: const Text('Tugatildi deb qabul qilish'),
+              ),
+              SizedBox(height: spacing.sm),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await onReview(false);
+                  if (context.mounted) Navigator.pop(context);
+                },
+                icon: const Icon(Icons.replay_rounded),
+                label: const Text('Qayta ishlashga qaytarish'),
+              ),
+            ] else if (actionLabel != null)
+              FilledButton.icon(
+                onPressed: () async {
+                  await onAdvance();
+                  if (context.mounted) Navigator.pop(context);
+                },
+                icon: const Icon(Icons.arrow_forward_rounded),
+                label: Text(actionLabel),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(BuildContext context, String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 112,
+          child: Text(label, style: Theme.of(context).textTheme.bodySmall),
+        ),
+        Expanded(child: Text(value)),
+      ],
+    ),
+  );
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+}
+
 class _CreateTaskPage extends StatefulWidget {
   const _CreateTaskPage({required this.apiClient, required this.assignees});
 
@@ -613,9 +785,27 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
   }
 
   Future<void> _showTaskDetail(Map<String, dynamic> task) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => _TaskDetailPage(
+          task: task,
+          canReview: _assignees.isNotEmpty,
+          onAdvance: () => _advanceTask(task),
+          onReview: (accepted) => _reviewTask(task, accepted: accepted),
+        ),
+      ),
+    );
+    if (mounted) await _load();
+    return;
+
+    // Legacy bottom-sheet implementation kept below only as a source
+    // reference while old hot-reload sessions are still running.
+    // ignore: dead_code
     final status = task['status'] as String? ?? 'todo';
     final action = _nextAction(status);
+    // ignore: use_build_context_synchronously
     await showModalBottomSheet<void>(
+      // ignore: use_build_context_synchronously
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
