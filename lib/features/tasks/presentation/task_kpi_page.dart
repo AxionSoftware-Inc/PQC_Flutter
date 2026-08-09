@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../app/design_system/app_design_system.dart';
 import '../../../core/network/api_client.dart';
+import '../../chat/presentation/chat_thread_widget.dart';
 
 /// Optional Task/KPI module shell. Its APIs are supplied by the independent
 /// `task_kpi` backend plugin, not by chat or crypto core.
@@ -471,7 +472,9 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
       _activities.where((activity) {
         if (activity['kind'] != 'comment') return false;
         final body = activity['body']?.toString().trim() ?? '';
-        return body.isNotEmpty && !body.startsWith('Fayl biriktirdi:');
+        final hasAttachments =
+            (activity['attachments'] as List?)?.isNotEmpty == true;
+        return body.isNotEmpty || hasAttachments;
       }).toList();
 
   List<Map<String, dynamic>> get _fileEntries {
@@ -642,7 +645,130 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
             style: Theme.of(context).textTheme.bodySmall,
           )
         else
-          ...comments.map(_activityTile),
+          ChatThreadWidget(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            messages: comments.map(_toTaskThreadMessage).toList(),
+            currentUserId: widget.currentUserId,
+            isGroup: true,
+            attachmentBuilder:
+                (
+                  context,
+                  attachment, {
+                  required message,
+                  required showDeliveryOverlay,
+                }) => _taskThreadAttachment(attachment),
+            footerBuilder: (context, message) => _taskThreadFooter(message),
+            onLongPressMessage: (message) async {
+              final activity = message.raw as Map<String, dynamic>;
+              await _showActivityActions(activity);
+            },
+            onLongPressAttachment: (attachment) async {
+              final raw = attachment.raw as Map<String, dynamic>;
+              _replyToAttachment(raw);
+            },
+            onTapReply: (message) async {
+              if (message.replyKind == 'file' && message.replyId != null) {
+                await _openAttachment({
+                  'id': message.replyId,
+                  'filename': message.replyLabel ?? 'Fayl',
+                });
+              }
+            },
+          ),
+      ],
+    );
+  }
+
+  ChatThreadMessage _toTaskThreadMessage(Map<String, dynamic> activity) {
+    var body = activity['body']?.toString() ?? '';
+    final metadata = (activity['metadata'] as Map?)?.cast<String, dynamic>();
+    var replyLabel =
+        metadata?['reply_to_filename']?.toString() ??
+        metadata?['reply_to_text']?.toString();
+    var replyKind = metadata?['reply_to_attachment_id'] != null
+        ? 'file'
+        : metadata?['reply_to_activity_id'] != null
+        ? 'comment'
+        : null;
+    var replyId =
+        (metadata?['reply_to_attachment_id'] as num?)?.toInt() ??
+        (metadata?['reply_to_activity_id'] as num?)?.toInt();
+    final firstLine = body.split('\n').first.trim();
+    final marker = RegExp(
+      r'^(Faylga|Izohga) javob: (.+?) \[(file|comment):(\d+)\]$',
+    ).firstMatch(firstLine);
+    if (marker != null) {
+      replyKind ??= marker.group(3);
+      replyId ??= int.tryParse(marker.group(4)!);
+      replyLabel ??= marker.group(2)?.trim();
+      body = body.substring(firstLine.length).trim();
+    }
+    final rawAttachments = (activity['attachments'] as List?) ?? const [];
+    return ChatThreadMessage(
+      id: (activity['id'] as num?)?.toInt() ?? 0,
+      senderId: (activity['author_id'] as num?)?.toInt() ?? 0,
+      senderName: activity['author_name']?.toString() ?? 'Tizim',
+      body: body.startsWith('Fayl biriktirdi:') ? '' : body,
+      createdAt:
+          DateTime.tryParse(activity['created_at']?.toString() ?? '') ??
+          DateTime.now(),
+      isMine: (activity['author_id'] as num?)?.toInt() == widget.currentUserId,
+      isPinned: activity['is_pinned'] == true,
+      replyLabel: replyLabel,
+      replyKind: replyKind,
+      replyId: replyId,
+      attachments: rawAttachments.whereType<Map>().map((raw) {
+        return ChatThreadAttachment(
+          id: (raw['id'] as num?)?.toInt() ?? 0,
+          filename: raw['filename']?.toString() ?? 'Fayl',
+          mimeType: _mimeType(raw['filename']?.toString() ?? ''),
+          sizeBytes: (raw['size_bytes'] as num?)?.toInt() ?? 0,
+          raw: Map<String, dynamic>.from(raw),
+        );
+      }).toList(),
+      raw: activity,
+    );
+  }
+
+  Widget _taskThreadAttachment(ChatThreadAttachment attachment) {
+    final raw = attachment.raw as Map<String, dynamic>;
+    final isImage = attachment.mimeType.startsWith('image/');
+    return ActionChip(
+      avatar: Icon(
+        isImage ? Icons.image_outlined : Icons.attach_file_rounded,
+        size: 17,
+      ),
+      label: Text(
+        '${attachment.filename} (${_formatBytes(attachment.sizeBytes)})',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      onPressed: () => _openAttachment(raw),
+    );
+  }
+
+  Widget _taskThreadFooter(ChatThreadMessage message) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          _formatDate(message.createdAt.toIso8601String()),
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: message.isMine
+                ? Colors.white.withValues(alpha: 0.72)
+                : context.appColors.textMuted,
+          ),
+        ),
+        if (message.isPinned) ...[
+          SizedBox(width: context.appSpacing.xs),
+          Icon(
+            Icons.push_pin_rounded,
+            size: 14,
+            color: message.isMine ? Colors.white : context.appColors.primary,
+          ),
+        ],
       ],
     );
   }
@@ -797,6 +923,8 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
     );
   }
 
+  // Legacy renderer retained for compatibility with old hot-reload sessions.
+  // ignore: unused_element
   Widget _activityTile(Map<String, dynamic> activity) {
     final spacing = context.appSpacing;
     var body = activity['body'] as String? ?? '';
