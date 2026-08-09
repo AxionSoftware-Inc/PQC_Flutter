@@ -620,7 +620,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
       showDragHandle: true,
       isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -696,7 +696,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
                   child: FilledButton.icon(
                     onPressed: () async {
                       Navigator.pop(sheetContext);
-                      await _advanceTask(task);
+                      await _confirmProgression(task);
                     },
                     icon: const Icon(Icons.arrow_forward_rounded),
                     label: Text(action),
@@ -757,6 +757,36 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
         ).showSnackBar(SnackBar(content: Text(error.toString())));
       }
     }
+  }
+
+  Future<void> _confirmProgression(Map<String, dynamic> task) async {
+    final status = task['status'] as String? ?? 'todo';
+    if (status == 'todo' || status == 'accepted') {
+      final isAccepting = status == 'todo';
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(isAccepting ? 'Vazifani qabul qilish' : 'Ishni boshlash'),
+          content: Text(
+            isAccepting
+                ? 'Vazifa matni va biriktirilgan fayllarni ko‘rib chiqdim. Vazifani qabul qilaman.'
+                : 'Vazifani bajarishni boshlaysizmi?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Bekor qilish'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(isAccepting ? 'Qabul qildim' : 'Boshladim'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    await _advanceTask(task);
   }
 
   Widget _detailLine(String label, String value) => Padding(
