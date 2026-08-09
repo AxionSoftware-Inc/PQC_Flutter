@@ -58,11 +58,16 @@ class _TaskDetailPage extends StatelessWidget {
     final status = task['status'] as String? ?? 'todo';
     final description = task['description'] as String? ?? '';
     final attachments = (task['attachments'] as List?) ?? const [];
+    final permissions =
+        (task['permissions'] as Map?)?.cast<String, dynamic>() ??
+        const <String, dynamic>{};
+    final canAdvance =
+        permissions.isEmpty || permissions['is_assignee'] == true;
     final actionLabel = switch (status) {
-      'todo' => 'Qabul qildim',
-      'accepted' => 'Ishni boshladim',
-      'returned' => 'Qayta ishlashni boshlash',
-      'in_progress' => 'Ishni topshirish',
+      'todo' when canAdvance => 'Qabul qildim',
+      'accepted' when canAdvance => 'Ishni boshladim',
+      'returned' when canAdvance => 'Qayta ishlashni boshlash',
+      'in_progress' when canAdvance => 'Ishni topshirish',
       _ => null,
     };
     return Scaffold(
@@ -789,7 +794,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
       MaterialPageRoute(
         builder: (_) => _TaskDetailPage(
           task: task,
-          canReview: _assignees.isNotEmpty,
+          canReview: ((task['permissions'] as Map?)?['can_manage'] == true),
           onAdvance: () => _advanceTask(task),
           onReview: (accepted) => _reviewTask(task, accepted: accepted),
         ),
@@ -1264,6 +1269,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     'in_progress' => 'Jarayonda',
     'submitted' => 'Rahbar tekshiradi',
     'done' => 'Qabul qilindi',
+    'returned' => 'Qayta ishlash kerak',
     'cancelled' => 'Bekor qilingan',
     _ => 'Kutilmoqda',
   };
