@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
@@ -247,6 +248,75 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
       };
     });
     _tabController.animateTo(1);
+  }
+
+  List<Map<String, dynamic>> get _pinnedActivities => _activities
+      .where((activity) => activity['is_pinned'] == true)
+      .toList(growable: false);
+
+  Future<void> _togglePin(Map<String, dynamic> activity) async {
+    final id = (activity['id'] as num?)?.toInt();
+    if (id == null) return;
+    try {
+      await widget.apiClient.post(
+        '/task-kpi/tasks/${task['id']}/activity/$id/pin',
+        {'pinned': activity['is_pinned'] != true},
+      );
+      await _loadActivities(silent: true);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Pin holatini o‘zgartirib bo‘lmadi: $error')),
+      );
+    }
+  }
+
+  Future<void> _showActivityActions(Map<String, dynamic> activity) async {
+    final body = activity['body']?.toString().trim() ?? '';
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.reply_rounded),
+              title: const Text('Javob yozish'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _replyToActivity(activity);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                activity['is_pinned'] == true
+                    ? Icons.push_pin_rounded
+                    : Icons.push_pin_outlined,
+              ),
+              title: Text(
+                activity['is_pinned'] == true
+                    ? 'Pindan chiqarish'
+                    : 'Pin qilish',
+              ),
+              onTap: () async {
+                Navigator.pop(sheetContext);
+                await _togglePin(activity);
+              },
+            ),
+            if (body.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.copy_rounded),
+                title: const Text('Matnni nusxalash'),
+                onTap: () async {
+                  await Clipboard.setData(ClipboardData(text: body));
+                  if (sheetContext.mounted) Navigator.pop(sheetContext);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _openAttachment(Map<String, dynamic> file) async {
@@ -551,6 +621,10 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
             ),
           ],
         ),
+        if (_pinnedActivities.isNotEmpty) ...[
+          SizedBox(height: context.appSpacing.xs),
+          _pinnedActivityBar(),
+        ],
         if (_loadingActivities)
           const LinearProgressIndicator(minHeight: 2)
         else if (_activityError != null)
@@ -570,6 +644,46 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
         else
           ...comments.map(_activityTile),
       ],
+    );
+  }
+
+  Widget _pinnedActivityBar() {
+    final pinned = _pinnedActivities.first;
+    final preview = pinned['body']?.toString().split('\n').last.trim() ?? '';
+    return InkWell(
+      borderRadius: BorderRadius.circular(context.appRadii.md),
+      onTap: () => _showActivityActions(pinned),
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.symmetric(
+          horizontal: context.appSpacing.sm,
+          vertical: context.appSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: context.appColors.surfaceMuted,
+          borderRadius: BorderRadius.circular(context.appRadii.md),
+          border: Border.all(color: context.appColors.border),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.push_pin_rounded,
+              size: 17,
+              color: context.appColors.primary,
+            ),
+            SizedBox(width: context.appSpacing.xs),
+            Expanded(
+              child: Text(
+                preview.isEmpty ? 'Biriktirilgan xabar' : preview,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, size: 18),
+          ],
+        ),
+      ),
     );
   }
 
@@ -729,7 +843,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
             maxWidth: MediaQuery.sizeOf(context).width * 0.84,
           ),
           child: GestureDetector(
-            onLongPress: () => _replyToActivity(activity),
+            onLongPress: () => _showActivityActions(activity),
             child: Container(
               padding: EdgeInsets.symmetric(
                 horizontal: spacing.sm,
@@ -761,6 +875,14 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
                               ),
                         ),
                       ),
+                      if (activity['is_pinned'] == true)
+                        Icon(
+                          Icons.push_pin_rounded,
+                          size: 15,
+                          color: isMine
+                              ? Colors.white
+                              : context.appColors.primary,
+                        ),
                     ],
                   ),
                   if (replyLabel?.isNotEmpty == true) ...[

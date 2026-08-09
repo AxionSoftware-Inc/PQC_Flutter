@@ -114,6 +114,7 @@ class TaskActivity(models.Model):
     kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.COMMENT)
     body = models.TextField(blank=True)
     metadata = models.JSONField(default=dict, blank=True)
+    is_pinned = models.BooleanField(default=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='task_activities')
     created_at = models.DateTimeField(auto_now_add=True)
 

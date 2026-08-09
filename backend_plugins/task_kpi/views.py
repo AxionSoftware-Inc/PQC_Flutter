@@ -390,6 +390,25 @@ class TaskActivityView(APIView):
         return Response(TaskActivitySerializer(activity).data, status=status.HTTP_201_CREATED)
 
 
+class TaskActivityPinView(APIView):
+    @transaction.atomic
+    def post(self, request, task_id, activity_id):
+        member = _membership(request)
+        task = _get_task(member, task_id, for_update=True) if member else None
+        if not task or not can_comment_on_task(task, member, _assignable_members(member)):
+            return Response({'detail': 'Task not found.'}, status=404)
+        activity = TaskActivity.objects.filter(task=task, id=activity_id).first()
+        if not activity:
+            return Response({'detail': 'Activity not found.'}, status=404)
+        requested = request.data.get('pinned')
+        pinned = bool(requested) if requested is not None else not activity.is_pinned
+        if pinned:
+            TaskActivity.objects.filter(task=task, is_pinned=True).exclude(id=activity.id).update(is_pinned=False)
+        activity.is_pinned = pinned
+        activity.save(update_fields=['is_pinned'])
+        return Response(TaskActivitySerializer(activity).data)
+
+
 class TaskAttachmentCreateView(APIView):
     @transaction.atomic
     def post(self, request, task_id):
