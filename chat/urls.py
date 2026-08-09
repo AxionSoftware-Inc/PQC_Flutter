@@ -15,6 +15,7 @@ from chat.views import (
     MessageListCreateView,
     MessageActionView,
     MessageReactionView,
+    MessageReadView,
     PrivateConversationView,
 )
 
@@ -29,6 +30,7 @@ urlpatterns = [
     ),
     path('messages/<int:message_id>', MessageActionView.as_view(), name='message-action'),
     path('messages/<int:message_id>/reaction', MessageReactionView.as_view(), name='message-reaction'),
+    path('messages/<int:message_id>/read', MessageReadView.as_view(), name='message-read'),
     path(
         'conversations/<int:conversation_id>/attachments',
         AttachmentUploadView.as_view(),

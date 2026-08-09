@@ -79,6 +79,8 @@ class ChatThreadWidget extends StatelessWidget {
     required this.attachmentBuilder,
     required this.footerBuilder,
     this.showSenderName = true,
+    this.mineBackgroundColor,
+    this.peerBackgroundColor,
     this.bodyLabelBuilder,
     this.controller,
     this.onRetry,
@@ -94,6 +96,8 @@ class ChatThreadWidget extends StatelessWidget {
   final int currentUserId;
   final bool isGroup;
   final bool showSenderName;
+  final Color? mineBackgroundColor;
+  final Color? peerBackgroundColor;
   final ChatThreadAttachmentBuilder attachmentBuilder;
   final ChatThreadFooterBuilder footerBuilder;
   final ChatThreadBodyLabelBuilder? bodyLabelBuilder;
@@ -158,8 +162,8 @@ class ChatThreadWidget extends StatelessWidget {
                     color: isImageOnly
                         ? Colors.transparent
                         : isMine
-                        ? colors.chatMine
-                        : colors.chatPeer,
+                        ? (mineBackgroundColor ?? colors.chatMine)
+                        : (peerBackgroundColor ?? colors.chatPeer),
                     borderRadius: BorderRadius.only(
                       topLeft: Radius.circular(context.appRadii.md),
                       topRight: Radius.circular(context.appRadii.md),

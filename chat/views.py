@@ -25,6 +25,7 @@ from chat.models import (
     Conversation,
     ConversationCryptoEpoch,
     Message,
+    MessageReceipt,
     MessageReaction,
     MessageAttachment,
 )
@@ -216,7 +217,13 @@ class ConversationListView(APIView):
         page = list(conversations[offset:offset + limit + 1])
         has_more = len(page) > limit
         page = page[:limit]
-        response = Response(ConversationSerializer(page, many=True).data)
+        response = Response(
+            ConversationSerializer(
+                page,
+                many=True,
+                context={'request': request},
+            ).data
+        )
         response['X-Has-More'] = 'true' if has_more else 'false'
         response['X-Next-Offset'] = str(offset + limit if has_more else '')
         return response
@@ -246,7 +253,12 @@ class PrivateConversationView(APIView):
             other_user,
             workspace,
         )
-        return Response(ConversationSerializer(conversation).data)
+        return Response(
+            ConversationSerializer(
+                conversation,
+                context={'request': request},
+            ).data
+        )
 
 
 class MessageListCreateView(APIView):
@@ -276,7 +288,13 @@ class MessageListCreateView(APIView):
                 messages = messages[:limit]
             messages = list(messages)
             messages.reverse()
-        return Response(MessageSerializer(messages, many=True).data)
+        return Response(
+            MessageSerializer(
+                messages,
+                many=True,
+                context={'request': request},
+            ).data
+        )
 
     @transaction.atomic
     def post(self, request, conversation_id):
@@ -304,7 +322,9 @@ class MessageListCreateView(APIView):
                 defaults=message_defaults,
             )
             if not created:
-                return Response(MessageSerializer(message).data)
+                return Response(
+                    MessageSerializer(message, context={'request': request}).data
+                )
         else:
             message = Message.objects.create(
                 conversation=conversation,
@@ -325,7 +345,7 @@ class MessageListCreateView(APIView):
             message.attachment_count = attachment_count
             message.save(update_fields=['attachment_count'])
         conversation.save(update_fields=['updated_at'])
-        serialized = MessageSerializer(message).data
+        serialized = MessageSerializer(message, context={'request': request}).data
         publish_workspace_event_on_commit(
             conversation.workspace_id,
             'message.created',
@@ -369,7 +389,7 @@ class MessageActionView(APIView):
         message.body = body.strip()
         message.edited_at = timezone.now()
         message.save(update_fields=['body', 'edited_at'])
-        serialized = MessageSerializer(message).data
+        serialized = MessageSerializer(message, context={'request': request}).data
         publish_workspace_event_on_commit(message.conversation.workspace_id, 'message.updated', serialized)
         return Response(serialized)
 
@@ -388,7 +408,7 @@ class MessageActionView(APIView):
             forwarded_from=source,
         )
         target.save(update_fields=['updated_at'])
-        serialized = MessageSerializer(forwarded).data
+        serialized = MessageSerializer(forwarded, context={'request': request}).data
         publish_workspace_event_on_commit(target.workspace_id, 'message.created', serialized)
         return Response(serialized, status=status.HTTP_201_CREATED)
 
@@ -399,9 +419,47 @@ class MessageActionView(APIView):
         message.body = ''
         message.deleted_at = timezone.now()
         message.save(update_fields=['body', 'deleted_at'])
-        serialized = MessageSerializer(message).data
+        serialized = MessageSerializer(message, context={'request': request}).data
         publish_workspace_event_on_commit(message.conversation.workspace_id, 'message.deleted', serialized)
         return Response(serialized)
+
+
+class MessageReadView(APIView):
+    """Persist a read receipt when websocket delivery is unavailable."""
+
+    @transaction.atomic
+    def post(self, request, message_id):
+        message = generics.get_object_or_404(
+            Message.objects.select_related('conversation', 'sender'),
+            id=message_id,
+        )
+        get_user_conversation_or_404(request, message.conversation_id)
+        if message.sender_id == request.user.id:
+            return Response(
+                MessageSerializer(message, context={'request': request}).data
+            )
+        now = timezone.now()
+        receipt, _ = MessageReceipt.objects.get_or_create(
+            message=message,
+            user=request.user,
+        )
+        if receipt.read_at is None or receipt.delivered_at is None:
+            receipt.delivered_at = receipt.delivered_at or now
+            receipt.read_at = receipt.read_at or now
+            receipt.save(update_fields=['delivered_at', 'read_at', 'updated_at'])
+            publish_workspace_event_on_commit(
+                message.conversation.workspace_id,
+                'receipt.read',
+                {
+                    'conversation_id': message.conversation_id,
+                    'message_id': message.id,
+                    'user_id': request.user.id,
+                    'read_at': receipt.read_at.isoformat(),
+                },
+            )
+        return Response(
+            MessageSerializer(message, context={'request': request}).data
+        )
 
 
 class MessageReactionView(APIView):

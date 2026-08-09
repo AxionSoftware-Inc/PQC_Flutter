@@ -210,6 +210,10 @@ class ChatConversationController extends ChangeNotifier {
           'message_id': message.id,
         });
       }
+      // Opening a conversation is the read action. Persist it through the
+      // HTTP fallback as well, so the sender's second check is not dependent
+      // on websocket availability.
+      markMessagesRead();
     } catch (error) {
       _error = error.toString();
       rethrow;
@@ -294,6 +298,9 @@ class ChatConversationController extends ChangeNotifier {
         'conversation_id': conversation.id,
         'message_id': message.id,
       });
+      // HTTP is the durable fallback when the websocket is reconnecting or
+      // the server's channel layer cannot broadcast across workers.
+      unawaited(chatFacade.markMessageRead(message.id).catchError((_) {}));
     }
   }
 
@@ -381,6 +388,22 @@ class ChatConversationController extends ChangeNotifier {
     if (conversationId != conversation.id) return;
     final userId = payload['user_id'] as int?;
     if (userId == null || userId == currentUserId) return;
+    if (event.event == 'receipt.read' || event.event == 'receipt.delivered') {
+      final messageId = payload['message_id'] as int?;
+      if (messageId == null) return;
+      var changed = false;
+      _messages = _messages.map((message) {
+        if (message.id != messageId || message.senderId != currentUserId) {
+          return message;
+        }
+        final isRead = event.event == 'receipt.read' || message.isRead;
+        if (message.isRead == isRead) return message;
+        changed = true;
+        return message.copyWith(isRead: isRead);
+      }).toList();
+      if (changed) notifyListeners();
+      return;
+    }
     if (event.event == 'typing.started') {
       _typingUserIds.add(userId);
     } else if (event.event == 'typing.stopped') {

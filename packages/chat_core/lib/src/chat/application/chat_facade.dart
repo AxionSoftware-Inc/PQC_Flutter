@@ -292,6 +292,10 @@ class ChatFacade {
     return _remoteDataSource.deleteMessage(messageId);
   }
 
+  Future<void> markMessageRead(int messageId) {
+    return _remoteDataSource.markMessageRead(messageId);
+  }
+
   Future<ChatMessage> forwardMessage(int messageId, int conversationId) {
     return _remoteDataSource.forwardMessage(messageId, conversationId);
   }
