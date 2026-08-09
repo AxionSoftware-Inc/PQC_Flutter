@@ -353,6 +353,9 @@ class TaskActivityView(APIView):
             return Response({'detail': 'metadata must be an object.'}, status=400)
         metadata = {}
         attachment_id = raw_metadata.get('reply_to_attachment_id')
+        activity_id = raw_metadata.get('reply_to_activity_id')
+        if attachment_id is not None and activity_id is not None:
+            return Response({'detail': 'Only one reply target is allowed.'}, status=400)
         if attachment_id is not None:
             try:
                 attachment_id = int(attachment_id)
@@ -364,6 +367,18 @@ class TaskActivityView(APIView):
             metadata = {
                 'reply_to_attachment_id': attachment.id,
                 'reply_to_filename': attachment.filename,
+            }
+        elif activity_id is not None:
+            try:
+                activity_id = int(activity_id)
+            except (TypeError, ValueError):
+                return Response({'detail': 'Invalid comment reference.'}, status=400)
+            referenced = TaskActivity.objects.filter(task=task, id=activity_id).first()
+            if not referenced:
+                return Response({'detail': 'Referenced comment was not found.'}, status=400)
+            metadata = {
+                'reply_to_activity_id': referenced.id,
+                'reply_to_text': referenced.body[:240],
             }
         activity = record_activity(
             task,
