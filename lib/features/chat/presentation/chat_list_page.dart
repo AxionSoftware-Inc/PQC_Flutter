@@ -22,7 +22,9 @@ import 'chat_page.dart';
 /// compile-time flag lets the base messenger run without its backend plugin.
 const _rbacModuleEnabled = bool.fromEnvironment(
   'RBAC_MODULE',
-  defaultValue: false,
+  // The production app ships with the RBAC plugin enabled. Deployments that
+  // do not expose /rbac can still hide the tab through the server response.
+  defaultValue: true,
 );
 const _taskKpiModuleEnabled = bool.fromEnvironment(
   'TASK_KPI_MODULE',
