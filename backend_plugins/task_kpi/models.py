@@ -28,11 +28,14 @@ class WorkTask(models.Model):
     assignee = models.ForeignKey(WorkspaceMember, on_delete=models.SET_NULL, related_name='assigned_tasks', null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='created_work_tasks', null=True)
     due_at = models.DateTimeField(null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     completion_note = models.TextField(blank=True)
     review_note = models.TextField(blank=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancellation_note = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -59,10 +62,76 @@ class KpiGoal(models.Model):
         indexes = [models.Index(fields=['workspace', 'owner', 'is_active'])]
 
 
+class KpiGoalHistory(models.Model):
+    goal = models.ForeignKey(KpiGoal, on_delete=models.CASCADE, related_name='history')
+    target_value = models.DecimalField(max_digits=14, decimal_places=2)
+    current_value = models.DecimalField(max_digits=14, decimal_places=2)
+    period_start = models.DateField()
+    period_end = models.DateField()
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+
+
 class TaskAttachment(models.Model):
     task = models.ForeignKey(WorkTask, on_delete=models.CASCADE, related_name='attachments')
+    activity = models.ForeignKey(
+        'TaskActivity',
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        null=True,
+        blank=True,
+    )
     file = models.FileField(upload_to='task-kpi/%Y/%m/')
     filename = models.CharField(max_length=255)
     size_bytes = models.PositiveBigIntegerField()
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class TaskWatcher(models.Model):
+    """A read-and-comment participant who does not execute the task."""
+
+    task = models.ForeignKey(WorkTask, on_delete=models.CASCADE, related_name='watchers')
+    member = models.ForeignKey(WorkspaceMember, on_delete=models.CASCADE, related_name='watched_tasks')
+    added_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['task', 'member'], name='task_kpi_unique_task_watcher')]
+
+
+class TaskActivity(models.Model):
+    class Kind(models.TextChoices):
+        COMMENT = 'comment', 'Izoh'
+        WORKFLOW = 'workflow', 'Jarayon'
+        CHANGE = 'change', 'O\'zgarish'
+        SYSTEM = 'system', 'Tizim'
+
+    task = models.ForeignKey(WorkTask, on_delete=models.CASCADE, related_name='activities')
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.COMMENT)
+    body = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='task_activities')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+        indexes = [models.Index(fields=['task', 'created_at'])]
+
+
+class TaskNotification(models.Model):
+    """In-app notification inbox. Delivery services may consume this later."""
+
+    task = models.ForeignKey(WorkTask, on_delete=models.CASCADE, related_name='notifications')
+    activity = models.ForeignKey(TaskActivity, on_delete=models.CASCADE, related_name='notifications')
+    recipient = models.ForeignKey(WorkspaceMember, on_delete=models.CASCADE, related_name='task_notifications')
+    kind = models.CharField(max_length=24)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [models.Index(fields=['recipient', 'read_at', 'created_at'])]
