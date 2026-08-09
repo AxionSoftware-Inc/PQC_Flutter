@@ -22,8 +22,9 @@ class TaskKpiPage extends StatefulWidget {
   State<TaskKpiPage> createState() => _TaskKpiPageState();
 }
 
-class _TaskDetailPage extends StatelessWidget {
+class _TaskDetailPage extends StatefulWidget {
   const _TaskDetailPage({
+    required this.apiClient,
     required this.task,
     required this.canReview,
     required this.onAdvance,
@@ -31,12 +32,40 @@ class _TaskDetailPage extends StatelessWidget {
     required this.onDownloadAttachment,
   });
 
+  final ApiClient apiClient;
   final Map<String, dynamic> task;
   final bool canReview;
   final Future<void> Function() onAdvance;
   final Future<void> Function(bool accepted) onReview;
   final Future<void> Function(Map<String, dynamic> attachment)
   onDownloadAttachment;
+
+  @override
+  State<_TaskDetailPage> createState() => _TaskDetailPageState();
+}
+
+class _TaskDetailPageState extends State<_TaskDetailPage> {
+  static const _maxAttachmentBytes = 25 * 1024 * 1024;
+  final TextEditingController _commentController = TextEditingController();
+  List<Map<String, dynamic>> _activities = const [];
+  List<PlatformFile> _selectedAttachments = const [];
+  bool _loadingActivities = true;
+  bool _sendingUpdate = false;
+  String? _activityError;
+
+  Map<String, dynamic> get task => widget.task;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadActivities());
+  }
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
 
   String _statusLabel(String value) => switch (value) {
     'accepted' => 'Qabul qilingan',
@@ -61,6 +90,122 @@ class _TaskDetailPage extends StatelessWidget {
     return '${parsed.day.toString().padLeft(2, '0')}.${parsed.month.toString().padLeft(2, '0')}.${parsed.year} ${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
   }
 
+  Future<void> _loadActivities() async {
+    try {
+      final response = await widget.apiClient.get(
+        '/task-kpi/tasks/${task['id']}/activity',
+      );
+      if (!mounted) return;
+      setState(() {
+        _activities = response is List
+            ? response
+                  .whereType<Map>()
+                  .map((item) => Map<String, dynamic>.from(item))
+                  .toList()
+            : const [];
+        _activityError = null;
+        _loadingActivities = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _activityError = error.toString();
+        _loadingActivities = false;
+      });
+    }
+  }
+
+  Future<void> _pickActivityAttachments() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: true,
+    );
+    if (result == null || !mounted) return;
+    final existing = _selectedAttachments
+        .map((file) => '${file.name}:${file.size}')
+        .toSet();
+    final added = result.files
+        .where((file) => file.size > 0)
+        .where((file) => existing.add('${file.name}:${file.size}'))
+        .toList();
+    final oversized = added.where((file) => file.size > _maxAttachmentBytes);
+    if (oversized.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${oversized.first.name} hajmi 25 MB dan oshmasligi kerak.',
+          ),
+        ),
+      );
+    }
+    final valid = added
+        .where((file) => file.size <= _maxAttachmentBytes)
+        .toList();
+    if (valid.isNotEmpty) {
+      setState(() {
+        _selectedAttachments = [..._selectedAttachments, ...valid];
+      });
+    }
+  }
+
+  Future<void> _sendUpdate() async {
+    final body = _commentController.text.trim();
+    if ((body.isEmpty && _selectedAttachments.isEmpty) || _sendingUpdate) {
+      return;
+    }
+    setState(() => _sendingUpdate = true);
+    try {
+      if (body.isNotEmpty) {
+        await widget.apiClient.post('/task-kpi/tasks/${task['id']}/activity', {
+          'body': body,
+        });
+      }
+      for (final file in _selectedAttachments) {
+        await _uploadActivityAttachment(file);
+      }
+      _commentController.clear();
+      if (mounted) setState(() => _selectedAttachments = const []);
+      await _loadActivities();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _sendingUpdate = false);
+    }
+  }
+
+  Future<void> _uploadActivityAttachment(PlatformFile file) async {
+    final path = file.path?.trim();
+    if (path != null && path.isNotEmpty) {
+      try {
+        await widget.apiClient.multipartPost(
+          '/task-kpi/tasks/${task['id']}/attachments',
+          files: [
+            await http.MultipartFile.fromPath(
+              'file',
+              path,
+              filename: file.name,
+            ),
+          ],
+        );
+        return;
+      } on FileSystemException {
+        // Android content-provider paths can expire; use picker bytes below.
+      }
+    }
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      throw StateError('Fayl ma’lumotini o‘qib bo‘lmadi. Qayta tanlang.');
+    }
+    await widget.apiClient.multipartPost(
+      '/task-kpi/tasks/${task['id']}/attachments',
+      files: [http.MultipartFile.fromBytes('file', bytes, filename: file.name)],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final spacing = context.appSpacing;
@@ -72,6 +217,8 @@ class _TaskDetailPage extends StatelessWidget {
         const <String, dynamic>{};
     final canAdvance =
         permissions.isEmpty || permissions['is_assignee'] == true;
+    final canComment =
+        permissions.isEmpty || permissions['can_comment'] == true;
     final actionLabel = switch (status) {
       'todo' when canAdvance => 'Qabul qildim',
       'accepted' when canAdvance => 'Ishni boshladim',
@@ -146,7 +293,7 @@ class _TaskDetailPage extends StatelessWidget {
                   subtitle: Text(_formatBytes(item['size_bytes'] as int? ?? 0)),
                   trailing: IconButton(
                     tooltip: 'Yuklab olish',
-                    onPressed: () => onDownloadAttachment(
+                    onPressed: () => widget.onDownloadAttachment(
                       Map<String, dynamic>.from(item as Map),
                     ),
                     icon: const Icon(Icons.download_rounded),
@@ -155,10 +302,48 @@ class _TaskDetailPage extends StatelessWidget {
               ),
             ],
             SizedBox(height: spacing.lg),
-            if (status == 'submitted' && canReview) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Ish jarayoni',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Yangilash',
+                  onPressed: _loadingActivities ? null : _loadActivities,
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+              ],
+            ),
+            if (_loadingActivities)
+              const LinearProgressIndicator(minHeight: 2)
+            else if (_activityError != null)
+              AppStatusBanner(
+                message: _activityError!,
+                tone: AppStatusTone.danger,
+                action: TextButton(
+                  onPressed: _loadActivities,
+                  child: const Text('Qayta urinish'),
+                ),
+              )
+            else if (_activities.isEmpty)
+              Text(
+                'Hozircha izoh yoki qo‘shimcha fayl yo‘q.',
+                style: Theme.of(context).textTheme.bodySmall,
+              )
+            else
+              ..._activities.map(_activityTile),
+            if (canComment) ...[
+              SizedBox(height: spacing.sm),
+              _activityComposer(),
+            ],
+            SizedBox(height: spacing.lg),
+            if (status == 'submitted' && widget.canReview) ...[
               FilledButton.icon(
                 onPressed: () async {
-                  await onReview(true);
+                  await widget.onReview(true);
                   if (context.mounted) Navigator.pop(context);
                 },
                 icon: const Icon(Icons.check_rounded),
@@ -167,7 +352,7 @@ class _TaskDetailPage extends StatelessWidget {
               SizedBox(height: spacing.sm),
               OutlinedButton.icon(
                 onPressed: () async {
-                  await onReview(false);
+                  await widget.onReview(false);
                   if (context.mounted) Navigator.pop(context);
                 },
                 icon: const Icon(Icons.replay_rounded),
@@ -176,7 +361,7 @@ class _TaskDetailPage extends StatelessWidget {
             ] else if (actionLabel != null)
               FilledButton.icon(
                 onPressed: () async {
-                  await onAdvance();
+                  await widget.onAdvance();
                   if (context.mounted) Navigator.pop(context);
                 },
                 icon: const Icon(Icons.arrow_forward_rounded),
@@ -184,6 +369,140 @@ class _TaskDetailPage extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _activityTile(Map<String, dynamic> activity) {
+    final spacing = context.appSpacing;
+    final body = activity['body'] as String? ?? '';
+    final author = activity['author_name'] as String? ?? 'Tizim';
+    final createdAt = activity['created_at']?.toString() ?? '';
+    final attachments = (activity['attachments'] as List?) ?? const [];
+    return Padding(
+      padding: EdgeInsets.only(bottom: spacing.xs),
+      child: AppSurfaceCard(
+        padding: EdgeInsets.symmetric(
+          horizontal: spacing.sm,
+          vertical: spacing.xs,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    author,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Text(
+                  createdAt.isEmpty ? '' : _formatDate(createdAt),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+            if (body.trim().isNotEmpty) ...[
+              SizedBox(height: spacing.xs),
+              Text(body),
+            ],
+            if (attachments.isNotEmpty) ...[
+              SizedBox(height: spacing.xs),
+              Wrap(
+                spacing: spacing.xs,
+                runSpacing: spacing.xs,
+                children: attachments
+                    .whereType<Map>()
+                    .map(
+                      (item) => ActionChip(
+                        avatar: const Icon(Icons.attach_file_rounded, size: 16),
+                        label: Text(
+                          item['filename'] as String? ?? 'Fayl',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onPressed: () => widget.onDownloadAttachment(
+                          Map<String, dynamic>.from(item),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _activityComposer() {
+    final spacing = context.appSpacing;
+    return AppSurfaceCard(
+      padding: EdgeInsets.all(spacing.xs),
+      child: Column(
+        children: [
+          TextField(
+            controller: _commentController,
+            minLines: 1,
+            maxLines: 4,
+            enabled: !_sendingUpdate,
+            decoration: const InputDecoration(
+              hintText: 'Vazifa bo‘yicha izoh yozing…',
+              border: InputBorder.none,
+            ),
+          ),
+          if (_selectedAttachments.isNotEmpty)
+            SizedBox(
+              height: 34,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _selectedAttachments.length,
+                separatorBuilder: (_, _) => SizedBox(width: spacing.xs),
+                itemBuilder: (context, index) {
+                  final file = _selectedAttachments[index];
+                  return InputChip(
+                    label: Text(
+                      file.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onDeleted: _sendingUpdate
+                        ? null
+                        : () => setState(() {
+                            _selectedAttachments = [
+                              ..._selectedAttachments.sublist(0, index),
+                              ..._selectedAttachments.sublist(index + 1),
+                            ];
+                          }),
+                  );
+                },
+              ),
+            ),
+          Row(
+            children: [
+              IconButton(
+                tooltip: 'Rasm yoki fayl biriktirish',
+                onPressed: _sendingUpdate ? null : _pickActivityAttachments,
+                icon: const Icon(Icons.attach_file_rounded),
+              ),
+              const Spacer(),
+              FilledButton.icon(
+                onPressed: _sendingUpdate ? null : _sendUpdate,
+                icon: _sendingUpdate
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send_rounded, size: 17),
+                label: const Text('Yuborish'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1240,6 +1559,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => _TaskDetailPage(
+          apiClient: widget.apiClient,
           task: task,
           canReview: ((task['permissions'] as Map?)?['can_manage'] == true),
           onAdvance: () => _advanceTask(task),
