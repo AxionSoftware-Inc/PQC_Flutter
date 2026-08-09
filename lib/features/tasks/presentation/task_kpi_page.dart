@@ -1,6 +1,12 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:open_filex/open_filex.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../../../app/design_system/app_design_system.dart';
 import '../../../core/network/api_client.dart';
@@ -22,12 +28,15 @@ class _TaskDetailPage extends StatelessWidget {
     required this.canReview,
     required this.onAdvance,
     required this.onReview,
+    required this.onDownloadAttachment,
   });
 
   final Map<String, dynamic> task;
   final bool canReview;
   final Future<void> Function() onAdvance;
   final Future<void> Function(bool accepted) onReview;
+  final Future<void> Function(Map<String, dynamic> attachment)
+  onDownloadAttachment;
 
   String _statusLabel(String value) => switch (value) {
     'accepted' => 'Qabul qilingan',
@@ -135,6 +144,13 @@ class _TaskDetailPage extends StatelessWidget {
                   leading: const Icon(Icons.attach_file_rounded),
                   title: Text(item['filename'] as String? ?? 'Fayl'),
                   subtitle: Text(_formatBytes(item['size_bytes'] as int? ?? 0)),
+                  trailing: IconButton(
+                    tooltip: 'Yuklab olish',
+                    onPressed: () => onDownloadAttachment(
+                      Map<String, dynamic>.from(item as Map),
+                    ),
+                    icon: const Icon(Icons.download_rounded),
+                  ),
                 ),
               ),
             ],
@@ -496,11 +512,19 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
 
 class _TaskKpiPageState extends State<TaskKpiPage> {
   bool _loading = true;
+  bool _loadingMore = false;
   String? _error;
   List<Map<String, dynamic>> _tasks = const [];
   List<Map<String, dynamic>> _assignees = const [];
+  List<Map<String, dynamic>> _notifications = const [];
+  List<Map<String, dynamic>> _kpiSummary = const [];
+  int _unreadNotifications = 0;
+  int? _nextOffset;
+  bool _hasMore = false;
   final TextEditingController _searchController = TextEditingController();
   String _statusFilter = 'all';
+  Timer? _searchDebounce;
+  Timer? _refreshTimer;
 
   List<Map<String, dynamic>> get _visibleTasks {
     final query = _searchController.text.trim().toLowerCase();
@@ -520,35 +544,103 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
   void initState() {
     super.initState();
     _load();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted && !_loading && !_loadingMore) unawaited(_load());
+    });
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _refreshTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<dynamic> _optionalGet(String path) async {
+    try {
+      return await widget.apiClient.get(path);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  List<Map<String, dynamic>> _extractTaskItems(dynamic response) {
+    final raw = response is Map ? response['items'] : response;
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+  }
+
+  Future<void> _load({bool append = false}) async {
+    if (append && (_loadingMore || !_hasMore || _nextOffset == null)) return;
     setState(() {
-      _loading = true;
-      _error = null;
+      if (append) {
+        _loadingMore = true;
+      } else {
+        _loading = true;
+        _error = null;
+        _nextOffset = 0;
+        _hasMore = false;
+      }
     });
     try {
-      final values = await Future.wait<dynamic>([
-        widget.apiClient.get('/task-kpi/tasks'),
-        widget.apiClient.get('/task-kpi/assignees'),
-      ]);
+      final query = <String, String>{
+        'offset': '${append ? _nextOffset : 0}',
+        'limit': '50',
+        if (_statusFilter != 'all') 'status': _statusFilter,
+        if (_searchController.text.trim().isNotEmpty)
+          'q': _searchController.text.trim(),
+      };
+      final values = append
+          ? await Future.wait<dynamic>([
+              widget.apiClient.get('/task-kpi/tasks', queryParameters: query),
+            ])
+          : await Future.wait<dynamic>([
+              widget.apiClient.get('/task-kpi/tasks', queryParameters: query),
+              widget.apiClient.get('/task-kpi/assignees'),
+              _optionalGet('/task-kpi/notifications'),
+              _optionalGet('/task-kpi/kpi-summary'),
+            ]);
+      final taskResponse = values[0];
+      final taskItems = _extractTaskItems(taskResponse);
+      final taskPage = taskResponse is Map
+          ? Map<String, dynamic>.from(taskResponse)
+          : const <String, dynamic>{};
       if (!mounted) return;
       setState(() {
-        _tasks = List<Map<String, dynamic>>.from(values[0] as List);
-        _assignees = List<Map<String, dynamic>>.from(values[1] as List);
+        _tasks = append ? [..._tasks, ...taskItems] : taskItems;
+        if (!append) {
+          _assignees = values[1] is List
+              ? List<Map<String, dynamic>>.from(values[1] as List)
+              : const [];
+          final notifications = values[2];
+          if (notifications is Map) {
+            _unreadNotifications =
+                (notifications['unread_count'] as num?)?.toInt() ?? 0;
+            _notifications = notifications['items'] is List
+                ? List<Map<String, dynamic>>.from(
+                    notifications['items'] as List,
+                  )
+                : const [];
+          }
+          _kpiSummary = values[3] is List
+              ? List<Map<String, dynamic>>.from(values[3] as List)
+              : const [];
+        }
+        _hasMore = taskPage['has_more'] == true;
+        _nextOffset = taskPage['next_offset'] as int?;
         _loading = false;
+        _loadingMore = false;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _error = error.toString();
         _loading = false;
+        _loadingMore = false;
       });
     }
   }
@@ -577,6 +669,8 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
           child: ListView(
             padding: EdgeInsets.all(spacing.md),
             children: [
+              _buildTaskToolbar(),
+              SizedBox(height: spacing.sm),
               _buildTaskFilters(),
               SizedBox(height: spacing.sm),
               if (_tasks.isEmpty)
@@ -591,6 +685,22 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
                 )
               else
                 ...visibleTasks.map(_taskTile),
+              if (_hasMore) ...[
+                SizedBox(height: spacing.sm),
+                Center(
+                  child: TextButton.icon(
+                    onPressed: _loadingMore ? null : () => _load(append: true),
+                    icon: _loadingMore
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.expand_more_rounded),
+                    label: const Text('Yana yuklash'),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -612,13 +722,290 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
     ),
   );
 
+  Widget _buildTaskToolbar() {
+    final spacing = context.appSpacing;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            _tasks.isEmpty ? 'Vazifalar' : '${_tasks.length} ta vazifa',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+        ),
+        IconButton.filledTonal(
+          tooltip: 'KPI ko‘rsatkichlari',
+          onPressed: _openKpiAnalytics,
+          icon: const Icon(Icons.insights_rounded),
+        ),
+        SizedBox(width: spacing.xs),
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            IconButton.filledTonal(
+              tooltip: 'Vazifa bildirishnomalari',
+              onPressed: _openNotifications,
+              icon: const Icon(Icons.notifications_none_rounded),
+            ),
+            if (_unreadNotifications > 0)
+              Positioned(
+                right: 0,
+                top: -2,
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 18),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: context.appColors.danger,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    _unreadNotifications > 99 ? '99+' : '$_unreadNotifications',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openNotifications() async {
+    final notifications = List<Map<String, dynamic>>.from(_notifications);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * 0.72,
+          child: notifications.isEmpty
+              ? const Center(child: Text('Yangi bildirishnoma yo‘q.'))
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                  itemCount: notifications.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (_, index) {
+                    final item = notifications[index];
+                    final activity = item['activity'] is Map
+                        ? Map<String, dynamic>.from(item['activity'] as Map)
+                        : const <String, dynamic>{};
+                    return ListTile(
+                      leading: const CircleAvatar(
+                        child: Icon(Icons.task_alt_rounded),
+                      ),
+                      title: Text(item['task_title'] as String? ?? 'Vazifa'),
+                      subtitle: Text(
+                        activity['body'] as String? ?? 'Vazifa yangilandi.',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: () async {
+                        Navigator.pop(sheetContext);
+                        final taskId = (item['task_id'] as num?)?.toInt();
+                        if (taskId == null) return;
+                        final task = _tasks
+                            .cast<Map<String, dynamic>?>()
+                            .firstWhere(
+                              (value) => value?['id'] == taskId,
+                              orElse: () => null,
+                            );
+                        if (task != null) await _showTaskDetail(task);
+                      },
+                    );
+                  },
+                ),
+        ),
+      ),
+    );
+    if (_unreadNotifications > 0) {
+      try {
+        await widget.apiClient.post('/task-kpi/notifications/read', {});
+      } catch (_) {
+        // The inbox remains usable if marking read is temporarily offline.
+      }
+      if (mounted) {
+        setState(() {
+          _unreadNotifications = 0;
+          _notifications = _notifications
+              .map(
+                (item) => {
+                  ...item,
+                  'read_at': DateTime.now().toUtc().toIso8601String(),
+                },
+              )
+              .toList(growable: false);
+        });
+      }
+    }
+  }
+
+  Future<void> _openKpiAnalytics() async {
+    try {
+      final values = await Future.wait<dynamic>([
+        widget.apiClient.get('/task-kpi/kpi-summary'),
+        widget.apiClient.get('/task-kpi/reports'),
+        widget.apiClient.get('/task-kpi/kpi-goals'),
+      ]);
+      if (!mounted) return;
+      final summary = values[0] is List
+          ? List<Map<String, dynamic>>.from(values[0] as List)
+          : _kpiSummary;
+      final report = values[1] is Map
+          ? Map<String, dynamic>.from(values[1] as Map)
+          : const <String, dynamic>{};
+      final goals = values[2] is List
+          ? List<Map<String, dynamic>>.from(values[2] as List)
+          : const <Map<String, dynamic>>[];
+      final goalDetails = await Future.wait<dynamic>(
+        goals.map(
+          (goal) => widget.apiClient.get('/task-kpi/kpi-goals/${goal['id']}'),
+        ),
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('KPI ko‘rsatkichlari'),
+          content: SizedBox(
+            width: 420,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _metricChip('Jami', report['total']),
+                    _metricChip('Tugatilgan', report['done']),
+                    _metricChip('Qaytarilgan', report['returned']),
+                    _metricChip('Muddati o‘tgan', report['overdue']),
+                  ],
+                ),
+                if (report['average_completion_hours'] != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(
+                      'O‘rtacha bajarilish: ${report['average_completion_hours']} soat',
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                ...summary.map((item) {
+                  final total = (item['total'] as num?)?.toInt() ?? 0;
+                  final done = (item['done'] as num?)?.toInt() ?? 0;
+                  final progress = total == 0 ? 0.0 : done / total;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(item['name'] as String? ?? 'Xodim'),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: LinearProgressIndicator(value: progress),
+                    ),
+                    trailing: Text('$done/$total'),
+                  );
+                }),
+                if (goals.isNotEmpty) ...[
+                  const Divider(height: 24),
+                  Text(
+                    'KPI maqsadlari',
+                    style: Theme.of(dialogContext).textTheme.titleMedium,
+                  ),
+                  ...goals.asMap().entries.map((entry) {
+                    final goal = entry.value;
+                    final current =
+                        (goal['current_value'] as num?)?.toDouble() ?? 0;
+                    final target =
+                        (goal['target_value'] as num?)?.toDouble() ?? 0;
+                    final progress = target <= 0
+                        ? 0.0
+                        : (current / target).clamp(0, 1).toDouble();
+                    final detail = goalDetails[entry.key];
+                    final historyCount =
+                        detail is Map && detail['history'] is List
+                        ? (detail['history'] as List).length
+                        : 0;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(goal['title'] as String? ?? 'KPI'),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 6),
+                          LinearProgressIndicator(value: progress),
+                          const SizedBox(height: 4),
+                          Text('Tarix: $historyCount ta o‘zgarish'),
+                        ],
+                      ),
+                      trailing: Text('$current/$target'),
+                    );
+                  }),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Yopish'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('KPI ma’lumotlarini yuklab bo‘lmadi: $error')),
+      );
+    }
+  }
+
+  Widget _metricChip(String label, dynamic value) {
+    return Chip(label: Text('$label: ${value ?? 0}'));
+  }
+
+  Future<void> _downloadTaskAttachment(Map<String, dynamic> attachment) async {
+    final id = (attachment['id'] as num?)?.toInt();
+    if (id == null) return;
+    try {
+      final response = await widget.apiClient.getBytes(
+        '/task-kpi/attachments/$id/download',
+      );
+      final root = await getApplicationDocumentsDirectory();
+      final directory = Directory(p.join(root.path, 'task-kpi'));
+      await directory.create(recursive: true);
+      final rawName = attachment['filename'] as String? ?? 'attachment';
+      final safeName = rawName.replaceAll(RegExp(r'[\\/]'), '_');
+      final file = File(p.join(directory.path, '${id}_$safeName'));
+      await file.writeAsBytes(response.bytes, flush: true);
+      await OpenFilex.open(file.path);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Faylni yuklab bo‘lmadi: $error')));
+    }
+  }
+
   Widget _buildTaskFilters() {
     return Row(
       children: [
         Expanded(
           child: TextField(
             controller: _searchController,
-            onChanged: (_) => setState(() {}),
+            onChanged: (_) {
+              setState(() {});
+              _searchDebounce?.cancel();
+              _searchDebounce = Timer(
+                const Duration(milliseconds: 350),
+                () => _load(),
+              );
+            },
             decoration: InputDecoration(
               hintText: 'Vazifalarni qidirish',
               prefixIcon: const Icon(Icons.search_rounded),
@@ -629,6 +1016,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
                       onPressed: () {
                         _searchController.clear();
                         setState(() {});
+                        unawaited(_load());
                       },
                     ),
             ),
@@ -638,7 +1026,10 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
         PopupMenuButton<String>(
           tooltip: 'Status bo‘yicha filtr',
           initialValue: _statusFilter,
-          onSelected: (value) => setState(() => _statusFilter = value),
+          onSelected: (value) {
+            setState(() => _statusFilter = value);
+            unawaited(_load());
+          },
           itemBuilder: (_) => const [
             PopupMenuItem(value: 'all', child: Text('Barchasi')),
             PopupMenuItem(value: 'todo', child: Text('Yangi')),
@@ -797,6 +1188,7 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
           canReview: ((task['permissions'] as Map?)?['can_manage'] == true),
           onAdvance: () => _advanceTask(task),
           onReview: (accepted) => _reviewTask(task, accepted: accepted),
+          onDownloadAttachment: _downloadTaskAttachment,
         ),
       ),
     );

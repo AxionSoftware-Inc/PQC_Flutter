@@ -117,7 +117,25 @@ class TaskListCreateView(APIView):
             tasks = tasks.filter(priority=priority)
         if query := request.query_params.get('q', '').strip():
             tasks = tasks.filter(Q(title__icontains=query) | Q(description__icontains=query))
-        return Response(WorkTaskSerializer(tasks, many=True, context=_task_serializer_context(member)).data)
+        tasks = tasks.order_by('-updated_at', '-id')
+        # Keep the original list response for old clients. New clients can
+        # opt into a bounded page without breaking deployed builds.
+        paginated = 'limit' in request.query_params or 'offset' in request.query_params
+        if not paginated:
+            return Response(WorkTaskSerializer(tasks, many=True, context=_task_serializer_context(member)).data)
+        try:
+            offset = max(int(request.query_params.get('offset', '0')), 0)
+            limit = min(max(int(request.query_params.get('limit', '50')), 1), 100)
+        except ValueError:
+            return Response({'detail': 'Invalid pagination parameters.'}, status=400)
+        page = list(tasks[offset:offset + limit + 1])
+        has_more = len(page) > limit
+        page = page[:limit]
+        return Response({
+            'items': WorkTaskSerializer(page, many=True, context=_task_serializer_context(member)).data,
+            'next_offset': offset + limit if has_more else None,
+            'has_more': has_more,
+        })
 
     @transaction.atomic
     def post(self, request):

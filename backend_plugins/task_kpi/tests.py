@@ -128,3 +128,20 @@ class TaskKpiPluginTests(APITestCase):
             **self.headers,
         )
         self.assertEqual(comment.status_code, 403)
+
+    def test_task_list_supports_bounded_pagination_without_changing_legacy_shape(self):
+        self.client.force_authenticate(self.manager)
+        for index in range(3):
+            response = self.client.post(
+                '/api/task-kpi/tasks',
+                {'title': f'Hisobot {index}', 'assignee_id': self.worker_member.id},
+                format='json',
+                **self.headers,
+            )
+            self.assertEqual(response.status_code, 201)
+        page = self.client.get('/api/task-kpi/tasks?offset=0&limit=2', **self.headers)
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual(len(page.data['items']), 2)
+        self.assertTrue(page.data['has_more'])
+        legacy = self.client.get('/api/task-kpi/tasks', **self.headers)
+        self.assertIsInstance(legacy.data, list)
