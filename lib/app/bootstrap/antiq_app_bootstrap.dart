@@ -36,6 +36,7 @@ import '../../features/crypto/group_key_store.dart';
 import '../../features/crypto/outbound_message_cache.dart';
 import '../../features/security/key_verification_service.dart';
 import '../../features/transfers/application/attachment_transfer.dart';
+import '../../features/notifications/application/device_notification_service.dart';
 import '../app.dart';
 import '../design_system/app_design_system.dart';
 import '../modules/antiq_app_module_registry.dart';
@@ -102,6 +103,10 @@ Future<void> runAntiQApp() async {
     outboxStore: outboxStore,
   );
   final chatRealtimeService = ChatRealtimeService(apiClient: apiClient);
+  final deviceNotificationService = DeviceNotificationService(
+    apiClient: apiClient,
+  );
+  await deviceNotificationService.initialize();
   const enableV3Writer = bool.fromEnvironment('V3_WRITER', defaultValue: false);
   final cipherAlgorithms = <ChatCipherAlgorithm>[
     if (enableV3Writer)
@@ -180,6 +185,7 @@ Future<void> runAntiQApp() async {
           sessionUser.token.isEmpty ||
           sessionUser.activeWorkspaceId <= 0) {
         await chatRealtimeService.disconnect();
+        await deviceNotificationService.stop();
         return;
       }
       await cryptoCoreFacade.activateAccount('${sessionUser.accountId}');
@@ -194,6 +200,12 @@ Future<void> runAntiQApp() async {
         token: sessionUser.token,
         workspaceId: '${sessionUser.activeWorkspaceId}',
         deviceId: sessionUser.deviceId,
+      );
+      await deviceNotificationService.start(
+        currentUserId: sessionUser.id,
+        accountId: sessionUser.accountId,
+        workspaceId: sessionUser.activeWorkspaceId,
+        realtimeEvents: chatFacade.realtimeEvents,
       );
       unawaited(chatFacade.resumePendingWork(currentUserId: sessionUser.id));
     },
