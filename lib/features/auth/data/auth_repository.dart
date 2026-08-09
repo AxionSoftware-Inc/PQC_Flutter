@@ -49,6 +49,17 @@ class AuthRepository {
   bool _googleInitialized = false;
 
   Future<SessionUser> loginWithGoogle() async {
+    try {
+      return await _loginWithGoogleInternal();
+    } on GoogleSignInException catch (error) {
+      throw ApiException(
+        _googleSignInErrorMessage(error),
+        code: 'google_sign_in_${error.code.name}',
+      );
+    }
+  }
+
+  Future<SessionUser> _loginWithGoogleInternal() async {
     if (!_googleInitialized) {
       await GoogleSignIn.instance.initialize(
         serverClientId: ApiConfig.googleWebClientId,
@@ -87,6 +98,27 @@ class AuthRepository {
     }
     apiClient.setRecoveryGrant(response['recovery_grant'] as String?);
     return _sessionFromResponse(response, identity.id);
+  }
+
+  String _googleSignInErrorMessage(GoogleSignInException error) {
+    final detail = error.description?.trim();
+    final suffix = detail == null || detail.isEmpty ? '' : ' ($detail)';
+    return switch (error.code) {
+      GoogleSignInExceptionCode.canceled =>
+        'Google orqali kirish bekor qilindi.',
+      GoogleSignInExceptionCode.interrupted =>
+        'Google orqali kirish uzildi. Internetni tekshirib, qayta urinib ko‘ring.',
+      GoogleSignInExceptionCode.clientConfigurationError =>
+        'Google login sozlamasi mos emas. Android package com.axion.pqc va release SHA-1 Google Cloud’da ro‘yxatdan o‘tganini tekshirish kerak.$suffix',
+      GoogleSignInExceptionCode.providerConfigurationError =>
+        'Qurilmadagi Google Play Services sozlamasi ishlamadi. Google ilovalari va Play Services’ni yangilab, qayta urinib ko‘ring.$suffix',
+      GoogleSignInExceptionCode.uiUnavailable =>
+        'Google login oynasini ochib bo‘lmadi. Ilovani yopib qayta oching.$suffix',
+      GoogleSignInExceptionCode.userMismatch =>
+        'Google akkaunt sessiyasi mos kelmadi. Google login oynasida akkauntni qayta tanlang.$suffix',
+      GoogleSignInExceptionCode.unknownError =>
+        'Google orqali kirib bo‘lmadi. Qayta urinib ko‘ring.$suffix',
+    };
   }
 
   Future<String> suggestedBootstrapName() async {
