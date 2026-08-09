@@ -244,6 +244,7 @@ class MessageSerializer(serializers.ModelSerializer):
     attachments = MessageAttachmentSerializer(many=True, read_only=True)
     reactions = serializers.SerializerMethodField()
     reply_to_id = serializers.IntegerField(read_only=True)
+    is_read = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -264,6 +265,7 @@ class MessageSerializer(serializers.ModelSerializer):
             'reply_to_id',
             'forwarded_from_id',
             'reactions',
+            'is_read',
         ]
 
     def get_sender_name(self, obj):
@@ -277,6 +279,27 @@ class MessageSerializer(serializers.ModelSerializer):
             {'user_id': reaction.user_id, 'emoji': reaction.emoji}
             for reaction in obj.reactions.all()
         ]
+
+    def get_is_read(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is None or not user.is_authenticated:
+            return False
+        if obj.sender_id != user.id:
+            return obj.receipts.filter(
+                user_id=user.id,
+                read_at__isnull=False,
+            ).exists()
+        recipient_ids = list(
+            obj.conversation.participants.exclude(id=obj.sender_id)
+            .values_list('id', flat=True)
+        )
+        if not recipient_ids:
+            return False
+        return obj.receipts.filter(
+            user_id__in=recipient_ids,
+            read_at__isnull=False,
+        ).values('user_id').distinct().count() >= len(recipient_ids)
 
 
 class MessageReactionSerializer(serializers.ModelSerializer):
@@ -332,6 +355,10 @@ class ConversationSerializer(serializers.ModelSerializer):
     participant_ids = serializers.SerializerMethodField()
     last_message_preview = serializers.SerializerMethodField()
     workspace_id = serializers.IntegerField(source='workspace.id', allow_null=True)
+    unread_count = serializers.SerializerMethodField()
+    latest_message_id = serializers.SerializerMethodField()
+    latest_sender_id = serializers.SerializerMethodField()
+    latest_sender_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
@@ -344,6 +371,10 @@ class ConversationSerializer(serializers.ModelSerializer):
             'last_message_preview',
             'updated_at',
             'created_at',
+            'unread_count',
+            'latest_message_id',
+            'latest_sender_id',
+            'latest_sender_name',
         ]
 
     def get_participant_ids(self, obj):
@@ -352,12 +383,42 @@ class ConversationSerializer(serializers.ModelSerializer):
         )
 
     def get_last_message_preview(self, obj):
-        message = getattr(obj, 'latest_message', None)
-        if message is None:
-            message = obj.messages.order_by('-created_at', '-id').first()
+        message = self._latest_message(obj)
         if message is None:
             return ''
         return message.body
+
+    def _latest_message(self, obj):
+        message = getattr(obj, 'latest_message', None)
+        if message is None:
+            message = obj.messages.select_related('sender').order_by(
+                '-created_at', '-id'
+            ).first()
+        return message
+
+    def get_unread_count(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is None or not user.is_authenticated:
+            return 0
+        return obj.messages.exclude(sender_id=user.id).exclude(
+            receipts__user_id=user.id,
+            receipts__read_at__isnull=False,
+        ).distinct().count()
+
+    def get_latest_message_id(self, obj):
+        message = self._latest_message(obj)
+        return message.id if message is not None else None
+
+    def get_latest_sender_id(self, obj):
+        message = self._latest_message(obj)
+        return message.sender_id if message is not None else None
+
+    def get_latest_sender_name(self, obj):
+        message = self._latest_message(obj)
+        if message is None:
+            return None
+        return message.sender.first_name or message.sender.username
 
 
 def get_or_create_private_conversation(user, other_user, workspace):

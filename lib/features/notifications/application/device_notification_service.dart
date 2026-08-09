@@ -22,12 +22,15 @@ class DeviceNotificationService {
       FlutterLocalNotificationsPlugin();
   StreamSubscription<ChatRealtimeEvent>? _realtimeSubscription;
   Timer? _taskTimer;
+  Timer? _conversationTimer;
   SharedPreferences? _preferences;
   int? _currentUserId;
   String? _scopeKey;
   bool _initialized = false;
   final Set<String> _shownKeys = <String>{};
   final Set<String> _seenTaskKeys = <String>{};
+  final Map<int, String> _seenConversationStates = <int, String>{};
+  Future<void>? _conversationPollInFlight;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -70,12 +73,17 @@ class DeviceNotificationService {
     _currentUserId = currentUserId;
     _scopeKey = '$_taskSeenPrefix$accountId.$workspaceId';
     _loadSeenTaskKeys();
+    _seenConversationStates.clear();
     _realtimeSubscription = realtimeEvents.listen(_handleRealtimeEvent);
     // This catches task notifications created while the app was suspended or
     // the websocket was reconnecting. The realtime path remains immediate.
     await _pollTaskNotifications(seedExisting: true);
+    await _pollConversations(seedExisting: true);
     _taskTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       unawaited(_pollTaskNotifications());
+    });
+    _conversationTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      unawaited(_pollConversations());
     });
   }
 
@@ -84,10 +92,14 @@ class DeviceNotificationService {
     _realtimeSubscription = null;
     _taskTimer?.cancel();
     _taskTimer = null;
+    _conversationTimer?.cancel();
+    _conversationTimer = null;
+    _conversationPollInFlight = null;
     _currentUserId = null;
     _scopeKey = null;
     _shownKeys.clear();
     _seenTaskKeys.clear();
+    _seenConversationStates.clear();
   }
 
   Future<void> dispose() async {
@@ -173,6 +185,52 @@ class DeviceNotificationService {
     } catch (_) {
       // Notifications are auxiliary; a missing optional task plugin or a
       // temporary network failure must never affect the chat session.
+    }
+  }
+
+  Future<void> _pollConversations({bool seedExisting = false}) {
+    final inFlight = _conversationPollInFlight;
+    if (inFlight != null) return inFlight;
+    late final Future<void> operation;
+    operation = _pollConversationsOnce(seedExisting: seedExisting);
+    _conversationPollInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_conversationPollInFlight, operation)) {
+        _conversationPollInFlight = null;
+      }
+    });
+  }
+
+  Future<void> _pollConversationsOnce({required bool seedExisting}) async {
+    try {
+      final response = await apiClient.get(
+        '/conversations',
+        queryParameters: const {'offset': '0', 'limit': '50'},
+      );
+      if (response is! List) return;
+      for (final item in response.whereType<Map>()) {
+        final conversation = Map<String, dynamic>.from(item);
+        final conversationId = _asInt(conversation['id']);
+        final latestMessageId = _asInt(conversation['latest_message_id']);
+        if (conversationId == null || latestMessageId == null) continue;
+        final senderId = _asInt(conversation['latest_sender_id']);
+        final unreadCount = _asInt(conversation['unread_count']) ?? 0;
+        final state = '$latestMessageId:$unreadCount';
+        final previous = _seenConversationStates[conversationId];
+        _seenConversationStates[conversationId] = state;
+        if (seedExisting || previous == null || previous == state) continue;
+        if (senderId == null || senderId == _currentUserId) continue;
+        final senderName =
+            conversation['latest_sender_name']?.toString() ?? 'Foydalanuvchi';
+        await _showOnce(
+          key: 'message:$latestMessageId',
+          title: '$senderName dan xabar keldi',
+          body: 'Yangi shifrlangan xabar',
+        );
+      }
+    } catch (_) {
+      // Realtime remains the fast path; polling is only a best-effort recovery
+      // path and must never block the authenticated app.
     }
   }
 

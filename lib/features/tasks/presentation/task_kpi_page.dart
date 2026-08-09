@@ -653,6 +653,8 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
             currentUserId: widget.currentUserId,
             isGroup: true,
             showSenderName: false,
+            mineBackgroundColor: context.appColors.primary,
+            peerBackgroundColor: context.appColors.surfaceMuted,
             attachmentBuilder:
                 (
                   context,
@@ -757,17 +759,51 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
   Widget _taskThreadAttachment(ChatThreadAttachment attachment) {
     final raw = attachment.raw as Map<String, dynamic>;
     final isImage = attachment.mimeType.startsWith('image/');
-    return ActionChip(
-      avatar: Icon(
-        isImage ? Icons.image_outlined : Icons.attach_file_rounded,
-        size: 17,
+    return InkWell(
+      onTap: () => _openAttachment(raw),
+      borderRadius: BorderRadius.circular(context.appRadii.sm),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 240),
+        padding: EdgeInsets.symmetric(
+          horizontal: context.appSpacing.sm,
+          vertical: context.appSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: isImage
+              ? Colors.transparent
+              : context.appColors.surface.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(context.appRadii.sm),
+          border: isImage ? null : Border.all(color: context.appColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isImage ? Icons.image_outlined : Icons.insert_drive_file_outlined,
+              size: 18,
+              color: context.appColors.primary,
+            ),
+            SizedBox(width: context.appSpacing.xs),
+            Flexible(
+              child: Text(
+                attachment.filename,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            if (attachment.sizeBytes > 0) ...[
+              SizedBox(width: context.appSpacing.xs),
+              Text(
+                _formatBytes(attachment.sizeBytes),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: context.appColors.textMuted,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
-      label: Text(
-        '${attachment.filename} (${_formatBytes(attachment.sizeBytes)})',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      onPressed: () => _openAttachment(raw),
     );
   }
 

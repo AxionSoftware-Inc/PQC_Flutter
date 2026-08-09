@@ -121,6 +121,10 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
     await apiClient.delete('/messages/$messageId');
   }
 
+  Future<void> markMessageRead(int messageId) async {
+    await apiClient.post('/messages/$messageId/read', const {});
+  }
+
   Future<ChatMessage> forwardMessage(int messageId, int conversationId) async {
     final response = await apiClient.post('/messages/$messageId', {
       'conversation_id': conversationId,
