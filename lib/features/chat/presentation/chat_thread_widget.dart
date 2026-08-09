@@ -138,126 +138,119 @@ class ChatThreadWidget extends StatelessWidget {
           constraints: BoxConstraints(
             maxWidth: MediaQuery.sizeOf(context).width * 0.78,
           ),
-          child: IntrinsicWidth(
-            child: GestureDetector(
-              onLongPress: onLongPressMessage == null
-                  ? null
-                  : () => onLongPressMessage!(message),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: isMine
-                    ? CrossAxisAlignment.end
-                    : CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: isImageOnly
-                        ? EdgeInsets.zero
-                        : EdgeInsets.symmetric(
-                            horizontal: spacing.sm + 2,
-                            vertical: spacing.xs + 3,
-                          ),
-                    decoration: BoxDecoration(
-                      color: isImageOnly
-                          ? Colors.transparent
-                          : isMine
-                          ? colors.chatMine
-                          : colors.chatPeer,
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(context.appRadii.md),
-                        topRight: Radius.circular(context.appRadii.md),
-                        bottomLeft: Radius.circular(
-                          isMine ? context.appRadii.md : context.appRadii.sm,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onLongPress: onLongPressMessage == null
+                    ? null
+                    : () => onLongPressMessage!(message),
+                child: Container(
+                  padding: isImageOnly
+                      ? EdgeInsets.zero
+                      : EdgeInsets.symmetric(
+                          horizontal: spacing.sm + 2,
+                          vertical: spacing.xs + 3,
                         ),
-                        bottomRight: Radius.circular(
-                          isMine ? context.appRadii.sm : context.appRadii.md,
-                        ),
+                  decoration: BoxDecoration(
+                    color: isImageOnly
+                        ? Colors.transparent
+                        : isMine
+                        ? colors.chatMine
+                        : colors.chatPeer,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(context.appRadii.md),
+                      topRight: Radius.circular(context.appRadii.md),
+                      bottomLeft: Radius.circular(
+                        isMine ? context.appRadii.md : context.appRadii.sm,
                       ),
-                      border: isImageOnly || isMine
-                          ? null
-                          : Border.all(
-                              color: colors.border.withValues(alpha: 0.62),
-                            ),
+                      bottomRight: Radius.circular(
+                        isMine ? context.appRadii.sm : context.appRadii.md,
+                      ),
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (isGroup && !isMine && !isImageOnly)
-                          Padding(
-                            padding: EdgeInsets.only(bottom: spacing.xs),
-                            child: Text(
-                              message.senderName,
-                              style: Theme.of(context).textTheme.labelMedium
-                                  ?.copyWith(
-                                    color: colors.textMuted,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                            ),
+                    border: isImageOnly || isMine
+                        ? null
+                        : Border.all(
+                            color: colors.border.withValues(alpha: 0.62),
                           ),
-                        if (message.replyLabel?.isNotEmpty == true)
-                          _replyPreview(context, message, isMine),
-                        if (message.attachments.isNotEmpty)
-                          Wrap(
-                            spacing: spacing.xs,
-                            runSpacing: spacing.xs,
-                            children: message.attachments.map((attachment) {
-                              final child = attachmentBuilder(
-                                context,
-                                attachment,
-                                message: message,
-                                showDeliveryOverlay: isImageOnly,
-                              );
-                              return onLongPressAttachment == null
-                                  ? child
-                                  : GestureDetector(
-                                      onLongPress: () =>
-                                          onLongPressAttachment!(attachment),
-                                      child: child,
-                                    );
-                            }).toList(),
-                          ),
-                        if (message.attachments.isNotEmpty &&
-                            message.body.trim().isNotEmpty)
-                          SizedBox(height: spacing.sm),
-                        if (body.trim().isNotEmpty)
-                          Text.rich(
-                            TextSpan(
-                              children: [
-                                TextSpan(text: body),
-                                if (hasInlineFooter)
-                                  WidgetSpan(
-                                    alignment: PlaceholderAlignment.baseline,
-                                    baseline: TextBaseline.alphabetic,
-                                    child: Padding(
-                                      padding: EdgeInsets.only(
-                                        left: spacing.sm,
-                                      ),
-                                      child: footerBuilder(context, message),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            style: Theme.of(context).textTheme.bodyMedium
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (isGroup && !isMine && !isImageOnly)
+                        Padding(
+                          padding: EdgeInsets.only(bottom: spacing.xs),
+                          child: Text(
+                            message.senderName,
+                            style: Theme.of(context).textTheme.labelMedium
                                 ?.copyWith(
-                                  color: isMine ? Colors.white : null,
-                                  height: 1.28,
+                                  color: colors.textMuted,
+                                  fontWeight: FontWeight.w700,
                                 ),
                           ),
-                        if (!isImageOnly && !hasInlineFooter) ...[
-                          SizedBox(height: spacing.xs),
-                          footerBuilder(context, message),
-                        ],
+                        ),
+                      if (message.replyLabel?.isNotEmpty == true)
+                        _replyPreview(context, message, isMine),
+                      if (message.attachments.isNotEmpty)
+                        Wrap(
+                          spacing: spacing.xs,
+                          runSpacing: spacing.xs,
+                          children: message.attachments.map((attachment) {
+                            final child = attachmentBuilder(
+                              context,
+                              attachment,
+                              message: message,
+                              showDeliveryOverlay: isImageOnly,
+                            );
+                            return onLongPressAttachment == null
+                                ? child
+                                : GestureDetector(
+                                    onLongPress: () =>
+                                        onLongPressAttachment!(attachment),
+                                    child: child,
+                                  );
+                          }).toList(),
+                        ),
+                      if (message.attachments.isNotEmpty &&
+                          message.body.trim().isNotEmpty)
+                        SizedBox(height: spacing.sm),
+                      if (body.trim().isNotEmpty)
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(text: body),
+                              if (hasInlineFooter)
+                                WidgetSpan(
+                                  alignment: PlaceholderAlignment.baseline,
+                                  baseline: TextBaseline.alphabetic,
+                                  child: Padding(
+                                    padding: EdgeInsets.only(left: spacing.sm),
+                                    child: footerBuilder(context, message),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: isMine ? Colors.white : null,
+                                height: 1.28,
+                              ),
+                        ),
+                      if (!isImageOnly && !hasInlineFooter) ...[
+                        SizedBox(height: spacing.xs),
+                        footerBuilder(context, message),
                       ],
-                    ),
+                    ],
                   ),
-                  if (message.canRetry && onRetry != null)
-                    TextButton(
-                      onPressed: () => onRetry!(message),
-                      child: const Text('Qayta urinish'),
-                    ),
-                ],
+                ),
               ),
-            ),
+              if (message.canRetry && onRetry != null)
+                TextButton(
+                  onPressed: () => onRetry!(message),
+                  child: const Text('Qayta urinish'),
+                ),
+            ],
           ),
         ),
       ),

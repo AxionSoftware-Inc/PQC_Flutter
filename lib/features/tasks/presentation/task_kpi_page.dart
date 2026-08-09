@@ -683,6 +683,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
 
   ChatThreadMessage _toTaskThreadMessage(Map<String, dynamic> activity) {
     var body = activity['body']?.toString() ?? '';
+    final authorId = _activityAuthorId(activity);
     final metadata = (activity['metadata'] as Map?)?.cast<String, dynamic>();
     var replyLabel =
         metadata?['reply_to_filename']?.toString() ??
@@ -708,13 +709,13 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
     final rawAttachments = (activity['attachments'] as List?) ?? const [];
     return ChatThreadMessage(
       id: (activity['id'] as num?)?.toInt() ?? 0,
-      senderId: (activity['author_id'] as num?)?.toInt() ?? 0,
+      senderId: authorId,
       senderName: activity['author_name']?.toString() ?? 'Tizim',
       body: body.startsWith('Fayl biriktirdi:') ? '' : body,
       createdAt:
           DateTime.tryParse(activity['created_at']?.toString() ?? '') ??
           DateTime.now(),
-      isMine: (activity['author_id'] as num?)?.toInt() == widget.currentUserId,
+      isMine: authorId == widget.currentUserId,
       isPinned: activity['is_pinned'] == true,
       replyLabel: replyLabel,
       replyKind: replyKind,
@@ -730,6 +731,26 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
       }).toList(),
       raw: activity,
     );
+  }
+
+  int _activityAuthorId(Map<String, dynamic> activity) {
+    for (final key in const [
+      'author_id',
+      'created_by_id',
+      'user_id',
+      'actor_id',
+    ]) {
+      final value = activity[key];
+      final parsed = value is num ? value.toInt() : int.tryParse('$value');
+      if (parsed != null && parsed > 0) return parsed;
+    }
+    final author = activity['author'];
+    if (author is Map) {
+      final value = author['id'];
+      final parsed = value is num ? value.toInt() : int.tryParse('$value');
+      if (parsed != null && parsed > 0) return parsed;
+    }
+    return 0;
   }
 
   Widget _taskThreadAttachment(ChatThreadAttachment attachment) {
