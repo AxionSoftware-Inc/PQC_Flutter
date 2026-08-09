@@ -19,11 +19,15 @@ class TaskAttachmentSerializer(serializers.ModelSerializer):
 
 class TaskActivitySerializer(serializers.ModelSerializer):
     author_name = serializers.SerializerMethodField()
+    author_id = serializers.SerializerMethodField()
     attachments = TaskAttachmentSerializer(many=True, read_only=True)
 
     class Meta:
         model = TaskActivity
-        fields = ['id', 'kind', 'body', 'metadata', 'author_name', 'attachments', 'created_at']
+        fields = ['id', 'kind', 'body', 'metadata', 'author_id', 'author_name', 'attachments', 'created_at']
+
+    def get_author_id(self, obj):
+        return obj.created_by_id
 
     def get_author_name(self, obj):
         if not obj.created_by_id:

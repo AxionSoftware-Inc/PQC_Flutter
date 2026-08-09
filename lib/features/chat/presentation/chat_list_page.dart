@@ -916,7 +916,10 @@ class _ChatListPageState extends State<ChatListPage> {
                     child: _buildContactsTab(contactsState),
                   ),
                   if (_taskKpiModuleEnabled)
-                    TaskKpiPage(apiClient: widget.apiClient),
+                    TaskKpiPage(
+                      apiClient: widget.apiClient,
+                      currentUserId: sessionUser.id,
+                    ),
                   RefreshIndicator(
                     onRefresh: _refresh,
                     child: _buildSettingsOverview(settingsState),
