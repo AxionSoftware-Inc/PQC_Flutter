@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../app/design_system/app_design_system.dart';
@@ -26,27 +28,35 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
   List<Map<String, dynamic>> _members = const [];
   int _registeredUserCount = 0;
   String _memberStatusFilter = 'active';
+  Timer? _registeredUsersTimer;
 
   @override
   void initState() {
     super.initState();
     _memberSearchController.addListener(() => setState(() {}));
     _load();
+    _registeredUsersTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (mounted && _isAdmin) unawaited(_refreshRegisteredUserCount());
+    });
   }
 
   @override
   void dispose() {
+    _registeredUsersTimer?.cancel();
     _memberSearchController.dispose();
     super.dispose();
   }
 
   List<Map<String, dynamic>> get _filteredMembers {
     final query = _memberSearchController.text.trim().toLowerCase();
-    return _members.where((member) {
+    final filtered = _members.where((member) {
       final isActive = member['is_active'] == true;
       if (_memberStatusFilter == 'active' && !isActive) return false;
       if (_memberStatusFilter == 'inactive' && isActive) return false;
       final role = member['role'] as Map<String, dynamic>?;
+      if (_memberStatusFilter == 'unassigned' && role?['id'] != null) {
+        return false;
+      }
       if (query.isEmpty) return true;
       final haystack = [
         member['display_name'],
@@ -55,6 +65,17 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
       ].whereType<String>().join(' ').toLowerCase();
       return haystack.contains(query);
     }).toList();
+    filtered.sort((a, b) {
+      final aRole = a['role'] as Map<String, dynamic>?;
+      final bRole = b['role'] as Map<String, dynamic>?;
+      final aUnassigned = aRole?['id'] == null;
+      final bUnassigned = bRole?['id'] == null;
+      if (aUnassigned != bUnassigned) return aUnassigned ? -1 : 1;
+      final aName = (a['display_name'] as String? ?? '').toLowerCase();
+      final bName = (b['display_name'] as String? ?? '').toLowerCase();
+      return aName.compareTo(bName);
+    });
+    return filtered;
   }
 
   Future<void> _load() async {
@@ -90,7 +111,13 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
     try {
       final users = await widget.apiClient.get('/rbac/registered-users');
       if (mounted && users is List) {
-        setState(() => _registeredUserCount = users.length);
+        final ids = users
+            .whereType<Map>()
+            .map((user) => user['user_id'])
+            .whereType<num>()
+            .map((id) => id.toInt())
+            .toSet();
+        setState(() => _registeredUserCount = ids.length);
       }
     } catch (_) {
       if (mounted) setState(() => _registeredUserCount = 0);
@@ -164,15 +191,16 @@ class _AdminPanelPageState extends State<AdminPanelPage> {
                     value: 'inactive',
                     child: Text('Ishdan olinganlar'),
                   ),
+                  PopupMenuItem(
+                    value: 'unassigned',
+                    child: Text('Lavozimsizlar'),
+                  ),
                   PopupMenuItem(value: 'all', child: Text('Barchasi')),
                 ],
-                child: IconButton.filledTonal(
-                  onPressed: () {},
-                  icon: Icon(
-                    _memberStatusFilter == 'active'
-                        ? Icons.filter_list_rounded
-                        : Icons.filter_alt_rounded,
-                  ),
+                icon: Icon(
+                  _memberStatusFilter == 'active'
+                      ? Icons.filter_list_rounded
+                      : Icons.filter_alt_rounded,
                 ),
               ),
               IconButton.filledTonal(
