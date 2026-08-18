@@ -11,6 +11,7 @@ UI, HTTP, login, database, file-system or platform-storage dependency.
 - AES-256-GCM content encryption
 - frozen PQCv2 private-message reader/writer
 - frozen PQCv2 group-message and group-epoch reader/writer
+- isolated V2.5 candidate group-epoch codec with a new envelope prefix
 - byte-oriented PQCv2 attachment encryption
 - historical keyset decoding
 - explicit protocol registry and production write gate
@@ -27,16 +28,21 @@ The SDK never chooses a platform persistence mechanism. A host application
 must implement `PqcKeyRepository` using Keychain/Keystore, an encrypted
 database, IndexedDB, an HSM, or another appropriate facility.
 
-## Install from a private Git tag
+## Install from the monorepo
+
+The application in this repository consumes the frozen SDK through a local
+path dependency:
 
 ```yaml
 dependencies:
   pqc_engine_sdk:
-    git:
-      url: git@github.com:AxionSoftware-Inc/PQC_Flutter.git
-      ref: pqc-engine-sdk-v0.1.0-dev.1
-      path: packages/pqc_engine_sdk
+    path: ../pqc_engine_sdk
 ```
+
+External consumers should use an immutable package tag or a private Dart
+package registry. Create the dedicated SDK release tag only after the package
+has passed its cross-language vectors and compatibility gate; do not point
+consumers at a moving branch.
 
 For paid distribution, publish the same tagged package to a private Dart
 package registry and issue registry credentials to licensed customers.
@@ -86,6 +92,11 @@ final writer = manager.requireWriter(
 The host should leave `writerEnabled` false until its recovery, real-device
 and server-capability tests pass. A recognized payload is never retried with a
 different protocol after authentication fails.
+
+`PqcV2Engine.groupEpochV25` is intentionally not the default writer. The V2.5
+candidate uses `group-wrap:pqc:v2.5` and must be enabled only after the server
+advertises that envelope prefix. Existing `group-wrap:pqc:v2` history remains
+readable through the frozen codec.
 
 ## Host responsibilities
 

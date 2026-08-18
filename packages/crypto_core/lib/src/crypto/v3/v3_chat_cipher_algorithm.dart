@@ -58,11 +58,11 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
       final user = context.usersById[userId];
       if (user == null) continue;
       for (final device in user.activeDevices) {
-        if (!device.hasUsableMlKemKey || device.keysetId.isEmpty) continue;
+        if (!device.hasUsableMlKemKey || device.v3KeysetId.isEmpty) continue;
         recipients.add(
           V3DeviceRecipient(
             deviceId: device.deviceId,
-            keysetId: device.keysetId,
+            keysetId: device.v3KeysetId,
             publicKey: device.pqcPublicKey,
           ),
         );
@@ -72,7 +72,7 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
       recipients.add(
         V3DeviceRecipient(
           deviceId: identity.id,
-          keysetId: current.keysetId,
+          keysetId: current.v3KeysetId,
           publicKey: current.pqcPublicKey,
         ),
       );
@@ -82,10 +82,11 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
       conversationType: context.conversation.type,
       messageId: context.messageId,
       senderDeviceId: identity.id,
-      senderKeysetId: current.keysetId,
+      senderKeysetId: current.v3KeysetId,
       signingPublicKey: current.pqcSigningPublicKey,
       localDeviceId: identity.id,
-      localKeysetId: current.keysetId,
+      localKeysetId: current.v3KeysetId,
+      isGroup: context.conversation.isGroup,
       recipients: recipients,
     );
     return context.conversation.isGroup
@@ -126,8 +127,9 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
               senderKeysetId: '',
               signingPublicKey: '',
               localDeviceId: keyset.deviceId,
-              localKeysetId: keyset.keysetId,
+              localKeysetId: keyset.v3KeysetId,
               localSecretKey: keyset.pqcSecretKey,
+              isGroup: context.conversation.isGroup,
             ),
             payload: payload,
           );
@@ -158,7 +160,7 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
     return sender.devices.any(
       (device) =>
           device.deviceId == envelope.senderDeviceId &&
-          device.keysetId == envelope.senderKeysetId &&
+          device.v3KeysetId == envelope.senderKeysetId &&
           device.pqcSigningAlgorithm == 'ml-dsa-65' &&
           device.pqcSigningPublicKey == envelope.signingPublicKey,
     );

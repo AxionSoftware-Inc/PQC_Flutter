@@ -1,9 +1,12 @@
 import 'dart:convert';
 
+import 'package:pqc_engine_sdk/pqc_engine_sdk.dart';
+
 class AppUserDevice {
   const AppUserDevice({
     required this.deviceId,
     this.keysetId = '',
+    this.keysetBindingId = '',
     required this.deviceName,
     required this.platform,
     required this.identityPublicKey,
@@ -23,9 +26,10 @@ class AppUserDevice {
 
   final String deviceId;
 
-  /// Stable keyset identity used by the V3 decoder/writer. It is optional for
-  /// legacy V2 device records, which intentionally decode without it.
+  /// Frozen V2 keyset identity. It is optional for legacy device records;
+  /// V3 uses [v3KeysetId] so both PQC public keys are bound.
   final String keysetId;
+  final String keysetBindingId;
   final String deviceName;
   final String platform;
   final String identityPublicKey;
@@ -41,6 +45,25 @@ class AppUserDevice {
   final DateTime? updatedAt;
   final DateTime? firstSeenAt;
   final DateTime? lastSeenAt;
+
+  /// V2's [keysetId] is frozen and intentionally binds only the KEM key.
+  /// V3 uses a binding that covers both the KEM and signing public keys.
+  String get v3KeysetId {
+    if (deviceId.isEmpty ||
+        pqcPublicKey.isEmpty ||
+        pqcSigningPublicKey.isEmpty) {
+      return keysetId;
+    }
+    final computed = computeKeysetBindingId(
+      deviceId,
+      pqcPublicKey,
+      pqcSigningPublicKey,
+    );
+    if (keysetBindingId.isNotEmpty && keysetBindingId != computed) {
+      return '';
+    }
+    return computed;
+  }
 
   bool get isActive => status == 'active';
 
@@ -110,6 +133,7 @@ class AppUserDevice {
     return AppUserDevice(
       deviceId: json['device_id'] as String? ?? '',
       keysetId: json['keyset_id'] as String? ?? '',
+      keysetBindingId: json['keyset_binding_id'] as String? ?? '',
       deviceName: json['device_name'] as String? ?? '',
       platform: json['platform'] as String? ?? '',
       identityPublicKey: json['identity_public_key'] as String? ?? '',
@@ -131,6 +155,7 @@ class AppUserDevice {
   AppUserDevice copyWith({
     String? deviceId,
     String? keysetId,
+    String? keysetBindingId,
     String? deviceName,
     String? platform,
     String? identityPublicKey,
@@ -150,6 +175,7 @@ class AppUserDevice {
     return AppUserDevice(
       deviceId: deviceId ?? this.deviceId,
       keysetId: keysetId ?? this.keysetId,
+      keysetBindingId: keysetBindingId ?? this.keysetBindingId,
       deviceName: deviceName ?? this.deviceName,
       platform: platform ?? this.platform,
       identityPublicKey: identityPublicKey ?? this.identityPublicKey,

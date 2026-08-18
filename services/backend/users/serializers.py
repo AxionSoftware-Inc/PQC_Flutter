@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
@@ -14,6 +15,30 @@ ML_KEM_Q = 3329
 
 def device_keyset_id(device_id, pqc_public_key):
     digest = hashlib.sha256(f'{device_id}|{pqc_public_key}'.encode()).digest()
+    return base64.urlsafe_b64encode(digest).decode().rstrip('=')
+
+
+def device_keyset_binding_id(device_id, pqc_public_key, pqc_signing_public_key):
+    """Bind the KEM and signing keys for post-V2 protocol releases.
+
+    V2's ``device_keyset_id`` is frozen and must remain KEM-only.  New wire
+    formats use this second identifier so replacing a signing key cannot
+    leave the old KEM-based identity apparently unchanged.
+    """
+    canonical = (
+        '{"device_id":'
+        + json.dumps(device_id, ensure_ascii=False, separators=(',', ':'))
+        + ',"kem_public_key":'
+        + json.dumps(pqc_public_key, ensure_ascii=False, separators=(',', ':'))
+        + ',"signing_public_key":'
+        + json.dumps(
+            pqc_signing_public_key,
+            ensure_ascii=False,
+            separators=(',', ':'),
+        )
+        + '}'
+    ).encode('utf-8')
+    digest = hashlib.sha256(canonical).digest()
     return base64.urlsafe_b64encode(digest).decode().rstrip('=')
 
 
@@ -165,6 +190,8 @@ class LoginSerializer(serializers.Serializer):
 
 
 class DeviceSerializer(serializers.Serializer):
+    keyset_id = serializers.SerializerMethodField()
+    keyset_binding_id = serializers.SerializerMethodField()
     device_id = serializers.CharField()
     device_name = serializers.CharField()
     platform = serializers.CharField()
@@ -181,6 +208,25 @@ class DeviceSerializer(serializers.Serializer):
     updated_at = serializers.DateTimeField()
     first_seen_at = serializers.DateTimeField()
     last_seen_at = serializers.DateTimeField()
+
+    @staticmethod
+    def _value(device, field):
+        if isinstance(device, dict):
+            return device.get(field, '')
+        return getattr(device, field, '')
+
+    def get_keyset_id(self, device):
+        return device_keyset_id(
+            self._value(device, 'device_id'),
+            self._value(device, 'pqc_public_key'),
+        )
+
+    def get_keyset_binding_id(self, device):
+        return device_keyset_binding_id(
+            self._value(device, 'device_id'),
+            self._value(device, 'pqc_public_key'),
+            self._value(device, 'pqc_signing_public_key'),
+        )
 
 
 class DeviceSyncSerializer(serializers.Serializer):

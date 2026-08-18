@@ -92,6 +92,7 @@ V3CodecContext _context(Map<String, dynamic> value) {
     signingPublicKey: value['signing_public_key'] as String,
     localDeviceId: value['local_device_id'] as String,
     localKeysetId: value['local_keyset_id'] as String,
+    isGroup: value['is_group'] as bool?,
     recipients: (value['recipients'] as List<dynamic>? ?? const [])
         .whereType<Map>()
         .map(

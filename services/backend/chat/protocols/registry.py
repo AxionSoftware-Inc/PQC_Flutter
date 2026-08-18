@@ -12,12 +12,16 @@ def protocol_prefixes():
     return {
         'private_message_prefixes': [*v2.PRIVATE_PREFIXES, *v3.PRIVATE_PREFIXES],
         'group_message_prefixes': [*v2.GROUP_PREFIXES, *v3.GROUP_PREFIXES],
+        'group_envelope_prefixes': [v2.GROUP_ENVELOPE_PREFIX],
     }
 
 
 def get_protocol_capabilities():
     mode = os.getenv('CRYPTO_PROTOCOL_MODE', 'v2').strip().lower()
     v3_enabled = mode in {'v3', 'v3_test', 'v3-test'}
+    # Group-key envelope upload/unwrap is still a V2 host workflow. Do not
+    # advertise a V3 envelope merely because V3 message codecs are enabled.
+    readable_group_envelopes = [v2.GROUP_ENVELOPE_PREFIX]
     return {
         'protocol_version': 3 if v3_enabled else 2,
         'readable_private_message_prefixes': [*v2.PRIVATE_PREFIXES, *v3.PRIVATE_PREFIXES],
@@ -26,6 +30,8 @@ def get_protocol_capabilities():
         if v3_enabled else list(v2.PRIVATE_PREFIXES),
         'group_message_prefixes': [*v2.GROUP_PREFIXES, *v3.GROUP_PREFIXES]
         if v3_enabled else list(v2.GROUP_PREFIXES),
+        'readable_group_envelope_prefixes': readable_group_envelopes,
+        'group_envelope_prefixes': list(readable_group_envelopes),
         'attachment_cipher_versions': [*v2.ATTACHMENT_CIPHER_VERSIONS, *v3.ATTACHMENT_CIPHER_VERSIONS]
         if v3_enabled else list(v2.ATTACHMENT_CIPHER_VERSIONS),
         'backup_schema_revision': v3.BACKUP_SCHEMA_REVISION if v3_enabled else v2.BACKUP_SCHEMA_REVISION,

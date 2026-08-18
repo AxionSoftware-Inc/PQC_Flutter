@@ -1,4 +1,5 @@
 import 'package:crypto_core/src/models/conversation.dart';
+import 'package:pqc_engine_sdk/pqc_engine_sdk.dart';
 
 enum PayloadKind { privateMessage, groupMessage, groupEnvelope }
 
@@ -54,6 +55,17 @@ class KeysetSnapshot {
   final DateTime createdAt;
   final DateTime? restoredAt;
   final String? integrityHash;
+
+  /// V2 storage and wire history continue to use [keysetId]. V3 payloads use
+  /// this derived identity so the signing key is part of the keyset binding.
+  String get v3KeysetId {
+    if (deviceId.isEmpty ||
+        pqcPublicKey.isEmpty ||
+        pqcSigningPublicKey.isEmpty) {
+      return keysetId;
+    }
+    return computeKeysetBindingId(deviceId, pqcPublicKey, pqcSigningPublicKey);
+  }
 
   bool get isHistoricalReadEnabled =>
       status == 'active' || status == 'historical' || status == 'restored';

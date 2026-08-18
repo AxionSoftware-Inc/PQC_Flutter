@@ -30,6 +30,7 @@ class V3CodecContext {
     this.localSecretKey,
     this.recipients = const [],
     this.groupEpochKey,
+    this.isGroup,
   });
 
   final int conversationId;
@@ -43,6 +44,7 @@ class V3CodecContext {
   final String? localSecretKey;
   final List<V3DeviceRecipient> recipients;
   final List<int>? groupEpochKey;
+  final bool? isGroup;
 }
 
 class V3MessageCodec {
@@ -69,6 +71,7 @@ class V3MessageCodec {
     if (context.recipients.isEmpty) {
       throw StateError('V3 message needs at least one recipient device.');
     }
+    _validateRecipients(context.recipients);
     final contentKey = isGroup && context.groupEpochKey != null
         ? List<int>.of(context.groupEpochKey!)
         : List<int>.generate(32, (_) => _random.nextInt(256));
@@ -154,12 +157,19 @@ class V3MessageCodec {
       localSecretKey: context.localSecretKey,
       recipients: context.recipients,
       groupEpochKey: context.groupEpochKey,
+      isGroup: context.isGroup,
     );
     if (envelope.conversationId != effectiveContext.conversationId ||
         envelope.conversationType != effectiveContext.conversationType ||
         envelope.messageId != effectiveContext.messageId ||
+        envelope.keysetId != envelope.senderKeysetId ||
+        envelope.senderDeviceId.isEmpty ||
+        envelope.senderKeysetId == null ||
+        envelope.senderKeysetId!.isEmpty ||
         envelope.signingPublicKey == null ||
-        envelope.signature == null) {
+        envelope.signature == null ||
+        (effectiveContext.isGroup != null &&
+            envelope.isGroup != effectiveContext.isGroup)) {
       throw const FormatException('V3 envelope context mismatch.');
     }
     final verified = crypto.verify(
@@ -203,6 +213,33 @@ class V3MessageCodec {
   }
 
   List<int> _nonce() => List<int>.generate(12, (_) => _random.nextInt(256));
+
+  void _validateRecipients(List<V3DeviceRecipient> recipients) {
+    final seen = <String, V3DeviceRecipient>{};
+    for (final recipient in recipients) {
+      if (recipient.deviceId.trim().isEmpty ||
+          recipient.keysetId.trim().isEmpty ||
+          recipient.publicKey.trim().isEmpty) {
+        throw ArgumentError(
+          'V3 recipient identity and public key are required.',
+        );
+      }
+      final previous = seen[recipient.deviceId];
+      if (previous != null &&
+          (previous.keysetId != recipient.keysetId ||
+              previous.publicKey != recipient.publicKey)) {
+        throw StateError(
+          'Conflicting V3 keysets for device ${recipient.deviceId}.',
+        );
+      }
+      if (previous != null) {
+        throw StateError(
+          'Duplicate V3 recipient device ${recipient.deviceId}.',
+        );
+      }
+      seen[recipient.deviceId] = recipient;
+    }
+  }
 }
 
 class PqcV3AssociatedData {

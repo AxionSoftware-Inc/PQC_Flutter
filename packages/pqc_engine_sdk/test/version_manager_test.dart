@@ -3,13 +3,15 @@ import 'package:test/test.dart';
 
 void main() {
   final engine = PqcV2Engine();
-  const capabilities = PqcRemoteCapabilities(
+  final capabilities = PqcRemoteCapabilities(
     privateReadPrefixes: {PqcV2Wire.privatePrefix},
     groupReadPrefixes: {PqcV2Wire.groupPrefix},
     privateWritePrefixes: {PqcV2Wire.privatePrefix},
     groupWritePrefixes: {PqcV2Wire.groupPrefix},
     attachmentCipherVersions: {PqcV2Wire.attachmentCipherVersion},
     minimumDecoderVersion: 2,
+    groupEnvelopeReadPrefixes: {PqcV2Wire.groupWrapPrefix},
+    groupEnvelopeWritePrefixes: {PqcV2Wire.groupWrapPrefix},
   );
 
   test('writer is closed unless explicitly enabled', () {
@@ -40,9 +42,16 @@ void main() {
       same(engine),
     );
     expect(
+      manager.requireWriter(
+        kind: PqcConversationKind.groupEnvelope,
+        remote: capabilities,
+      ),
+      same(engine),
+    );
+    expect(
       () => manager.requireWriter(
         kind: PqcConversationKind.group,
-        remote: const PqcRemoteCapabilities(
+        remote: PqcRemoteCapabilities(
           privateReadPrefixes: {PqcV2Wire.privatePrefix},
           groupReadPrefixes: {},
           privateWritePrefixes: {PqcV2Wire.privatePrefix},
@@ -55,6 +64,39 @@ void main() {
     );
   });
 
+  test('v2.5 envelope writer requires explicit server capability', () {
+    final v25 = PqcV2Engine(enableV25GroupEnvelopeWriter: true);
+    final manager = PqcEngineManager(
+      decoders: [v25],
+      activeWriterId: v25.engineId,
+      writerEnabled: true,
+    );
+    expect(
+      () => manager.requireWriter(
+        kind: PqcConversationKind.groupEnvelope,
+        remote: capabilities,
+      ),
+      throwsA(isA<PqcCompatibilityException>()),
+    );
+    final v25Capabilities = PqcRemoteCapabilities(
+      privateReadPrefixes: {PqcV2Wire.privatePrefix},
+      groupReadPrefixes: {PqcV2Wire.groupPrefix},
+      privateWritePrefixes: {PqcV2Wire.privatePrefix},
+      groupWritePrefixes: {PqcV2Wire.groupPrefix},
+      attachmentCipherVersions: {PqcV2Wire.attachmentCipherVersion},
+      minimumDecoderVersion: 2,
+      groupEnvelopeReadPrefixes: {PqcV2Wire.groupWrapV25Prefix},
+      groupEnvelopeWritePrefixes: {PqcV2Wire.groupWrapV25Prefix},
+    );
+    expect(
+      manager.requireWriter(
+        kind: PqcConversationKind.groupEnvelope,
+        remote: v25Capabilities,
+      ),
+      same(v25),
+    );
+  });
+
   test('rejects read/write asymmetry and decoder downgrade', () {
     final manager = PqcEngineManager(
       decoders: [engine],
@@ -64,7 +106,7 @@ void main() {
     expect(
       () => manager.requireWriter(
         kind: PqcConversationKind.private,
-        remote: const PqcRemoteCapabilities(
+        remote: PqcRemoteCapabilities(
           privateReadPrefixes: {},
           groupReadPrefixes: {PqcV2Wire.groupPrefix},
           privateWritePrefixes: {PqcV2Wire.privatePrefix},
@@ -78,7 +120,7 @@ void main() {
     expect(
       () => manager.requireWriter(
         kind: PqcConversationKind.private,
-        remote: const PqcRemoteCapabilities(
+        remote: PqcRemoteCapabilities(
           privateReadPrefixes: {PqcV2Wire.privatePrefix},
           groupReadPrefixes: {PqcV2Wire.groupPrefix},
           privateWritePrefixes: {PqcV2Wire.privatePrefix},
@@ -101,6 +143,13 @@ void main() {
       same(engine),
     );
     expect(
+      manager.resolveDecoder(
+        kind: PqcConversationKind.groupEnvelope,
+        payload: '${PqcV2Wire.groupWrapV25Prefix}:payload',
+      ),
+      same(engine),
+    );
+    expect(
       () => manager.resolveDecoder(
         kind: PqcConversationKind.private,
         payload: 'pqc:v99:payload',
@@ -114,5 +163,34 @@ void main() {
       () => PqcEngineManager(decoders: [engine, PqcV2Engine()]),
       throwsArgumentError,
     );
+  });
+
+  test('normalizes backend capability JSON and protects its sets', () {
+    final parsed = PqcRemoteCapabilities.fromJson({
+      'readable_private_message_prefixes': ['pqc:v2:'],
+      'readable_group_message_prefixes': ['group:v2:'],
+      'private_message_prefixes': ['pqc:v2:'],
+      'group_message_prefixes': ['group:v2:'],
+      'readable_group_envelope_prefixes': ['group-wrap:pqc:v2:'],
+      'group_envelope_prefixes': ['group-wrap:pqc:v2:'],
+      'attachment_cipher_versions': ['attachment:v2'],
+      'minimum_decoder_version': '2.0.0',
+    });
+    expect(parsed.minimumDecoderVersion, 2);
+    expect(parsed.privateReadPrefixes, contains('pqc:v2'));
+    expect(parsed.groupEnvelopeReadPrefixes, contains('group-wrap:pqc:v2'));
+    expect(
+      () => parsed.privateReadPrefixes.add('pqc:v3:'),
+      throwsUnsupportedError,
+    );
+  });
+
+  test('accepts a single-use decoder iterable', () {
+    Iterable<PqcEngine> oneShot() sync* {
+      yield engine;
+    }
+
+    final manager = PqcEngineManager(decoders: oneShot());
+    expect(manager.decoders, hasLength(1));
   });
 }

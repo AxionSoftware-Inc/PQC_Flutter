@@ -49,6 +49,27 @@ void main() {
       expect((senderResult as PqcDecoded).plaintext, 'maxfiy salom');
     });
 
+    test(
+      'engine interface exposes common private encode/decode operations',
+      () async {
+        final payload = await engine.encodePrivate(
+          conversation: conversation,
+          plaintext: 'interface round trip',
+          sender: alice,
+          recipientDevices: [bob.publicKey],
+        );
+        final result = await engine.decodePrivate(
+          conversation: conversation,
+          payload: payload,
+          localKeysets: [bob],
+          trustedSigningKeysByDevice: _trust(alice),
+        );
+
+        expect(result, isA<PqcDecoded>());
+        expect((result as PqcDecoded).plaintext, 'interface round trip');
+      },
+    );
+
     test('keeps historical keysets readable after rotation', () async {
       final payload = await engine.private.encrypt(
         conversation: conversation,
@@ -179,14 +200,84 @@ void main() {
         conversation: conversation,
         plaintext: 'guruh xabari',
         epoch: epoch,
+        sender: alice,
       );
       final result = await engine.group.decrypt(
         conversation: conversation,
         payload: payload,
         epochsById: {recovered.epochId: recovered},
+        trustedSigningKeysByDevice: _trust(alice),
+        requireAuthenticatedSender: true,
       );
       expect((result as PqcDecoded).plaintext, 'guruh xabari');
     });
+
+    test('v2.5 epoch envelope binds every routing field', () async {
+      final wrapped = await engine.groupEpochV25.wrapEpoch(
+        conversation: conversation,
+        epoch: epoch,
+        sender: alice,
+        recipient: bob.publicKey,
+      );
+      final recovered = await engine.groupEpochV25.unwrapEpoch(
+        conversation: conversation,
+        wrappedEpoch: wrapped,
+        recipient: bob,
+        trustedSigningKeysByDevice: _trust(alice),
+        trustedKeysetBindingsByDevice: {
+          alice.deviceId: {alice.bindingId},
+        },
+      );
+      expect(recovered?.epochId, epoch.epochId);
+      expect(recovered?.secretKeyBytes, epoch.secretKeyBytes);
+
+      final document = _decodeUrlDocument(
+        wrapped.substring(PqcV2Wire.groupWrapV25Prefix.length + 1),
+      );
+      document['epoch_id'] = 'replayed-under-another-epoch';
+      final tampered =
+          '${PqcV2Wire.groupWrapV25Prefix}:${_encodeUrlDocument(document)}';
+      expect(
+        await engine.groupEpochV25.unwrapEpoch(
+          conversation: conversation,
+          wrappedEpoch: tampered,
+          recipient: bob,
+          trustedSigningKeysByDevice: _trust(alice),
+          trustedKeysetBindingsByDevice: {
+            alice.deviceId: {alice.bindingId},
+          },
+        ),
+        isNull,
+      );
+    });
+
+    test(
+      'keeps legacy group payloads readable but can require sender auth',
+      () async {
+        final payload = await engine.group.encrypt(
+          conversation: conversation,
+          plaintext: 'legacy group message',
+          epoch: epoch,
+        );
+        final result = await engine.group.decrypt(
+          conversation: conversation,
+          payload: payload,
+          epochsById: {epoch.epochId: epoch},
+        );
+        expect((result as PqcDecoded).plaintext, 'legacy group message');
+
+        final rejected = await engine.group.decrypt(
+          conversation: conversation,
+          payload: payload,
+          epochsById: {epoch.epochId: epoch},
+          requireAuthenticatedSender: true,
+        );
+        expect(
+          (rejected as PqcDecodeError).failure,
+          PqcDecodeFailure.untrustedSender,
+        );
+      },
+    );
 
     test('rejects missing epoch and modified ciphertext', () async {
       final payload = await engine.group.encrypt(

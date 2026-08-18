@@ -51,6 +51,7 @@ migrate_working_dir/
 
 # Runtime attachment data belongs to the configured media volume/server.
 /shared/media/
+/services/shared/media/
 
 # Symbolication related
 app.*.symbols

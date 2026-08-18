@@ -39,6 +39,14 @@ class CryptoProtocolContractTests(SimpleTestCase):
         self.assertEqual(response.data['group_message_prefixes'], ['group:v2:'])
         self.assertEqual(response.data['protocol_version'], 2)
         self.assertEqual(response.data['attachment_cipher_versions'], ['attachment:v2'])
+        self.assertEqual(
+            response.data['readable_group_envelope_prefixes'],
+            ['group-wrap:pqc:v2:'],
+        )
+        self.assertEqual(
+            response.data['group_envelope_prefixes'],
+            ['group-wrap:pqc:v2:'],
+        )
         self.assertEqual(response.data['backup_schema_revision'], 2)
 
     def test_v3_test_mode_advertises_dual_read_and_v3_write(self):

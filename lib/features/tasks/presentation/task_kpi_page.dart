@@ -567,7 +567,8 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
             child: FilledButton.icon(
               onPressed: () async {
                 await widget.onReview(true);
-                if (context.mounted) Navigator.pop(context);
+                if (!mounted) return;
+                Navigator.pop(context);
               },
               icon: const Icon(Icons.check_rounded),
               label: const Text('Tugatildi deb qabul qilish'),
@@ -579,7 +580,8 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
             child: OutlinedButton.icon(
               onPressed: () async {
                 await widget.onReview(false);
-                if (context.mounted) Navigator.pop(context);
+                if (!mounted) return;
+                Navigator.pop(context);
               },
               icon: const Icon(Icons.replay_rounded),
               label: const Text('Qayta ishlashga qaytarish'),
@@ -591,7 +593,8 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
             child: FilledButton.icon(
               onPressed: () async {
                 await widget.onAdvance();
-                if (context.mounted) Navigator.pop(context);
+                if (!mounted) return;
+                Navigator.pop(context);
               },
               icon: const Icon(Icons.arrow_forward_rounded),
               label: Text(actionLabel),

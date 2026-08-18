@@ -1,9 +1,5 @@
+import 'package:crypto_core/crypto_core.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pqc_chat_app/features/crypto/v3/v3_engine_manager.dart';
-import 'package:pqc_chat_app/features/crypto/v3/v3_engine_module.dart';
-import 'package:pqc_chat_app/features/crypto/v3/v3_envelope.dart';
-import 'package:pqc_chat_app/features/crypto/v3/pqc_v3_crypto_adapter.dart';
-import 'package:pqc_chat_app/features/crypto/v3/v3_capabilities.dart';
 
 class _Encoder implements V3Encoder {
   @override
@@ -91,6 +87,44 @@ void main() {
     );
     expect(first, second);
     expect(first, isNot(changed));
+  });
+
+  test('v3 keyset binding covers both public keys without changing V2 id', () {
+    const device = AppUserDevice(
+      deviceId: 'device-1',
+      keysetId: 'legacy-v2-id',
+      deviceName: 'test',
+      platform: 'test',
+      identityPublicKey: '',
+      keyAlgorithm: '',
+      pqcPublicKey: 'kem-public-key',
+      pqcSigningPublicKey: 'signing-public-key',
+    );
+    const sameKeys = AppUserDevice(
+      deviceId: 'device-1',
+      keysetId: 'different-legacy-id',
+      deviceName: 'test',
+      platform: 'test',
+      identityPublicKey: '',
+      keyAlgorithm: '',
+      pqcPublicKey: 'kem-public-key',
+      pqcSigningPublicKey: 'signing-public-key',
+    );
+    const changedSigningKey = AppUserDevice(
+      deviceId: 'device-1',
+      keysetId: 'legacy-v2-id',
+      deviceName: 'test',
+      platform: 'test',
+      identityPublicKey: '',
+      keyAlgorithm: '',
+      pqcPublicKey: 'kem-public-key',
+      pqcSigningPublicKey: 'different-signing-key',
+    );
+
+    expect(device.keysetId, 'legacy-v2-id');
+    expect(device.v3KeysetId, same(sameKeys.v3KeysetId));
+    expect(device.v3KeysetId, isNot(device.keysetId));
+    expect(device.v3KeysetId, isNot(changedSigningKey.v3KeysetId));
   });
 
   test('v3 negotiation rejects downgrade and missing group support', () {

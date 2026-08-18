@@ -1,7 +1,7 @@
 import 'models.dart';
 import 'v2_engine.dart';
 
-enum PqcConversationKind { private, group }
+enum PqcConversationKind { private, group, groupEnvelope }
 
 class PqcCompatibilityException implements Exception {
   const PqcCompatibilityException(this.message);
@@ -21,13 +21,10 @@ class PqcEngineManager {
     required Iterable<PqcEngine> decoders,
     String? activeWriterId,
     this.writerEnabled = false,
-  }) : _decoders = {for (final engine in decoders) engine.engineId: engine},
+  }) : _decoders = _registerDecoders(decoders),
        _activeWriterId = activeWriterId {
     if (_decoders.isEmpty) {
       throw ArgumentError('At least one decoder must be registered.');
-    }
-    if (_decoders.length != decoders.length) {
-      throw ArgumentError('Engine ids must be unique.');
     }
     if (activeWriterId != null && !_decoders.containsKey(activeWriterId)) {
       throw ArgumentError('Active writer must be a registered engine.');
@@ -37,6 +34,34 @@ class PqcEngineManager {
   final Map<String, PqcEngine> _decoders;
   final String? _activeWriterId;
   final bool writerEnabled;
+
+  static Map<String, PqcEngine> _registerDecoders(Iterable<PqcEngine> source) {
+    final engines = List<PqcEngine>.of(source, growable: false);
+    final registered = <String, PqcEngine>{};
+    final privatePrefixes = <String>{};
+    final groupPrefixes = <String>{};
+    final groupEnvelopePrefixes = <String>{};
+    for (final engine in engines) {
+      if (engine.engineId.trim().isEmpty) {
+        throw ArgumentError('Engine ids must not be empty.');
+      }
+      if (engine.protocolVersion <= 0 ||
+          engine.privatePrefix.trim().isEmpty ||
+          engine.groupPrefix.trim().isEmpty) {
+        throw ArgumentError('Engine metadata must be stable and non-empty.');
+      }
+      if (registered.containsKey(engine.engineId)) {
+        throw ArgumentError('Engine ids must be unique.');
+      }
+      if (!privatePrefixes.add(engine.privatePrefix) ||
+          !groupPrefixes.add(engine.groupPrefix) ||
+          !engine.groupEnvelopeReadPrefixes.every(groupEnvelopePrefixes.add)) {
+        throw ArgumentError('Engine payload prefixes must be unique.');
+      }
+      registered[engine.engineId] = engine;
+    }
+    return registered;
+  }
 
   List<PqcEngine> get decoders => List.unmodifiable(_decoders.values);
 
@@ -49,9 +74,13 @@ class PqcEngineManager {
   }) {
     final matches = _decoders.values
         .where((engine) {
-          return kind == PqcConversationKind.private
-              ? engine.recognizesPrivate(payload)
-              : engine.recognizesGroup(payload);
+          return switch (kind) {
+            PqcConversationKind.private => engine.recognizesPrivate(payload),
+            PqcConversationKind.group => engine.recognizesGroup(payload),
+            PqcConversationKind.groupEnvelope => engine.recognizesGroupEnvelope(
+              payload,
+            ),
+          };
         })
         .toList(growable: false);
     if (matches.isEmpty) {
@@ -75,15 +104,38 @@ class PqcEngineManager {
         'Encrypted writer is disabled by the production gate.',
       );
     }
-    final readable = kind == PqcConversationKind.private
-        ? remote.privateReadPrefixes.contains(writer.privatePrefix)
-        : remote.groupReadPrefixes.contains(writer.groupPrefix);
-    final writable = kind == PqcConversationKind.private
-        ? remote.privateWritePrefixes.contains(writer.privatePrefix)
-        : remote.groupWritePrefixes.contains(writer.groupPrefix);
+    final readable = switch (kind) {
+      PqcConversationKind.private => remote.privateReadPrefixes.contains(
+        writer.privatePrefix,
+      ),
+      PqcConversationKind.group => remote.groupReadPrefixes.contains(
+        writer.groupPrefix,
+      ),
+      PqcConversationKind.groupEnvelope =>
+        writer.groupEnvelopeWritePrefixes.every(
+          remote.groupEnvelopeReadPrefixes.contains,
+        ),
+    };
+    final writable = switch (kind) {
+      PqcConversationKind.private => remote.privateWritePrefixes.contains(
+        writer.privatePrefix,
+      ),
+      PqcConversationKind.group => remote.groupWritePrefixes.contains(
+        writer.groupPrefix,
+      ),
+      PqcConversationKind.groupEnvelope =>
+        writer.groupEnvelopeWritePrefixes.every(
+          remote.groupEnvelopeWritePrefixes.contains,
+        ),
+    };
     if (!readable || !writable) {
       throw PqcCompatibilityException(
         'Remote endpoint cannot safely read and write ${writer.engineId}.',
+      );
+    }
+    if (remote.minimumDecoderVersion <= 0) {
+      throw const PqcCompatibilityException(
+        'Remote endpoint did not provide a valid decoder version.',
       );
     }
     if (writer.protocolVersion < remote.minimumDecoderVersion) {

@@ -12,4 +12,19 @@ void main() {
     expect(PqcV2Wire.groupEnvelopeAlgorithm, 'group-ml-kem-768-aesgcm-v2');
     expect(PqcV2Wire.attachmentCipherVersion, 'attachment:v2');
   });
+
+  test('new keyset binding distinguishes signing-key replacement', () {
+    const first = PqcDevicePublicKey(
+      deviceId: 'device-1',
+      kemPublicKeyBase64: 'kem-key',
+      signingPublicKeyBase64: 'signing-key-a',
+    );
+    const second = PqcDevicePublicKey(
+      deviceId: 'device-1',
+      kemPublicKeyBase64: 'kem-key',
+      signingPublicKeyBase64: 'signing-key-b',
+    );
+    expect(first.keysetId, second.keysetId);
+    expect(first.bindingId, isNot(second.bindingId));
+  });
 }

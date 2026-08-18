@@ -20,6 +20,11 @@ not enter the engine package.
    capabilities.
 8. Roll back by closing the writer gate; keep the decoder registered.
 
+For the V2.5 group-epoch candidate, require the backend capability response to
+contain `group-wrap:pqc:v2.5` in both its readable and writable group-envelope
+prefix sets before selecting that writer. Keep `group-wrap:pqc:v2` enabled as
+the historical reader during the entire rollout.
+
 ## Adapter boundaries
 
 - API models -> `PqcDevicePublicKey`
@@ -30,3 +35,5 @@ not enter the engine package.
 
 The SDK does not migrate V2 keys into new cryptographic bytes. A future V3
 engine must have its own writer and decoder while retaining this V2 decoder.
+The application-level V3 coordinator currently lives in `crypto_core`; it is
+kept outside this pure SDK until its vectors and release boundary are ready.
