@@ -45,8 +45,8 @@ migrate_working_dir/
 *.app/
 *.dmg
 
-# If the pinned SDK is vendored under packages/pqc_engine_sdk/ for local,
-# reproducible builds, its own nested Git metadata stays out of this repository.
+# The pinned SDK is vendored under packages/pqc_engine_sdk/ for reproducible
+# builds; its own nested Git metadata stays out of this repository.
 /packages/pqc_engine_sdk/.git/
 
 # Runtime attachment data belongs to the configured media volume/server.

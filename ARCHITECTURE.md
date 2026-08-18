@@ -261,7 +261,7 @@ Izoh:
 1. `lib/` faqat Flutter composition root va UI shim'larini saqlaydi.
 2. `packages/chat_core` va `packages/crypto_core` qayta ishlatiladigan client qatlamlari.
 3. `services/backend` mustaqil Python path sifatida ishga tushadi; u Flutter root’ini import qilmaydi.
-4. `pqc_engine_sdk` tashqi, pinned SDK dependency bo‘lib qoladi; credential mavjud bo‘lganda uni `packages/pqc_engine_sdk/` ichiga vendorlash mumkin.
+4. `packages/pqc_engine_sdk/` pinned SDK source’ni local package sifatida beradi; SDK’ning nested `.git` metadata’si parent repo’ga kiritilmaydi.
 
 ## 9. Tavsiya Etiladigan Tech Stack
 
