@@ -129,7 +129,10 @@ class RecoveryManifestOCCIntegrationTests(APITestCase):
         )
 
     def test_chaos_escrow_upload_failure_rolls_back_without_partial_manifest(self):
-        with patch('users.views.get_key_escrow_provider', return_value=_FailingEscrowProvider()):
+        with patch(
+            'users.api_views.recovery.get_key_escrow_provider',
+            return_value=_FailingEscrowProvider(),
+        ):
             response = self._put(
                 device_id='chaos-device',
                 payload='{"chaos":"network-or-kms-failure"}',
@@ -384,7 +387,10 @@ class AuthApiTests(APITestCase):
             'email': 'security@example.com',
             'name': 'Security User',
         }
-        with patch('users.views.urlopen', return_value=_FakeGoogleResponse(claims)):
+        with patch(
+            'users.api_views.authentication.urlopen',
+            return_value=_FakeGoogleResponse(claims),
+        ):
             response = self.client.post(
                 '/api/auth/google',
                 {

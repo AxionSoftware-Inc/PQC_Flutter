@@ -273,7 +273,10 @@ class ChatApiTests(APITestCase):
         self.assertEqual(first.data['id'], second.data['id'])
 
     def test_realtime_failure_does_not_rollback_message(self):
-        with patch('chat.views.async_to_sync', side_effect=RuntimeError('channel down')):
+        with patch(
+            'chat.api_views.common.async_to_sync',
+            side_effect=RuntimeError('channel down'),
+        ):
             with self.captureOnCommitCallbacks(execute=True):
                 response = self.client.post(
                     f'/api/conversations/{self.group.id}/messages',
