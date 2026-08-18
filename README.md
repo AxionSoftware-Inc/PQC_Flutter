@@ -87,9 +87,7 @@ Local API:
 
 `http://127.0.0.1:8000/api`
 
-PostgreSQL bilan ishlatish:
-
-- [POSTGRES_SETUP.md](/Users/macbookpro/Documents/PQC%20Chat%20app/POSTGRES_SETUP.md)
+PostgreSQL bilan ishlatish: [POSTGRES_SETUP.md](POSTGRES_SETUP.md)
 
 ## Flutter Setup
 
@@ -188,5 +186,4 @@ flutter test
 flutter analyze
 ```
 
-Korporativ yo‘l bo‘yicha keyingi katta qatlamni qo‘shdim: private chat endi nafaqat ML-KEM-768 bilan hybrid secret oladi, balki peer device signing key e’lon qilgan bo‘lsa payload ML-DSA-65 bilan ham imzolanadi. Shuning uchun arxitektura endi “server ciphertextni tashiydi” darajasidan “device-level signed private transport foundation” darajasiga ko‘tarildi.
-Asosiy o‘zgarishlar [lib/core/device/device_pqc_signing_key_service.dart](/Users/macbookpro/Documents/PQC Chat app/lib/core/device/device_pqc_signing_key_service.dart), [lib/features/crypto/message_codec.dart](/Users/macbookpro/Documents/PQC Chat app/lib/features/crypto/message_codec.dart), [lib/features/auth/data/auth_repository.dart](/Users/macbookpro/Documents/PQC Chat app/lib/features/auth/data/auth_repository.dart), [lib/core/models/app_user.dart](/Users/macbookpro/Documents/PQC Chat app/lib/core/models/app_user.dart), [users/models.py](/Users/macbookpro/Documents/PQC Chat app/users/models.py), [users/serializers.py](/Users/macbookpro/Documents/PQC Chat app/users/serializers.py), [users/views.py](/Users/macbookpro/Documents/PQC Chat app/users/views.py), [users/migrations/0005_userdevice_pqc_signing_public_key_and_more.py](/Users/macbookpro/Documents/PQC Chat app/users/migrations/0005_userdevice_pqc_signing_public_key_and_more.py) da. Device sync endi PQC signing public key’ni ham olib yuradi, private payload signed variantlarni tushunadi, verify qilolmasa reject qiladi, lekin eski/signed bo‘lmagan oqimlar bilan backward compatibility saqlangan.
+Korporativ yo‘l bo‘yicha keyingi katta qatlam: private chat device signing key e’lon qilinganida payload ML-DSA-65 bilan ham imzolanadi. Flutter crypto va chat kodlari mos ravishda `packages/crypto_core/` va `packages/chat_core/` ichida, backend esa `services/backend/` ichida saqlanadi.

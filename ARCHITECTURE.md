@@ -229,46 +229,50 @@ Client ichida:
 3. Contact fingerprints.
 4. User preferences.
 
-## 8. Tavsiya Etiladigan Folder Structure
+## 8. Amaldagi Repo Folder Structure
 
-`lib/` ichida quyidagi struktura mos keladi:
+Flutter client root’da qoladi, Django service esa client kodidan ajratilgan:
 
 ```text
+android/ ios/ macos/ web/ windows/ linux/  Flutter platform hosts
 lib/
   app/
   core/
-    crypto/
-    network/
-    storage/
-    utils/
   features/
     auth/
     chat/
-    contacts/
-    settings/
-    security/
-  shared/
-    widgets/
-    theme/
-    models/
+    crypto/
+    notifications/
+    rbac/
+    tasks/
+packages/
+  chat_core/       chat domain, data and local database
+  crypto_core/     Flutter crypto boundary and SDK adapters
+services/backend/
+  config/          Django settings, ASGI/WSGI and plugin registry
+  users/            identity and device APIs
+  chat/             encrypted transport and realtime APIs
+  backend_plugins/ optional RBAC and Task/KPI modules
+test/
 ```
 
 Izoh:
 
-1. `core/crypto` - barcha kripto helper va interfeyslar.
-2. `features/` - feature-based modular design.
-3. `shared/` - qayta ishlatiladigan widget va util'lar.
+1. `lib/` faqat Flutter composition root va UI shim'larini saqlaydi.
+2. `packages/chat_core` va `packages/crypto_core` qayta ishlatiladigan client qatlamlari.
+3. `services/backend` mustaqil Python path sifatida ishga tushadi; u Flutter root’ini import qilmaydi.
+4. `pqc_engine_sdk` tashqi, pinned SDK dependency bo‘lib qoladi; credential mavjud bo‘lganda uni `packages/pqc_engine_sdk/` ichiga vendorlash mumkin.
 
 ## 9. Tavsiya Etiladigan Tech Stack
 
 Bu faqat arxitektura uchun tavsiya, hali implementatsiya emas.
 
-1. Flutter
+1. Flutter client
 2. State management uchun `Riverpod` yoki `Bloc`
 3. Local storage uchun `Isar`, `Drift` yoki `Hive`
 4. Secure storage uchun platform secure enclave / keystore
 5. Transport uchun REST + WebSocket yoki SSE
-6. Backend uchun Node.js, Go yoki Rust
+6. Django REST Framework + Channels backend
 
 ## 10. Bosqichma-Bosqich Reja
 
