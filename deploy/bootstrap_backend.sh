@@ -6,7 +6,7 @@ set -euo pipefail
 # environment file, so configuration errors stop the rollout before the ASGI
 # process is restarted.
 ROOT="${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-ENV_FILE="${ENV_FILE:-/etc/antiq/backend.env}"
+ENV_FILE="${ENV_FILE:-/etc/pqc-chat.env}"
 VENV_DIR="${VENV_DIR:-$ROOT/.venv}"
 
 if [[ ! -r "$ENV_FILE" ]]; then

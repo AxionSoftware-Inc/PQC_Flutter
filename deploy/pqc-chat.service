@@ -1,13 +1,14 @@
 [Unit]
-Description=PQC Chat Django ASGI Backend
+Description=antiQ Django ASGI Backend
 After=network.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/root/pqc-chat-app/current/services/backend
+EnvironmentFile=/etc/pqc-chat.env
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/root/pqc-chat-app/current/.venv/bin/daphne -b 0.0.0.0 -p 8020 config.asgi:application
+ExecStart=/root/pqc-chat-app/current/.venv/bin/daphne -b 127.0.0.1 -p 8020 config.asgi:application
 Restart=always
 RestartSec=3
 

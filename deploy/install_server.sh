@@ -4,11 +4,11 @@ set -euo pipefail
 # One repeatable core deployment. PostgreSQL and the environment file are
 # operator-owned inputs; tenant plugins remain disabled unless named there.
 ROOT="${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-ENV_FILE="${ENV_FILE:-/etc/antiq/backend.env}"
+ENV_FILE="${ENV_FILE:-/etc/pqc-chat.env}"
 PUBLIC_HOST="${PUBLIC_HOST:?PUBLIC_HOST must be a domain or server IP}"
 SERVICE_USER="${SERVICE_USER:-root}"
-SYSTEMD_UNIT="${SYSTEMD_UNIT:-antiq.service}"
-NGINX_SITE="${NGINX_SITE:-/etc/nginx/sites-available/antiq}"
+SYSTEMD_UNIT="${SYSTEMD_UNIT:-pqc-chat.service}"
+NGINX_SITE="${NGINX_SITE:-/etc/nginx/sites-available/pqc-chat}"
 
 if [[ $EUID -ne 0 ]]; then
   echo 'Run as root so systemd and Nginx can be configured.' >&2

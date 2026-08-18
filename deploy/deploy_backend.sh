@@ -4,7 +4,7 @@ set -euo pipefail
 # Run this on the server from the release checkout. The explicit PostgreSQL
 # environment is intentional: migrations must never silently target SQLite.
 ROOT="${ROOT:-/root/pqc-chat-app/current}"
-ENV_FILE="${ENV_FILE:-/etc/antiq/backend.env}"
+ENV_FILE="${ENV_FILE:-/etc/pqc-chat.env}"
 
 if [[ -r "$ENV_FILE" ]]; then
   set -a
