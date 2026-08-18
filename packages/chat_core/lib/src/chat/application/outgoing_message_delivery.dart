@@ -88,6 +88,9 @@ mixin _OutgoingMessageDelivery on _OutgoingMessageServiceBase {
         remotePrefixes: conversation.isGroup
             ? capabilities.groupMessagePrefixes
             : capabilities.privateMessagePrefixes,
+        readableRemotePrefixes: conversation.isGroup
+            ? capabilities.readableGroupMessagePrefixes
+            : capabilities.readablePrivateMessagePrefixes,
         readableGroupEnvelopePrefixes:
             capabilities.readableGroupEnvelopePrefixes,
         writableGroupEnvelopePrefixes: capabilities.groupEnvelopePrefixes,

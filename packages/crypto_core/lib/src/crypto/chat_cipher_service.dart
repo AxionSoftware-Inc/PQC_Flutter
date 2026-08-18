@@ -60,15 +60,16 @@ class RoutedChatCipherService implements ChatCipherService {
       (item) => item.supportsConversation(context.conversation),
     );
     final manager = protocolVersionManager;
+    final activeKind = context.conversation.isGroup
+        ? PayloadKind.groupMessage
+        : PayloadKind.privateMessage;
+    final activeWriterPrefix = manager?.activeWriter(activeKind).prefix;
     final algorithm = manager == null
         ? candidates.firstOrNull
         : candidates.where((item) {
             if (item is! ChatCipherWriter) return false;
-            final kind = context.conversation.isGroup
-                ? PayloadKind.groupMessage
-                : PayloadKind.privateMessage;
             return (item as ChatCipherWriter).canWritePrefix(
-              manager.activeWriter(kind).prefix,
+              activeWriterPrefix!,
             );
           }).firstOrNull;
     if (algorithm == null) {
@@ -81,6 +82,11 @@ class RoutedChatCipherService implements ChatCipherService {
       context: context,
       plaintext: plaintext,
     );
+    if (activeWriterPrefix != null && !payload.startsWith(activeWriterPrefix)) {
+      throw StateError(
+        'Active protocol writer returned an unexpected payload prefix.',
+      );
+    }
     await _outboundMessageCache.storePlaintext(
       payload: payload,
       plaintext: plaintext,

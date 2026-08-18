@@ -62,6 +62,7 @@ class ChatCryptoService {
   Future<void> assertRemoteCanSend({
     required bool isGroup,
     required Iterable<String> remotePrefixes,
+    Iterable<String> readableRemotePrefixes = const [],
     Iterable<String> readableGroupEnvelopePrefixes = const [],
     Iterable<String> writableGroupEnvelopePrefixes = const [],
     Iterable<String> remoteAttachmentVersions = const [],
@@ -83,6 +84,7 @@ class ChatCryptoService {
     facade.assertRemoteSupportsActiveMessageWriter(
       isGroup: isGroup,
       remotePrefixes: remotePrefixes,
+      readableRemotePrefixes: readableRemotePrefixes,
       remoteAttachmentVersions: remoteAttachmentVersions,
       hasAttachments: hasAttachments,
     );

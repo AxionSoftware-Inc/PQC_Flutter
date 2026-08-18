@@ -57,5 +57,8 @@ class ProtocolVersionManager {
     }
     activeWriter(PayloadKind.privateMessage);
     activeWriter(PayloadKind.groupMessage);
+    if (formats.any((item) => item.payloadKind == PayloadKind.groupEnvelope)) {
+      activeWriter(PayloadKind.groupEnvelope);
+    }
   }
 }

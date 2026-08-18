@@ -84,11 +84,14 @@ class CryptoCoreFacade {
   void assertRemoteSupportsActiveMessageWriter({
     required bool isGroup,
     required Iterable<String> remotePrefixes,
+    Iterable<String> readableRemotePrefixes = const [],
     Iterable<String> remoteAttachmentVersions = const [],
     bool hasAttachments = false,
   }) {
     final writer = activeMessageWriterPrefix(isGroup: isGroup);
-    if (!remotePrefixes.contains(writer)) {
+    final readablePrefixes = readableRemotePrefixes.toSet();
+    if (!remotePrefixes.contains(writer) ||
+        (readablePrefixes.isNotEmpty && !readablePrefixes.contains(writer))) {
       throw StateError(
         'Server does not support the active crypto protocol $writer. '
         'Update the server before sending encrypted messages.',

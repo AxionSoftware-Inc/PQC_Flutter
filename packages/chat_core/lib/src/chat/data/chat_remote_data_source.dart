@@ -329,6 +329,8 @@ class CryptoProtocolCapabilities {
     required this.privateMessagePrefixes,
     required this.groupMessagePrefixes,
     required this.attachmentCipherVersions,
+    this.readablePrivateMessagePrefixes = const [],
+    this.readableGroupMessagePrefixes = const [],
     this.readableAttachmentCipherVersions = const [],
     this.readableGroupEnvelopePrefixes = const [],
     this.groupEnvelopePrefixes = const [],
@@ -339,6 +341,8 @@ class CryptoProtocolCapabilities {
   final List<String> privateMessagePrefixes;
   final List<String> groupMessagePrefixes;
   final List<String> attachmentCipherVersions;
+  final List<String> readablePrivateMessagePrefixes;
+  final List<String> readableGroupMessagePrefixes;
   final List<String> readableAttachmentCipherVersions;
   final List<String> readableGroupEnvelopePrefixes;
   final List<String> groupEnvelopePrefixes;
@@ -349,10 +353,24 @@ class CryptoProtocolCapabilities {
     List<String> read(String name) => (json[name] as List<dynamic>? ?? const [])
         .whereType<String>()
         .toList(growable: false);
+    final privateMessagePrefixes = read('private_message_prefixes');
+    final groupMessagePrefixes = read('group_message_prefixes');
+    final readablePrivateMessagePrefixes = read(
+      'readable_private_message_prefixes',
+    );
+    final readableGroupMessagePrefixes = read(
+      'readable_group_message_prefixes',
+    );
     return CryptoProtocolCapabilities(
-      privateMessagePrefixes: read('private_message_prefixes'),
-      groupMessagePrefixes: read('group_message_prefixes'),
+      privateMessagePrefixes: privateMessagePrefixes,
+      groupMessagePrefixes: groupMessagePrefixes,
       attachmentCipherVersions: read('attachment_cipher_versions'),
+      readablePrivateMessagePrefixes: readablePrivateMessagePrefixes.isEmpty
+          ? privateMessagePrefixes
+          : readablePrivateMessagePrefixes,
+      readableGroupMessagePrefixes: readableGroupMessagePrefixes.isEmpty
+          ? groupMessagePrefixes
+          : readableGroupMessagePrefixes,
       readableAttachmentCipherVersions: read(
         'readable_attachment_cipher_versions',
       ),

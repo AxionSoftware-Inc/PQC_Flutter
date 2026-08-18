@@ -3,10 +3,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _WriterAlgorithm implements ChatCipherAlgorithm, ChatCipherWriter {
-  _WriterAlgorithm({required this.prefix, required this.group});
+  _WriterAlgorithm({
+    required this.prefix,
+    required this.group,
+    this.outputPrefix,
+  });
 
   final String prefix;
   final bool group;
+  final String? outputPrefix;
 
   @override
   bool supportsConversation(Conversation conversation) =>
@@ -22,7 +27,7 @@ class _WriterAlgorithm implements ChatCipherAlgorithm, ChatCipherWriter {
   Future<String> encrypt({
     required ChatCryptoContext context,
     required String plaintext,
-  }) async => '$prefix$plaintext';
+  }) async => '${outputPrefix ?? prefix}$plaintext';
 
   @override
   Future<String> decrypt({
@@ -122,5 +127,34 @@ void main() {
 
     expect(privatePayload, startsWith('pqc:v3:'));
     expect(groupPayload, startsWith('group:v3:'));
+  });
+
+  test('writer output must match the manager-selected protocol prefix', () {
+    final manager = ProtocolVersionManager(
+      registry: PayloadFormatRegistry(writeProfile: PayloadWriteProfile.v2),
+    );
+    final service = RoutedChatCipherService(
+      algorithms: [
+        _WriterAlgorithm(
+          prefix: 'pqc:v2:',
+          outputPrefix: 'pqc:v3:',
+          group: false,
+        ),
+      ],
+      outboundMessageCache: OutboundMessageCache(),
+      protocolVersionManager: manager,
+    );
+
+    expect(
+      () => service.encrypt(
+        context: ChatCryptoContext(
+          currentUserId: 1,
+          conversation: _conversation(group: false),
+          usersById: const {},
+        ),
+        plaintext: 'mismatch',
+      ),
+      throwsStateError,
+    );
   });
 }

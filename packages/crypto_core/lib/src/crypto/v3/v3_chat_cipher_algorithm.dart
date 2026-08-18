@@ -1,5 +1,6 @@
 import '../chat_cipher_service.dart';
 import '../chat_crypto_context.dart';
+import '../chat_crypto_exceptions.dart';
 import '../durability/key_material_registry.dart';
 import '../durability/crypto_durability_models.dart';
 import '../../models/conversation.dart';
@@ -48,15 +49,30 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm, ChatCipherWriter {
     final current = await keyMaterialRegistry.ensureCurrentKeysetRegistered();
     final identity = await identityService.getIdentity();
     final recipients = <sdk.PqcDevicePublicKey>[];
+    final incompatibleDevices = <String>[];
     // A private envelope must only ever contain the participants' device
     // wraps.  Using the workspace-wide directory here would give unrelated
     // users a valid content-key wrap.
     final participantIds = context.conversation.participantIds.toSet();
     for (final userId in participantIds) {
       final user = context.usersById[userId];
-      if (user == null) continue;
+      if (user == null) {
+        incompatibleDevices.add('user-$userId');
+        continue;
+      }
+      if (user.activeDevices.isEmpty) {
+        incompatibleDevices.add('user-$userId');
+        continue;
+      }
       for (final device in user.activeDevices) {
-        if (!device.hasUsableMlKemKey || device.v3KeysetId.isEmpty) continue;
+        if (!device.hasUsableMlKemKey ||
+            !device.hasUsableMlDsaKey ||
+            device.v3KeysetId.isEmpty) {
+          incompatibleDevices.add(
+            device.deviceId.isEmpty ? 'user-$userId' : device.deviceId,
+          );
+          continue;
+        }
         recipients.add(
           sdk.PqcDevicePublicKey(
             deviceId: device.deviceId,
@@ -65,6 +81,12 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm, ChatCipherWriter {
           ),
         );
       }
+    }
+    if (incompatibleDevices.isNotEmpty) {
+      throw ChatEncryptionException(
+        'V3 xabar yuborilmadi: quyidagi device’lar V3 keysetga ega emas: '
+        '${incompatibleDevices.join(', ')}. Ular ilovani yangilashi kerak.',
+      );
     }
     if (!recipients.any((item) => item.deviceId == identity.id)) {
       recipients.add(
