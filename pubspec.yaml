@@ -46,7 +46,7 @@ dependencies:
   http_parser: ^4.1.2
   path: ^1.9.1
   path_provider: ^2.1.5
-  pqcrypto: ^0.4.0
+  pqcrypto: ^0.4.1
   shared_preferences: ^2.5.3
   sqlite3_flutter_libs: ^0.5.39
   uuid: ^4.5.1
