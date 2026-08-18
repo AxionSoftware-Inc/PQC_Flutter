@@ -9,6 +9,22 @@ final _nonCanonicalMlKem768PublicKey = base64Encode(
 
 void main() {
   test(
+    'device protocol capabilities are normalized and fail closed for legacy data',
+    () {
+      final legacy = AppUserDevice.fromJson(const {'device_id': 'legacy'});
+      final v3 = AppUserDevice.fromJson(const {
+        'device_id': 'v3-device',
+        'supported_protocols': ['v3'],
+      });
+
+      expect(legacy.supportedProtocols, ['v2']);
+      expect(legacy.supportsProtocol('v3'), isFalse);
+      expect(v3.supportedProtocols, ['v2', 'v2.5', 'v3']);
+      expect(v3.supportsProtocol('v3'), isTrue);
+    },
+  );
+
+  test(
     'x25519 device key is usable only for valid 32-byte base64 public key',
     () {
       final validDevice = AppUserDevice(

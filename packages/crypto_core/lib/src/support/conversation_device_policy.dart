@@ -135,7 +135,9 @@ class ConversationDevicePolicy {
               )
               .map(
                 (item) =>
-                    '${item.deviceId}:${item.pqcPublicKey}:${item.pqcSigningPublicKey}',
+                    '${item.deviceId}:${item.pqcPublicKey}:'
+                    '${item.pqcSigningPublicKey}:'
+                    '${item.supportedProtocols.join(",")}',
               )
               .toList()
             ..sort();

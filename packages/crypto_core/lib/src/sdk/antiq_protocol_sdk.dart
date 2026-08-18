@@ -5,6 +5,7 @@ import '../crypto/durability/v2_protocol_contract.dart';
 import '../crypto/v3/v3_capabilities.dart';
 import '../crypto/v3/v3_engine_manager.dart';
 import '../crypto/v3/v3_engine_module.dart';
+import 'package:pqc_engine_sdk/pqc_engine_sdk.dart' as sdk;
 
 /// Stable release metadata exposed to SDK consumers.
 ///
@@ -21,20 +22,26 @@ class AntiQEngineRelease {
   final String wireProtocol;
   final PayloadWriteProfile writerProfile;
 
+  sdk.PqcProtocolRelease get protocolRelease => switch (writerProfile) {
+    PayloadWriteProfile.v2 => sdk.PqcProtocolRelease.v2,
+    PayloadWriteProfile.v25 => sdk.PqcProtocolRelease.v25,
+    PayloadWriteProfile.v3 => sdk.PqcProtocolRelease.v3,
+  };
+
   static const v2 = AntiQEngineRelease(
-    releaseId: '2.0.0',
+    releaseId: sdk.PqcProtocolRelease.v2ReleaseId,
     wireProtocol: 'v2',
     writerProfile: PayloadWriteProfile.v2,
   );
 
   static const v25 = AntiQEngineRelease(
-    releaseId: '2.5.0',
+    releaseId: sdk.PqcProtocolRelease.v25ReleaseId,
     wireProtocol: 'v2',
     writerProfile: PayloadWriteProfile.v25,
   );
 
   static const v3 = AntiQEngineRelease(
-    releaseId: '3.0.0',
+    releaseId: sdk.PqcProtocolRelease.v3ReleaseId,
     wireProtocol: 'v3',
     writerProfile: PayloadWriteProfile.v3,
   );
@@ -50,14 +57,14 @@ class AntiQProtocolSdk {
   factory AntiQProtocolSdk.v2() => AntiQProtocolSdk._(
     release: AntiQEngineRelease.v2,
     protocols: ProtocolVersionManager(
-      registry: PayloadFormatRegistry(writeProfile: PayloadWriteProfile.v2),
+      registry: PayloadFormatRegistry.forRelease(sdk.PqcProtocolRelease.v2),
     ),
   );
 
   factory AntiQProtocolSdk.v25() => AntiQProtocolSdk._(
     release: AntiQEngineRelease.v25,
     protocols: ProtocolVersionManager(
-      registry: PayloadFormatRegistry(writeProfile: PayloadWriteProfile.v25),
+      registry: PayloadFormatRegistry.forRelease(sdk.PqcProtocolRelease.v25),
     ),
   );
 
@@ -65,7 +72,7 @@ class AntiQProtocolSdk {
     return AntiQProtocolSdk._(
       release: AntiQEngineRelease.v3,
       protocols: ProtocolVersionManager(
-        registry: PayloadFormatRegistry(writeProfile: PayloadWriteProfile.v3),
+        registry: PayloadFormatRegistry.forRelease(sdk.PqcProtocolRelease.v3),
       ),
       v3: V3EngineManager(module: module),
     );

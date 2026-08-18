@@ -36,6 +36,23 @@ class _WriterAlgorithm implements ChatCipherAlgorithm, ChatCipherWriter {
   }) async => payload.substring(prefix.length);
 }
 
+class _MemorySecretStore extends LocalSecretStore {
+  final Map<String, String> _values = {};
+
+  @override
+  Future<String?> read(String key) async => _values[key];
+
+  @override
+  Future<void> write({required String key, required String value}) async {
+    _values[key] = value;
+  }
+
+  @override
+  Future<void> delete(String key) async {
+    _values.remove(key);
+  }
+}
+
 Conversation _conversation({required bool group}) => Conversation(
   id: group ? 2 : 1,
   type: group ? 'group' : 'private',
@@ -66,7 +83,9 @@ void main() {
             _WriterAlgorithm(prefix: 'pqc:v3:', group: false),
             _WriterAlgorithm(prefix: 'group:v3:', group: true),
           ],
-          outboundMessageCache: OutboundMessageCache(),
+          outboundMessageCache: OutboundMessageCache(
+            secretStore: _MemorySecretStore(),
+          ),
           protocolVersionManager: manager,
         );
 
@@ -104,7 +123,9 @@ void main() {
         _WriterAlgorithm(prefix: 'pqc:v3:', group: false),
         _WriterAlgorithm(prefix: 'group:v3:', group: true),
       ],
-      outboundMessageCache: OutboundMessageCache(),
+      outboundMessageCache: OutboundMessageCache(
+        secretStore: _MemorySecretStore(),
+      ),
       protocolVersionManager: manager,
     );
 
@@ -141,7 +162,9 @@ void main() {
           group: false,
         ),
       ],
-      outboundMessageCache: OutboundMessageCache(),
+      outboundMessageCache: OutboundMessageCache(
+        secretStore: _MemorySecretStore(),
+      ),
       protocolVersionManager: manager,
     );
 

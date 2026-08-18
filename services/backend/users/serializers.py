@@ -11,6 +11,40 @@ User = get_user_model()
 ML_KEM_768_PUBLIC_KEY_BYTES = 1184
 ML_KEM_POLYVEC_BYTES = 1152
 ML_KEM_Q = 3329
+SUPPORTED_PROTOCOL_IDS = ('v2', 'v2.5', 'v3')
+
+
+def normalize_supported_protocols(value):
+    """Return a canonical, monotonic protocol capability list.
+
+    V2.5 and V3 clients can read the earlier formats, so a higher capability
+    must include the lower protocol ids. Missing legacy data is deliberately
+    treated as V2 instead of assuming that a device has been upgraded.
+    """
+    if value is None or value == '' or value == []:
+        return ['v2']
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, (list, tuple, set)):
+        raise serializers.ValidationError('supported_protocols must be a list.')
+
+    aliases = {'v25': 'v2.5', 'v2_5': 'v2.5'}
+    normalized = set()
+    for item in value:
+        protocol_id = str(item).strip().lower()
+        protocol_id = aliases.get(protocol_id, protocol_id)
+        if protocol_id not in SUPPORTED_PROTOCOL_IDS:
+            raise serializers.ValidationError(
+                f'Unsupported protocol capability: {protocol_id}.'
+            )
+        normalized.add(protocol_id)
+    if not normalized:
+        return ['v2']
+    if 'v3' in normalized:
+        normalized.update(('v2', 'v2.5'))
+    elif 'v2.5' in normalized:
+        normalized.add('v2')
+    return [item for item in SUPPORTED_PROTOCOL_IDS if item in normalized]
 
 
 def device_keyset_id(device_id, pqc_public_key):
@@ -165,6 +199,11 @@ class LoginSerializer(serializers.Serializer):
     pqc_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
     pqc_signing_public_key = serializers.CharField(required=False, allow_blank=True, default='')
     pqc_signing_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
+    supported_protocols = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        default=list,
+    )
 
     def validate(self, attrs):
         attrs['display_name'] = (
@@ -186,6 +225,9 @@ class LoginSerializer(serializers.Serializer):
             attrs.get('pqc_signing_algorithm', ''),
             attrs.get('pqc_signing_public_key', ''),
         )
+        attrs['supported_protocols'] = normalize_supported_protocols(
+            attrs.get('supported_protocols')
+        )
         return attrs
 
 
@@ -201,6 +243,7 @@ class DeviceSerializer(serializers.Serializer):
     pqc_algorithm = serializers.CharField()
     pqc_signing_public_key = serializers.CharField()
     pqc_signing_algorithm = serializers.CharField()
+    supported_protocols = serializers.SerializerMethodField()
     status = serializers.CharField()
     profile_fingerprint = serializers.CharField()
     revoked_reason = serializers.CharField(allow_blank=True, required=False)
@@ -228,6 +271,11 @@ class DeviceSerializer(serializers.Serializer):
             self._value(device, 'pqc_signing_public_key'),
         )
 
+    def get_supported_protocols(self, device):
+        return normalize_supported_protocols(
+            self._value(device, 'supported_protocols')
+        )
+
 
 class DeviceSyncSerializer(serializers.Serializer):
     device_id = serializers.CharField()
@@ -239,6 +287,11 @@ class DeviceSyncSerializer(serializers.Serializer):
     pqc_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
     pqc_signing_public_key = serializers.CharField(required=False, allow_blank=True, default='')
     pqc_signing_algorithm = serializers.CharField(required=False, allow_blank=True, default='')
+    supported_protocols = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        default=list,
+    )
 
     def validate(self, attrs):
         validate_identity_public_key_fields(
@@ -252,6 +305,9 @@ class DeviceSyncSerializer(serializers.Serializer):
         validate_pqc_signing_public_key_fields(
             attrs.get('pqc_signing_algorithm', ''),
             attrs.get('pqc_signing_public_key', ''),
+        )
+        attrs['supported_protocols'] = normalize_supported_protocols(
+            attrs.get('supported_protocols')
         )
         return attrs
 
@@ -285,6 +341,9 @@ class UserSerializer(serializers.ModelSerializer):
                 'pqc_algorithm': device.pqc_algorithm,
                 'pqc_signing_public_key': device.pqc_signing_public_key,
                 'pqc_signing_algorithm': device.pqc_signing_algorithm,
+                'supported_protocols': normalize_supported_protocols(
+                    device.supported_protocols
+                ),
                 'status': device.status,
                 'profile_fingerprint': device.profile_fingerprint,
                 'revoked_reason': device.revoked_reason,
@@ -307,6 +366,7 @@ class UserSerializer(serializers.ModelSerializer):
                 'pqc_algorithm': item.pqc_algorithm,
                 'pqc_signing_public_key': item.pqc_signing_public_key,
                 'pqc_signing_algorithm': item.pqc_signing_algorithm,
+                'supported_protocols': ['v2'],
                 'status': 'historical',
                 'profile_fingerprint': item.profile_fingerprint,
                 'revoked_reason': '',

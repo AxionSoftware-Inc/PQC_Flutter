@@ -46,6 +46,7 @@ from users.serializers import (
     InvitationCreateSerializer,
     InvitationSerializer,
     LoginSerializer,
+    normalize_supported_protocols,
     OrganizationSerializer,
     UserSerializer,
     WorkspaceMemberSerializer,
@@ -275,7 +276,9 @@ def upsert_user_device(
     pqc_algorithm='',
     pqc_signing_public_key='',
     pqc_signing_algorithm='',
+    supported_protocols=None,
 ):
+    supported_protocols = normalize_supported_protocols(supported_protocols)
     profile_fingerprint = build_device_profile_fingerprint(
         device_id=device_id,
         identity_public_key=identity_public_key,
@@ -297,6 +300,7 @@ def upsert_user_device(
             'pqc_algorithm': pqc_algorithm,
             'pqc_signing_public_key': pqc_signing_public_key,
             'pqc_signing_algorithm': pqc_signing_algorithm,
+            'supported_protocols': supported_protocols,
             'status': UserDevice.Status.ACTIVE,
             'profile_fingerprint': profile_fingerprint,
             'last_seen_at': timezone.now(),
@@ -370,6 +374,12 @@ def upsert_user_device(
         if device.pqc_signing_algorithm != pqc_signing_algorithm:
             device.pqc_signing_algorithm = pqc_signing_algorithm
             updated_fields.append('pqc_signing_algorithm')
+        normalized_device_protocols = normalize_supported_protocols(
+            device.supported_protocols
+        )
+        if normalized_device_protocols != supported_protocols:
+            device.supported_protocols = supported_protocols
+            updated_fields.append('supported_protocols')
         if not device.profile_fingerprint:
             device.profile_fingerprint = profile_fingerprint
             updated_fields.append('profile_fingerprint')
@@ -421,6 +431,7 @@ class LoginView(APIView):
         pqc_algorithm = serializer.validated_data['pqc_algorithm'].strip()
         pqc_signing_public_key = serializer.validated_data['pqc_signing_public_key'].strip()
         pqc_signing_algorithm = serializer.validated_data['pqc_signing_algorithm'].strip()
+        supported_protocols = serializer.validated_data['supported_protocols']
         remember_device_only = serializer.validated_data.get('remember_device_only', False)
 
         if not display_name or not device_id:
@@ -466,6 +477,7 @@ class LoginView(APIView):
             pqc_algorithm=pqc_algorithm,
             pqc_signing_public_key=pqc_signing_public_key,
             pqc_signing_algorithm=pqc_signing_algorithm,
+            supported_protocols=supported_protocols,
         )
         if error_response is not None:
             return error_response
@@ -506,6 +518,7 @@ class LoginView(APIView):
                             'pqc_algorithm': item.pqc_algorithm,
                             'pqc_signing_public_key': item.pqc_signing_public_key,
                             'pqc_signing_algorithm': item.pqc_signing_algorithm,
+                            'supported_protocols': item.supported_protocols,
                             'status': item.status,
                             'profile_fingerprint': item.profile_fingerprint,
                             'revoked_reason': item.revoked_reason,
@@ -572,6 +585,9 @@ class GoogleLoginView(APIView):
             pqc_algorithm=str(request.data.get('pqc_algorithm', '')).strip(),
             pqc_signing_public_key=str(request.data.get('pqc_signing_public_key', '')).strip(),
             pqc_signing_algorithm=str(request.data.get('pqc_signing_algorithm', '')).strip(),
+            supported_protocols=normalize_supported_protocols(
+                request.data.get('supported_protocols')
+            ),
         )
         if error_response is not None:
             return error_response
@@ -1082,6 +1098,7 @@ class DeviceSyncView(APIView):
             pqc_algorithm=serializer.validated_data['pqc_algorithm'].strip(),
             pqc_signing_public_key=serializer.validated_data['pqc_signing_public_key'].strip(),
             pqc_signing_algorithm=serializer.validated_data['pqc_signing_algorithm'].strip(),
+            supported_protocols=serializer.validated_data['supported_protocols'],
         )
         if error_response is not None:
             return error_response
@@ -1097,6 +1114,9 @@ class DeviceSyncView(APIView):
                 'pqc_algorithm': device.pqc_algorithm,
                 'pqc_signing_public_key': device.pqc_signing_public_key,
                 'pqc_signing_algorithm': device.pqc_signing_algorithm,
+                'supported_protocols': normalize_supported_protocols(
+                    device.supported_protocols
+                ),
                 'organizations': _serialize_org_context(request.user),
             }
         )

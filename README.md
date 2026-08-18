@@ -42,8 +42,9 @@ Crypto qatlam hozir ikki aniq yo'lga ajratilgan:
 - `ChatRepository` endi to'g'ridan-to'g'ri `X25519` yoki `group` codec'larni bilmaydi
 - `RoutedChatCipherService` conversation/payload bo'yicha mos algorithm'ni tanlaydi
 - `PrivateConversationSecurityCoordinator` private send oldidan trust holatini boshqaradi
-- private chat uchun aktiv yozish formati hozir `pqc:v1`
-- group key envelope formati `group-wrap:pqc:v1`
+- private/group uchun aktiv yozish formati release profile'ga bog'liq: V2/V2.5 uchun `pqc:v2:` / `group:v2:`, V3 uchun `pqc:v3:` / `group:v3:`
+- group key envelope V2 yoki V2.5 sifatida alohida negotiate qilinadi
+- har bir device o'zining `supported_protocols` capability'sini serverga bildiradi; recipient mos bo'lmasa V2.5/V3 yozish fail-closed bo'ladi
 - eski klassik formatlar endi aktiv write path emas
 
 Hozir amalda ishlayotgan algorithm'lar:
@@ -52,13 +53,18 @@ Hozir amalda ishlayotgan algorithm'lar:
 - group chat: PQC wrapped group key + `AES-GCM`
 - legacy decrypt compatibility: faqat tarixiy oqimlar uchun
 
+Release profile va protocol negotiation xaritasi: [docs/release-profiles.md](docs/release-profiles.md).
+
 ## Repo Shape
 
 ```text
 services/backend/   Django service root
 services/backend/chat/      DRF chat app
 services/backend/users/     login, device binding, user/device registry
-lib/       Flutter client
+packages/pqc_engine_sdk/    pure Dart versioned PQC engine contract
+packages/crypto_core/       crypto policy, routing and key durability
+packages/chat_core/         chat orchestration and transport boundary
+lib/       Flutter client and composition root
 test/      Flutter tests
 ```
 

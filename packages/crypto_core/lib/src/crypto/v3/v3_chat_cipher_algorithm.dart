@@ -65,7 +65,8 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm, ChatCipherWriter {
         continue;
       }
       for (final device in user.activeDevices) {
-        if (!device.hasUsableMlKemKey ||
+        if (!device.supportsProtocol('v3') ||
+            !device.hasUsableMlKemKey ||
             !device.hasUsableMlDsaKey ||
             device.v3KeysetId.isEmpty) {
           incompatibleDevices.add(

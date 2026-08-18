@@ -2,6 +2,16 @@ import 'package:pqc_engine_sdk/pqc_engine_sdk.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('shared release catalog keeps protocol capabilities monotonic', () {
+    expect(PqcProtocolRelease.v2.supportedProtocolIds, ['v2']);
+    expect(PqcProtocolRelease.v25.supportedProtocolIds, ['v2', 'v2.5']);
+    expect(PqcProtocolRelease.tryParse('3.0.0')?.supportedProtocolIds, [
+      'v2',
+      'v2.5',
+      'v3',
+    ]);
+  });
+
   final engine = PqcV2Engine();
   final capabilities = PqcRemoteCapabilities(
     privateReadPrefixes: {PqcV2Wire.privatePrefix},

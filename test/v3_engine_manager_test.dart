@@ -122,7 +122,7 @@ void main() {
     );
 
     expect(device.keysetId, 'legacy-v2-id');
-    expect(device.v3KeysetId, same(sameKeys.v3KeysetId));
+    expect(device.v3KeysetId, sameKeys.v3KeysetId);
     expect(device.v3KeysetId, isNot(device.keysetId));
     expect(device.v3KeysetId, isNot(changedSigningKey.v3KeysetId));
   });

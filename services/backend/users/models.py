@@ -304,6 +304,9 @@ class UserDevice(models.Model):
     pqc_algorithm = models.CharField(max_length=64, blank=True)
     pqc_signing_public_key = models.TextField(blank=True)
     pqc_signing_algorithm = models.CharField(max_length=64, blank=True)
+    # Capability is per installation, not per account or deployment.  An
+    # omitted/legacy value is normalized to V2 at the API boundary.
+    supported_protocols = models.JSONField(default=list, blank=True)
     status = models.CharField(
         max_length=16,
         choices=Status.choices,

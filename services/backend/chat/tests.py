@@ -545,6 +545,27 @@ class ChatApiTests(APITestCase):
         self.assertEqual(own_view.data[0]['target_device_id'], 'device-1')
         self.assertEqual(own_view.data[0]['sender_device_id'], 'device-1')
 
+    def test_v25_group_envelope_requires_every_target_device_capability(self):
+        with patch.dict(os.environ, {'CRYPTO_PROTOCOL_MODE': 'v25'}):
+            response = self.client.post(
+                f'/api/conversations/{self.group.id}/keys',
+                {
+                    'key_id': 'group-key-v25',
+                    'algorithm': 'group-ml-kem-768-aesgcm-v2.5',
+                    'envelopes': [
+                        {
+                            'target_device_id': 'device-1',
+                            'wrapped_key': 'group-wrap:pqc:v2.5:device-1:sign:kem:nonce:cipher:mac:signature',
+                        },
+                    ],
+                },
+                format='json',
+                HTTP_X_DEVICE_ID='device-1',
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['unsupported_devices'], ['device-1'])
+
     def test_group_key_envelopes_require_registered_device_header(self):
         response = self.client.get(f'/api/conversations/{self.group.id}/keys')
 

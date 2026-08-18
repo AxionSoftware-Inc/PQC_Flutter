@@ -16,6 +16,7 @@ import '../../crypto/outbound_message_cache.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:crypto_core/crypto_core.dart' show PayloadFormatRegistry;
 
 // ignore_for_file: prefer_initializing_formals
 
@@ -66,6 +67,9 @@ abstract class _AuthRepositoryBase {
       algorithm: pqcKeyMaterial.algorithm,
     );
   }
+
+  List<String> _supportedProtocolIds() =>
+      PayloadFormatRegistry().supportedProtocolIds;
 
   Future<DeviceProfileState> _prepareDeviceState() async {
     final deviceState = await deviceStateManager.resolveCurrentDeviceProfile();

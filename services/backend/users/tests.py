@@ -474,6 +474,39 @@ class AuthApiTests(APITestCase):
             ).exists()
         )
 
+    def test_login_persists_monotonic_per_device_protocol_capabilities(self):
+        response = self.client.post(
+            '/api/auth/login',
+            {
+                'username': 'v3-client',
+                'device_id': 'v3-device',
+                'supported_protocols': ['v3'],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        device = UserDevice.objects.get(device_id='v3-device')
+        self.assertEqual(device.supported_protocols, ['v2', 'v2.5', 'v3'])
+        self.assertEqual(
+            response.data['user']['devices'][0]['supported_protocols'],
+            ['v2', 'v2.5', 'v3'],
+        )
+
+    def test_login_rejects_unknown_protocol_capability(self):
+        response = self.client.post(
+            '/api/auth/login',
+            {
+                'username': 'future-client',
+                'device_id': 'future-device',
+                'supported_protocols': ['v4'],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Unsupported protocol capability', str(response.data))
+
     def test_login_preserves_display_name_while_normalizing_username(self):
         response = self.client.post(
             '/api/auth/login',

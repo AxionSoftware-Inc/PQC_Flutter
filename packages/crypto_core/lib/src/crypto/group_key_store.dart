@@ -325,6 +325,11 @@ class GroupKeyStore implements GroupKeyProvider {
     required List<int> secretKeyBytes,
   }) async {
     if (_groupEnvelopeWriter == GroupEnvelopeWriter.v25) {
+      if (!targetDevice.supportsProtocol('v2.5')) {
+        throw ArgumentError(
+          'Target device does not advertise V2.5 group-envelope support.',
+        );
+      }
       final localPqc = await _devicePqcKeyService.getOrCreateKeyMaterial();
       final localSigning = await _devicePqcSigningKeyService
           .getOrCreateKeyMaterial();

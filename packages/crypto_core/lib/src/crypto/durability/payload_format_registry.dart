@@ -1,4 +1,5 @@
 import 'crypto_durability_models.dart';
+import 'package:pqc_engine_sdk/pqc_engine_sdk.dart' as sdk;
 import 'v2_protocol_contract.dart';
 
 /// Explicit SDK write profile. A release id and its wire protocol are not the
@@ -17,29 +18,43 @@ class PayloadFormatRegistry {
   final PayloadWriteProfile writeProfile;
   final List<PayloadFormatDescriptor> _descriptors;
 
+  factory PayloadFormatRegistry.forRelease(sdk.PqcProtocolRelease release) {
+    return PayloadFormatRegistry(writeProfile: profileForRelease(release));
+  }
+
   static final PayloadWriteProfile _environmentProfile = _profileForRelease(
     const String.fromEnvironment('SDK_RELEASE', defaultValue: ''),
   );
 
   static PayloadWriteProfile _profileForRelease(String release) {
-    switch (release.trim().toLowerCase()) {
+    final sharedRelease = sdk.PqcProtocolRelease.tryParse(release);
+    if (sharedRelease != null) {
+      return profileForRelease(sharedRelease);
+    }
+    return bool.fromEnvironment('V3_WRITER', defaultValue: false)
+        ? PayloadWriteProfile.v3
+        : PayloadWriteProfile.v2;
+  }
+
+  static PayloadWriteProfile profileForRelease(sdk.PqcProtocolRelease release) {
+    switch (release.profileId) {
       case 'v2.5':
-      case 'v25':
-      case 'v2_5':
-      case '2.5':
-      case '2.5.0':
         return PayloadWriteProfile.v25;
       case 'v3':
-      case '3':
-      case '3.0':
-      case '3.0.0':
         return PayloadWriteProfile.v3;
       default:
-        return bool.fromEnvironment('V3_WRITER', defaultValue: false)
-            ? PayloadWriteProfile.v3
-            : PayloadWriteProfile.v2;
+        return PayloadWriteProfile.v2;
     }
   }
+
+  sdk.PqcProtocolRelease get protocolRelease => switch (writeProfile) {
+    PayloadWriteProfile.v2 => sdk.PqcProtocolRelease.v2,
+    PayloadWriteProfile.v25 => sdk.PqcProtocolRelease.v25,
+    PayloadWriteProfile.v3 => sdk.PqcProtocolRelease.v3,
+  };
+
+  List<String> get supportedProtocolIds =>
+      List.unmodifiable(protocolRelease.supportedProtocolIds);
 
   static List<PayloadFormatDescriptor> _descriptorsFor(
     PayloadWriteProfile writeProfile,

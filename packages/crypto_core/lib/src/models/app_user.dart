@@ -15,6 +15,7 @@ class AppUserDevice {
     this.pqcAlgorithm = '',
     this.pqcSigningPublicKey = '',
     this.pqcSigningAlgorithm = '',
+    this.supportedProtocols = const ['v2'],
     this.status = 'active',
     this.profileFingerprint = '',
     this.revokedReason = '',
@@ -38,6 +39,10 @@ class AppUserDevice {
   final String pqcAlgorithm;
   final String pqcSigningPublicKey;
   final String pqcSigningAlgorithm;
+
+  /// Protocols this specific installation can decode and safely receive.
+  /// Legacy API responses intentionally default to V2 only.
+  final List<String> supportedProtocols;
   final String status;
   final String profileFingerprint;
   final String revokedReason;
@@ -66,6 +71,9 @@ class AppUserDevice {
   }
 
   bool get isActive => status == 'active';
+
+  bool supportsProtocol(String protocolId) =>
+      supportedProtocols.contains(protocolId.trim().toLowerCase());
 
   bool get hasUsableX25519Key =>
       keyAlgorithm == 'x25519' && _hasValidX25519PublicKey(identityPublicKey);
@@ -142,6 +150,7 @@ class AppUserDevice {
       pqcAlgorithm: json['pqc_algorithm'] as String? ?? '',
       pqcSigningPublicKey: json['pqc_signing_public_key'] as String? ?? '',
       pqcSigningAlgorithm: json['pqc_signing_algorithm'] as String? ?? '',
+      supportedProtocols: _parseSupportedProtocols(json['supported_protocols']),
       status: json['status'] as String? ?? 'active',
       profileFingerprint: json['profile_fingerprint'] as String? ?? '',
       revokedReason: json['revoked_reason'] as String? ?? '',
@@ -164,6 +173,7 @@ class AppUserDevice {
     String? pqcAlgorithm,
     String? pqcSigningPublicKey,
     String? pqcSigningAlgorithm,
+    List<String>? supportedProtocols,
     String? status,
     String? profileFingerprint,
     String? revokedReason,
@@ -184,6 +194,7 @@ class AppUserDevice {
       pqcAlgorithm: pqcAlgorithm ?? this.pqcAlgorithm,
       pqcSigningPublicKey: pqcSigningPublicKey ?? this.pqcSigningPublicKey,
       pqcSigningAlgorithm: pqcSigningAlgorithm ?? this.pqcSigningAlgorithm,
+      supportedProtocols: supportedProtocols ?? this.supportedProtocols,
       status: status ?? this.status,
       profileFingerprint: profileFingerprint ?? this.profileFingerprint,
       revokedReason: revokedReason ?? this.revokedReason,
@@ -192,6 +203,30 @@ class AppUserDevice {
       firstSeenAt: firstSeenAt ?? this.firstSeenAt,
       lastSeenAt: lastSeenAt ?? this.lastSeenAt,
     );
+  }
+
+  static List<String> _parseSupportedProtocols(Object? value) {
+    if (value is! List) {
+      return const ['v2'];
+    }
+    final supported = value
+        .whereType<String>()
+        .map((item) => item.trim().toLowerCase())
+        .map((item) => item == 'v25' || item == 'v2_5' ? 'v2.5' : item)
+        .where((item) => const {'v2', 'v2.5', 'v3'}.contains(item))
+        .toSet();
+    if (supported.isEmpty) {
+      return const ['v2'];
+    }
+    if (supported.contains('v3')) {
+      supported.addAll(const ['v2', 'v2.5']);
+    } else if (supported.contains('v2.5')) {
+      supported.add('v2');
+    }
+    return [
+      for (final item in const ['v2', 'v2.5', 'v3'])
+        if (supported.contains(item)) item,
+    ];
   }
 
   static DateTime? _parseDate(String? value) {

@@ -33,6 +33,7 @@ client directly.
 | Chat transport | `packages/chat_core/lib/src/chat/data/` | `chat_remote_data_source.dart`, `chat_repository.dart` |
 | Private/group crypto | `packages/crypto_core/lib/src/crypto/` | `private_message_codec.dart`, `group_message_codec.dart`, `group_key_store.dart` |
 | V3 protocol | `packages/pqc_engine_sdk/lib/src/v3_engine.dart` | `v3_attachment_codec.dart` and the V3 engine contract |
+| Release/capability negotiation | `docs/release-profiles.md` | `PqcProtocolRelease`, `PayloadFormatRegistry`, backend `users/serializers.py` |
 | Key verification | `packages/chat_core/lib/src/security/` | `key_verification_service.dart` barrel and `key_verification_service_impl.dart` |
 | File transfers | `packages/chat_core/lib/src/transfer/` | models -> store -> facade |
 | Tasks/KPI | `lib/features/tasks/` | `data/task_kpi_repository.dart`, then `presentation/` |
@@ -54,6 +55,9 @@ client directly.
    imported from it and client packages must not import backend modules.
 7. Generated files (`*.g.dart`) are outputs of the database generator; edit
    their source schema or Drift declarations instead.
+8. Deployment crypto capabilities and per-device protocol capabilities are
+   different contracts. Never use the deployment endpoint alone to decide
+   whether a recipient device can receive V2.5 or V3.
 
 ## Naming and navigation conventions
 

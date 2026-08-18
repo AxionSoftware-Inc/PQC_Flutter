@@ -26,6 +26,7 @@ void main() {
             .map((item) => item.prefix),
         ['group:v2:'],
       );
+      expect(registry.supportedProtocolIds, ['v2']);
     },
   );
 
@@ -45,6 +46,7 @@ void main() {
       ['group-wrap:pqc:v2.5:'],
     );
     expect(registry.describe('group-wrap:pqc:v2:legacy'), isNotNull);
+    expect(registry.supportedProtocolIds, ['v2', 'v2.5']);
   });
 
   test('retired writer remains a decoder and cannot become an encoder', () {

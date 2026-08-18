@@ -46,8 +46,12 @@ from chat.serializers import (
     get_or_create_private_conversation,
 )
 from chat.protocols import get_protocol_capabilities
+from chat.protocols import v2 as v2_protocol
 from users.models import UserDevice, WorkspaceMember
-from users.serializers import is_valid_ml_kem_768_public_key
+from users.serializers import (
+    is_valid_ml_kem_768_public_key,
+    normalize_supported_protocols,
+)
 
 
 User = get_user_model()
@@ -514,6 +518,12 @@ class ConversationKeyEnvelopeView(APIView):
         serializer = ConversationKeyEnvelopeSyncSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        submitted_envelopes = serializer.validated_data['envelopes']
+        uses_v25_envelope = any(
+            item['wrapped_key'].startswith(v2_protocol.GROUP_ENVELOPE_V25_PREFIX)
+            for item in submitted_envelopes
+        )
+
         participant_user_ids = set(
             conversation.participants.values_list('id', flat=True)
         )
@@ -532,8 +542,28 @@ class ConversationKeyEnvelopeView(APIView):
             for device in expected_target_devices
             if is_valid_ml_kem_768_public_key(device.pqc_public_key)
         }
+        if uses_v25_envelope:
+            unsupported_devices = [
+                device.device_id
+                for device in expected_target_devices
+                if 'v2.5' not in normalize_supported_protocols(
+                    device.supported_protocols
+                )
+            ]
+            if unsupported_devices:
+                return Response(
+                    {
+                        'detail': (
+                            'V2.5 group envelopes cannot be stored for devices '
+                            'without V2.5 capability.'
+                        ),
+                        'unsupported_devices': sorted(unsupported_devices),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         submitted_target_ids = []
-        for item in serializer.validated_data['envelopes']:
+        for item in submitted_envelopes:
             submitted_target_ids.append(item['target_device_id'])
             target_device = UserDevice.objects.filter(
                 device_id=item['target_device_id'],

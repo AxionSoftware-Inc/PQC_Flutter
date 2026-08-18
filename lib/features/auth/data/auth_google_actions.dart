@@ -47,6 +47,7 @@ mixin _AuthGoogleActions on _AuthRepositoryBase {
       'pqc_algorithm': pqc.algorithm,
       'pqc_signing_public_key': deviceState.pqcSigningKeyMaterial.publicKey,
       'pqc_signing_algorithm': deviceState.pqcSigningKeyMaterial.algorithm,
+      'supported_protocols': _supportedProtocolIds(),
     });
     if (response is! Map<String, dynamic>) {
       throw ApiException(

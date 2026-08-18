@@ -133,6 +133,7 @@ mixin _AuthSessionActions on _AuthRepositoryBase {
               'pqc_algorithm': pqcPayload.algorithm,
               'pqc_signing_public_key': pqcSigningKeyMaterial.publicKey,
               'pqc_signing_algorithm': pqcSigningKeyMaterial.algorithm,
+              'supported_protocols': _supportedProtocolIds(),
             })
             as Map<String, dynamic>;
     _assertServerAcceptedPqcKeys(
@@ -203,6 +204,7 @@ mixin _AuthSessionActions on _AuthRepositoryBase {
                 'pqc_algorithm': pqcPayload.algorithm,
                 'pqc_signing_public_key': pqcSigningKeyMaterial.publicKey,
                 'pqc_signing_algorithm': pqcSigningKeyMaterial.algorithm,
+                'supported_protocols': _supportedProtocolIds(),
               })
               as Map<String, dynamic>;
       _assertServerAcceptedPqcKeys(
