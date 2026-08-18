@@ -7,7 +7,9 @@ from pathlib import Path
 
 def main():
     """Run administrative tasks."""
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    # Keep Django's service packages importable without exposing the Flutter
+    # client root as a Python application directory.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
     try:
         from django.core.management import execute_from_command_line

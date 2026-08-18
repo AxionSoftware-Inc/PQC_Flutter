@@ -55,9 +55,9 @@ Hozir amalda ishlayotgan algorithm'lar:
 ## Repo Shape
 
 ```text
-backend/   Django project config
-chat/      DRF chat app
-users/     login, device binding, user/device registry
+services/backend/   Django service root
+services/backend/chat/      DRF chat app
+services/backend/users/     login, device binding, user/device registry
 lib/       Flutter client
 test/      Flutter tests
 ```
@@ -78,9 +78,9 @@ flutter run --dart-define=API_BASE_URL=http://YOUR_HOST:8000/api
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -r backend/requirements.txt
-.venv/bin/python backend/manage.py migrate
-.venv/bin/python backend/manage.py runserver
+.venv/bin/pip install -r services/backend/requirements.txt
+.venv/bin/python services/backend/manage.py migrate
+.venv/bin/python services/backend/manage.py runserver
 ```
 
 Local API:
@@ -183,7 +183,7 @@ Secret storage:
 ## Tests
 
 ```bash
-.venv/bin/python backend/manage.py test users chat
+.venv/bin/python services/backend/manage.py test users chat
 flutter test
 flutter analyze
 ```

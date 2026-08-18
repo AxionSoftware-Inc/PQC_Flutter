@@ -5,7 +5,7 @@ import it. Enable it explicitly on the backend:
 
 ```sh
 ANTIQ_BACKEND_PLUGINS=task_kpi
-python backend/manage.py migrate
+python services/backend/manage.py migrate
 ```
 
 The mobile task surface is enabled with the existing `TASK_KPI_MODULE` build

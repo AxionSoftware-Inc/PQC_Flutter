@@ -34,8 +34,8 @@ Last reviewed: 2026-07-27
 Run locally:
 
 ```bash
-python -m pip install -r backend/requirements.txt
-python -m pip install -r backend/requirements-security.txt
+python -m pip install -r services/backend/requirements.txt
+python -m pip install -r services/backend/requirements-security.txt
 tools/run_security_gate.sh
 ```
 

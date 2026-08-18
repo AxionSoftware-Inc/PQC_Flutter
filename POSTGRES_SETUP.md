@@ -21,8 +21,8 @@ export POSTGRES_PASSWORD=pqc_chat_app_dev_password
 export POSTGRES_HOST=127.0.0.1
 export POSTGRES_PORT=5432
 
-backend/.venv/bin/python backend/manage.py migrate
-backend/.venv/bin/python backend/manage.py runserver 0.0.0.0:8000
+./.venv/bin/python services/backend/manage.py migrate
+./.venv/bin/python services/backend/manage.py runserver 0.0.0.0:8000
 ```
 
 ## Remote server setup
@@ -50,7 +50,7 @@ export POSTGRES_PORT=5432
 Keyin:
 
 ```bash
-backend/.venv/bin/python backend/manage.py migrate
+./.venv/bin/python services/backend/manage.py migrate
 ```
 
 ## Existing SQLite data ko'chirish
@@ -58,7 +58,7 @@ backend/.venv/bin/python backend/manage.py migrate
 Agar eski SQLite ma'lumotini Postgres'ga olib o'tish kerak bo'lsa:
 
 ```bash
-backend/.venv/bin/python backend/manage.py dumpdata \
+./.venv/bin/python services/backend/manage.py dumpdata \
   --exclude contenttypes \
   --exclude auth.permission \
   --indent 2 > shared/sqlite_export.json
@@ -67,7 +67,7 @@ backend/.venv/bin/python backend/manage.py dumpdata \
 Postgres env bilan migrate qilgandan keyin:
 
 ```bash
-backend/.venv/bin/python backend/manage.py loaddata shared/sqlite_export.json
+./.venv/bin/python services/backend/manage.py loaddata shared/sqlite_export.json
 ```
 
 ## Priority note

@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/pqc-chat-app/current/backend
+WorkingDirectory=/root/pqc-chat-app/current/services/backend
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/root/pqc-chat-app/current/.venv/bin/daphne -b 0.0.0.0 -p 8020 config.asgi:application
 Restart=always

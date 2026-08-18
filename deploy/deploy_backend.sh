@@ -24,8 +24,8 @@ export POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 export SQLITE_PATH=""
 
 python_bin="${PYTHON_BIN:-$ROOT/.venv/bin/python}"
-"$python_bin" backend/manage.py check
-"$python_bin" backend/manage.py migrate --noinput
+"$python_bin" services/backend/manage.py check
+"$python_bin" services/backend/manage.py migrate --noinput
 systemctl restart pqc-chat.service
 systemctl is-active --quiet pqc-chat.service
 curl --fail --silent --show-error http://127.0.0.1:8020/api/crypto/protocols >/dev/null

@@ -24,9 +24,9 @@ set +a
 : "${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY must be set}"
 
 python3 -m venv "$VENV_DIR"
-"$VENV_DIR/bin/pip" install --disable-pip-version-check -r "$ROOT/backend/requirements.txt"
-"$VENV_DIR/bin/python" "$ROOT/backend/manage.py" check
-"$VENV_DIR/bin/python" "$ROOT/backend/manage.py" migrate --noinput
+"$VENV_DIR/bin/pip" install --disable-pip-version-check -r "$ROOT/services/backend/requirements.txt"
+"$VENV_DIR/bin/python" "$ROOT/services/backend/manage.py" check
+"$VENV_DIR/bin/python" "$ROOT/services/backend/manage.py" migrate --noinput
 
 echo "Backend core is prepared successfully."
 echo "Start it with: $VENV_DIR/bin/daphne -b 127.0.0.1 -p 8020 config.asgi:application"

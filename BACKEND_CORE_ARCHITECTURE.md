@@ -1,5 +1,9 @@
 # antiQ backend core
 
+The backend is isolated under `services/backend/`; the repository root is the
+Flutter client composition root. Django apps and optional backend plugins are
+imported from that service directory only.
+
 The backend is split into a stable core and explicit optional plugins. A plain
 deployment uses only the core; it has no RBAC dependency.
 

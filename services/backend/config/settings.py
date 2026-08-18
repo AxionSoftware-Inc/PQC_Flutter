@@ -7,8 +7,9 @@ from django.core.exceptions import ImproperlyConfigured
 
 from config.plugins import enabled_plugin_app_configs
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+# The Django service is intentionally isolated from the Flutter client.
 BASE_DIR = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 # Quick-start development settings - unsuitable for production
@@ -168,7 +169,7 @@ ASGI_APPLICATION = 'config.asgi.application'
 def _sqlite_database_config():
     path = os.environ.get(
         'SQLITE_PATH',
-        str(BASE_DIR.parent / 'shared' / 'db.sqlite3'),
+        str(REPO_ROOT / 'shared' / 'db.sqlite3'),
     )
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     return {

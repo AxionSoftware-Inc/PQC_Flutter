@@ -32,12 +32,22 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+**/build/
 /coverage/
-backend/db.sqlite3
+*.sqlite3
 
-# The SDK is an independent Git repository. The Flutter application consumes
-# it through a pinned Git release rather than committing a nested checkout.
-/packages/pqc_engine_sdk/
+# Release bundles and generated application packages belong in CI artifacts
+# or GitHub Releases, never in source control or Git history.
+/releases/
+*.apk
+*.aab
+*.ipa
+*.app/
+*.dmg
+
+# The SDK is vendored as source under packages/pqc_engine_sdk/ for local,
+# reproducible builds. Its own Git metadata is excluded from this repository.
+/packages/pqc_engine_sdk/.git/
 
 # Runtime attachment data belongs to the configured media volume/server.
 /shared/media/
