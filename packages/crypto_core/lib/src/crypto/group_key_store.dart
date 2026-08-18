@@ -5,6 +5,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:pqc_engine_sdk/pqc_engine_sdk.dart' as sdk;
 import 'package:uuid/uuid.dart';
 
 import 'package:crypto_core/src/core/device/device_identity_service.dart';
@@ -17,6 +18,7 @@ import 'package:crypto_core/src/core/storage/local_secret_store.dart';
 import 'package:crypto_core/src/support/conversation_device_policy.dart';
 import 'package:crypto_core/src/support/chat_models.dart';
 import 'chat_crypto_exceptions.dart';
+import 'durability/payload_format_registry.dart';
 import 'durability/v2_protocol_contract.dart';
 
 class GroupKeyMaterial {
@@ -25,6 +27,8 @@ class GroupKeyMaterial {
   final String keyId;
   final List<int> secretKeyBytes;
 }
+
+enum GroupEnvelopeWriter { v2, v25 }
 
 abstract class GroupKeyProvider {
   Future<GroupKeyMaterial> getOrCreateKey({
@@ -87,6 +91,25 @@ class GroupKeyStore implements GroupKeyProvider {
   final Hkdf _hkdf;
   final AesGcm _cipher;
   final Uuid _uuid;
+  GroupEnvelopeWriter _groupEnvelopeWriter = GroupEnvelopeWriter.v2;
+
+  /// Negotiates the group-key envelope independently from message payloads.
+  /// V2 remains the safe default; V2.5 is selected only when the server has
+  /// advertised both read and write support for the new envelope prefix.
+  void configureGroupEnvelopeWriter({
+    required Iterable<String> readablePrefixes,
+    required Iterable<String> writablePrefixes,
+    PayloadWriteProfile writeProfile = PayloadWriteProfile.v2,
+  }) {
+    final readable = readablePrefixes.map(_withoutTrailingColon).toSet();
+    final writable = writablePrefixes.map(_withoutTrailingColon).toSet();
+    _groupEnvelopeWriter =
+        writeProfile == PayloadWriteProfile.v25 &&
+            readable.contains(sdk.PqcV2Wire.groupWrapV25Prefix) &&
+            writable.contains(sdk.PqcV2Wire.groupWrapV25Prefix)
+        ? GroupEnvelopeWriter.v25
+        : GroupEnvelopeWriter.v2;
+  }
 
   @override
   Future<GroupKeyMaterial> getOrCreateKey({
@@ -166,7 +189,9 @@ class GroupKeyStore implements GroupKeyProvider {
     await _remoteDataSource.syncConversationKeyEnvelopes(
       conversationId: conversation.id,
       keyId: keyId,
-      algorithm: PqcV2ProtocolContract.groupEnvelopeAlgorithm,
+      algorithm: _groupEnvelopeWriter == GroupEnvelopeWriter.v25
+          ? sdk.PqcV2Wire.groupEnvelopeV25Algorithm
+          : PqcV2ProtocolContract.groupEnvelopeAlgorithm,
       envelopes: envelopes,
     );
     await _saveLocalKey(
@@ -232,6 +257,7 @@ class GroupKeyStore implements GroupKeyProvider {
         keyId: envelope.keyId,
         senderDevice: senderDevice,
         targetDeviceId: envelope.targetDeviceId,
+        algorithm: envelope.algorithm,
         wrappedKey: envelope.wrappedKey,
       );
       if (secretKeyBytes == null) {
@@ -272,6 +298,25 @@ class GroupKeyStore implements GroupKeyProvider {
     return null;
   }
 
+  List<AppUserDevice> _resolveTargetDevices({
+    required Conversation conversation,
+    required Map<int, AppUser> usersById,
+  }) {
+    final resolution = _devicePolicy.resolveGroupTargetDevices(
+      conversation: conversation,
+      usersById: usersById,
+    );
+    if (resolution.issue == DeviceResolutionIssue.missingParticipants) {
+      throw ChatEncryptionException(
+        'Group chat ready emas. Key yoq participantlar: ${resolution.missingParticipants.join(", ")}.',
+      );
+    }
+    if (!resolution.isReady) {
+      throw ChatEncryptionException('Groupda usable device key topilmadi.');
+    }
+    return resolution.devices;
+  }
+
   Future<String> _wrapGroupKeyForDevice({
     required Conversation conversation,
     required String keyId,
@@ -279,6 +324,37 @@ class GroupKeyStore implements GroupKeyProvider {
     required AppUserDevice targetDevice,
     required List<int> secretKeyBytes,
   }) async {
+    if (_groupEnvelopeWriter == GroupEnvelopeWriter.v25) {
+      final localPqc = await _devicePqcKeyService.getOrCreateKeyMaterial();
+      final localSigning = await _devicePqcSigningKeyService
+          .getOrCreateKeyMaterial();
+      final targetBindingId = targetDevice.v3KeysetId;
+      if (targetBindingId.isEmpty || !targetDevice.hasUsableMlDsaKey) {
+        throw ArgumentError('Target device has no valid V2.5 keyset binding.');
+      }
+      return sdk.PqcV25GroupEpochCodec(sdk.DartPqcPrimitiveSuite()).wrapEpoch(
+        conversation: sdk.PqcConversation(
+          id: conversation.id,
+          type: conversation.type,
+        ),
+        epoch: sdk.PqcGroupEpoch(
+          epochId: keyId,
+          secretKeyBytes: secretKeyBytes,
+        ),
+        sender: sdk.PqcDeviceKeyset(
+          deviceId: senderDeviceId,
+          kemPublicKeyBase64: localPqc.publicKey,
+          kemSecretKeyBase64: localPqc.secretKey,
+          signingPublicKeyBase64: localSigning.publicKey,
+          signingSecretKeyBase64: localSigning.secretKey,
+        ),
+        recipient: sdk.PqcDevicePublicKey(
+          deviceId: targetDevice.deviceId,
+          kemPublicKeyBase64: targetDevice.pqcPublicKey,
+          signingPublicKeyBase64: targetDevice.pqcSigningPublicKey,
+        ),
+      );
+    }
     final localSigningMaterial = await _devicePqcSigningKeyService
         .getOrCreateKeyMaterial();
     final (kemCiphertext, sharedSecret) = await _devicePqcKeyService
@@ -313,9 +389,47 @@ class GroupKeyStore implements GroupKeyProvider {
     required String keyId,
     required AppUserDevice senderDevice,
     required String targetDeviceId,
+    required String algorithm,
     required String wrappedKey,
   }) async {
     try {
+      if (algorithm == sdk.PqcV2Wire.groupEnvelopeV25Algorithm ||
+          wrappedKey.startsWith('${sdk.PqcV2Wire.groupWrapV25Prefix}:')) {
+        final localIdentity = await _deviceIdentityService.getIdentity();
+        final localPqc = await _devicePqcKeyService.getOrCreateKeyMaterial();
+        final localSigning = await _devicePqcSigningKeyService
+            .getOrCreateKeyMaterial();
+        final senderBindingId = senderDevice.v3KeysetId;
+        if (targetDeviceId != localIdentity.id ||
+            senderBindingId.isEmpty ||
+            !senderDevice.hasUsableMlDsaKey) {
+          return null;
+        }
+        final epoch =
+            await sdk.PqcV25GroupEpochCodec(
+              sdk.DartPqcPrimitiveSuite(),
+            ).unwrapEpoch(
+              conversation: sdk.PqcConversation(
+                id: conversation.id,
+                type: conversation.type,
+              ),
+              wrappedEpoch: wrappedKey,
+              recipient: sdk.PqcDeviceKeyset(
+                deviceId: localIdentity.id,
+                kemPublicKeyBase64: localPqc.publicKey,
+                kemSecretKeyBase64: localPqc.secretKey,
+                signingPublicKeyBase64: localSigning.publicKey,
+                signingSecretKeyBase64: localSigning.secretKey,
+              ),
+              trustedSigningKeysByDevice: {
+                senderDevice.deviceId: {senderDevice.pqcSigningPublicKey},
+              },
+              trustedKeysetBindingsByDevice: {
+                senderDevice.deviceId: {senderBindingId},
+              },
+            );
+        return epoch?.secretKeyBytes;
+      }
       if (!wrappedKey.startsWith('$_wrapPrefix:')) {
         return null;
       }
@@ -421,22 +535,6 @@ class GroupKeyStore implements GroupKeyProvider {
     );
   }
 
-  List<AppUserDevice> _resolveTargetDevices({
-    required Conversation conversation,
-    required Map<int, AppUser> usersById,
-  }) {
-    final resolution = _devicePolicy.resolveGroupTargetDevices(
-      conversation: conversation,
-      usersById: usersById,
-    );
-    if (resolution.issue == DeviceResolutionIssue.missingParticipants) {
-      throw ChatEncryptionException(
-        'Group chat ready emas. Key yoq participantlar: ${resolution.missingParticipants.join(", ")}.',
-      );
-    }
-    if (!resolution.isReady) {
-      throw ChatEncryptionException('Groupda usable device key topilmadi.');
-    }
-    return resolution.devices;
-  }
+  static String _withoutTrailingColon(String value) =>
+      value.endsWith(':') ? value.substring(0, value.length - 1) : value;
 }

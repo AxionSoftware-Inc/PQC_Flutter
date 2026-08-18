@@ -4,21 +4,42 @@ import 'v2_protocol_contract.dart';
 /// Explicit SDK write profile. A release id and its wire protocol are not the
 /// same thing: v2.5 keeps the immutable v2 wire format while v3 writes a new
 /// one. The host must select this deliberately, never by decoder presence.
-enum PayloadWriteProfile { v2, v3 }
+enum PayloadWriteProfile { v2, v25, v3 }
 
 class PayloadFormatRegistry {
   PayloadFormatRegistry({
     List<PayloadFormatDescriptor>? descriptors,
     PayloadWriteProfile? writeProfile,
-  }) : _descriptors =
+  }) : writeProfile = writeProfile ?? _environmentProfile,
+       _descriptors =
            descriptors ?? _descriptorsFor(writeProfile ?? _environmentProfile);
 
+  final PayloadWriteProfile writeProfile;
   final List<PayloadFormatDescriptor> _descriptors;
 
-  static final PayloadWriteProfile _environmentProfile =
-      bool.fromEnvironment('V3_WRITER', defaultValue: false)
-      ? PayloadWriteProfile.v3
-      : PayloadWriteProfile.v2;
+  static final PayloadWriteProfile _environmentProfile = _profileForRelease(
+    const String.fromEnvironment('SDK_RELEASE', defaultValue: ''),
+  );
+
+  static PayloadWriteProfile _profileForRelease(String release) {
+    switch (release.trim().toLowerCase()) {
+      case 'v2.5':
+      case 'v25':
+      case 'v2_5':
+      case '2.5':
+      case '2.5.0':
+        return PayloadWriteProfile.v25;
+      case 'v3':
+      case '3':
+      case '3.0':
+      case '3.0.0':
+        return PayloadWriteProfile.v3;
+      default:
+        return bool.fromEnvironment('V3_WRITER', defaultValue: false)
+            ? PayloadWriteProfile.v3
+            : PayloadWriteProfile.v2;
+    }
+  }
 
   static List<PayloadFormatDescriptor> _descriptorsFor(
     PayloadWriteProfile writeProfile,
@@ -29,7 +50,9 @@ class PayloadFormatRegistry {
       prefix: '${PqcV2ProtocolContract.privatePrefix}:',
       introducedAtVersion: '2.0.0',
       decryptSupported: true,
-      writeEnabled: writeProfile == PayloadWriteProfile.v2,
+      writeEnabled:
+          writeProfile == PayloadWriteProfile.v2 ||
+          writeProfile == PayloadWriteProfile.v25,
     ),
     PayloadFormatDescriptor(
       formatId: 'group-message-v2',
@@ -37,14 +60,25 @@ class PayloadFormatRegistry {
       prefix: '${PqcV2ProtocolContract.groupPrefix}:',
       introducedAtVersion: '2.0.0',
       decryptSupported: true,
-      writeEnabled: writeProfile == PayloadWriteProfile.v2,
+      writeEnabled:
+          writeProfile == PayloadWriteProfile.v2 ||
+          writeProfile == PayloadWriteProfile.v25,
     ),
-    const PayloadFormatDescriptor(
+    PayloadFormatDescriptor(
       formatId: 'group-envelope-pqc-v2',
       payloadKind: PayloadKind.groupEnvelope,
       prefix: '${PqcV2ProtocolContract.groupWrapPrefix}:',
       introducedAtVersion: '2.0.0',
       decryptSupported: true,
+      writeEnabled: writeProfile != PayloadWriteProfile.v25,
+    ),
+    PayloadFormatDescriptor(
+      formatId: 'group-envelope-pqc-v2.5',
+      payloadKind: PayloadKind.groupEnvelope,
+      prefix: '${PqcV2ProtocolContract.groupWrapV25Prefix}:',
+      introducedAtVersion: '2.5.0',
+      decryptSupported: true,
+      writeEnabled: writeProfile == PayloadWriteProfile.v25,
     ),
     PayloadFormatDescriptor(
       formatId: 'pqc-private-v3',

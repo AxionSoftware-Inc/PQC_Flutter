@@ -19,7 +19,7 @@ class _Decoder implements V3Decoder {
 
 void main() {
   test(
-    'v2.5 release remains an explicit v2 writer with v2 history readers',
+    'v2.5 keeps v2 messages and selects a dedicated group envelope writer',
     () {
       final sdk = AntiQProtocolSdk.v25();
 
@@ -28,6 +28,10 @@ void main() {
       expect(
         sdk.activeWriterPrefix(kind: PayloadKind.privateMessage),
         'pqc:v2:',
+      );
+      expect(
+        sdk.activeWriterPrefix(kind: PayloadKind.groupEnvelope),
+        'group-wrap:pqc:v2.5:',
       );
       expect(sdk.canDecode('pqc:v2:historical'), isTrue);
       expect(sdk.canDecode('pqc:v3:newer'), isTrue);

@@ -22,6 +22,7 @@ from users.models import (
     RecoveryDeviceApproval,
 )
 from users.escrow import LocalDevelopmentEscrowProvider
+from users.serializers import device_keyset_binding_id
 
 
 User = get_user_model()
@@ -30,6 +31,18 @@ VALID_PUBLIC_KEY_2 = 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE='
 VALID_PQC_PUBLIC_KEY = base64.b64encode(bytes(1184)).decode()
 INVALID_PQC_PUBLIC_KEY = base64.b64encode(bytes([255]) * 1184).decode()
 VALID_PQC_SIGNING_PUBLIC_KEY = base64.b64encode(bytes(1952)).decode()
+
+
+class KeysetBindingVectorTests(unittest.TestCase):
+    def test_binding_id_matches_dart_sdk_vector(self):
+        self.assertEqual(
+            device_keyset_binding_id(
+                'device-vector-1',
+                'a2VtLXB1YmxpYy1rZXk=',
+                'c2lnbmluZy1wdWJsaWMta2V5',
+            ),
+            'g-hOJDNYj9g_YdpEXzEW58AFJniIs5zYL99-fT47bpk',
+        )
 
 
 @override_settings(

@@ -4,9 +4,11 @@ abstract final class PqcV2ProtocolContract {
   static const privatePrefix = 'pqc:v2';
   static const groupPrefix = 'group:v2';
   static const groupWrapPrefix = 'group-wrap:pqc:v2';
+  static const groupWrapV25Prefix = 'group-wrap:pqc:v2.5';
   static const privateAlgorithm = 'ml-kem-768+a256gcm+ml-dsa-65';
   static const groupAlgorithm = 'a256gcm+group-ml-kem-768';
   static const groupEnvelopeAlgorithm = 'group-ml-kem-768-aesgcm-v2';
+  static const groupEnvelopeV25Algorithm = 'group-ml-kem-768-aesgcm-v2.5';
   static const attachmentCipherVersion = 'attachment:v2';
   static const backupSchema = 'enterprise-recovery-manifest';
   static const backupSchemaRevision = 2;

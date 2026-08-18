@@ -1,42 +1,17 @@
 import 'dart:async';
 
-import 'package:crypto_core/crypto_core.dart'
-    show
-        SdkV2GroupCipherMessageCodec,
-        SdkV2PrivateMessageCodec,
-        V3ChatCipherAlgorithm;
+import 'package:chat_core/chat_core.dart';
+import 'package:crypto_core/crypto_core.dart';
 import 'package:flutter/widgets.dart';
 
-import '../../core/database/app_database.dart';
-import '../../core/device/device_identity_service.dart';
-import '../../core/device/device_key_service.dart';
-import '../../core/device/device_pqc_key_service.dart';
-import '../../core/device/device_pqc_signing_key_service.dart';
-import '../../core/device/device_security_state_service.dart';
-import '../../core/device/device_state_manager.dart';
-import '../../core/network/api_client.dart';
-import '../../core/storage/local_data_protector.dart';
 import '../../core/storage/session_storage.dart';
 import '../../features/auth/data/auth_repository.dart';
+import '../../features/account/data/account_repository.dart';
 import '../../features/auth/session_controller.dart';
-import '../../features/chat/application/chat_facade.dart';
-import '../../features/chat/application/chat_local_store.dart';
-import '../../features/chat/application/chat_services.dart';
-import '../../features/chat/data/chat_realtime_service.dart';
-import '../../features/chat/data/chat_remote_data_source.dart';
-import '../../features/chat/data/outbox_store.dart';
-import '../../features/chat/data/private_conversation_security_coordinator.dart';
-import '../../features/crypto/chat_cipher_algorithms.dart';
-import '../../features/crypto/chat_cipher_service.dart';
-import '../../features/crypto/durability/crypto_backup_service.dart';
-import '../../features/crypto/durability/crypto_core_facade.dart';
-import '../../features/crypto/durability/enterprise_recovery_sync_service.dart';
-import '../../features/crypto/durability/key_material_registry.dart';
-import '../../features/crypto/group_key_store.dart';
-import '../../features/crypto/outbound_message_cache.dart';
-import '../../features/security/key_verification_service.dart';
-import '../../features/transfers/application/attachment_transfer.dart';
 import '../../features/notifications/application/device_notification_service.dart';
+import '../../features/rbac/data/rbac_repository.dart';
+import '../../features/tasks/data/task_kpi_repository.dart';
+import '../../features/crypto/durability/enterprise_recovery_sync_service.dart';
 import '../app.dart';
 import '../design_system/app_design_system.dart';
 import '../modules/antiq_app_module_registry.dart';
@@ -58,6 +33,9 @@ Future<void> runAntiQApp() async {
   final appDatabase = AppDatabase();
   final localDataProtector = LocalDataProtector();
   final apiClient = ApiClient();
+  final accountRepository = AccountRepository(apiClient: apiClient);
+  final taskKpiRepository = TaskKpiRepository(apiClient: apiClient);
+  final rbacRepository = RbacRepository(apiClient: apiClient);
   final deviceIdentityService = DeviceIdentityService();
   final deviceKeyService = DeviceKeyService();
   final devicePqcKeyService = DevicePqcKeyService();
@@ -71,6 +49,7 @@ Future<void> runAntiQApp() async {
     deviceSecurityStateService: deviceSecurityStateService,
   );
   final outboundMessageCache = OutboundMessageCache();
+  final protocolVersionManager = ProtocolVersionManager();
   final remoteDataSource = ChatRemoteDataSource(apiClient: apiClient);
   final outboxStore = OutboxStore(
     database: appDatabase,
@@ -107,7 +86,8 @@ Future<void> runAntiQApp() async {
     apiClient: apiClient,
   );
   await deviceNotificationService.initialize();
-  const enableV3Writer = bool.fromEnvironment('V3_WRITER', defaultValue: false);
+  final enableV3Writer =
+      protocolVersionManager.registry.writeProfile == PayloadWriteProfile.v3;
   final cipherAlgorithms = <ChatCipherAlgorithm>[
     if (enableV3Writer)
       V3ChatCipherAlgorithm(
@@ -118,7 +98,12 @@ Future<void> runAntiQApp() async {
       ),
     GroupChatCipherAlgorithm(
       groupKeyStore: groupKeyStore,
-      codec: SdkV2GroupCipherMessageCodec(groupKeyStore: groupKeyStore),
+      codec: SdkV2GroupCipherMessageCodec(
+        groupKeyStore: groupKeyStore,
+        deviceIdentityService: deviceIdentityService,
+        devicePqcKeyService: devicePqcKeyService,
+        devicePqcSigningKeyService: devicePqcSigningKeyService,
+      ),
     ),
     PqcPrivateChatAlgorithm(
       deviceIdentityService: deviceIdentityService,
@@ -136,6 +121,7 @@ Future<void> runAntiQApp() async {
   final chatCipherService = RoutedChatCipherService(
     algorithms: cipherAlgorithms,
     outboundMessageCache: outboundMessageCache,
+    protocolVersionManager: protocolVersionManager,
   );
   final cryptoCoreFacade = CryptoCoreFacade(
     cipherService: chatCipherService,
@@ -144,6 +130,7 @@ Future<void> runAntiQApp() async {
     backupService: CryptoBackupService(
       keyMaterialRegistry: keyMaterialRegistry,
     ),
+    protocolVersionManager: protocolVersionManager,
   );
   final enterpriseRecoverySyncService = EnterpriseRecoverySyncService(
     apiClient: apiClient,
@@ -218,7 +205,10 @@ Future<void> runAntiQApp() async {
       cryptoCoreFacade: cryptoCoreFacade,
       themeController: themeController,
       skin: AppSkinRegistry.resolve(skinId),
-      apiClient: apiClient,
+      accountRepository: accountRepository,
+      taskKpiRepository: taskKpiRepository,
+      rbacRepository: rbacRepository,
+      database: appDatabase,
     ),
   );
   await themeController.initialize();

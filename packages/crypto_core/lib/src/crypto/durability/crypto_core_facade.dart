@@ -23,14 +23,13 @@ class CryptoCoreFacade {
     ConversationEpochKeyStore? conversationEpochKeyStore,
     LocalSecretStore? secretStore,
     PayloadFormatRegistry? payloadFormatRegistry,
+    ProtocolVersionManager? protocolVersionManager,
   }) : conversationEpochKeyStore =
            conversationEpochKeyStore ?? ConversationEpochKeyStore(),
        _secretStore = secretStore ?? LocalSecretStore(),
-       _payloadFormatRegistry =
-           payloadFormatRegistry ?? PayloadFormatRegistry(),
-       protocolVersionManager = ProtocolVersionManager(
-         registry: payloadFormatRegistry,
-       );
+       protocolVersionManager =
+           protocolVersionManager ??
+           ProtocolVersionManager(registry: payloadFormatRegistry);
 
   final ChatCipherService cipherService;
   final GroupKeyStore groupKeyStore;
@@ -38,8 +37,10 @@ class CryptoCoreFacade {
   final CryptoBackupService backupService;
   final ConversationEpochKeyStore conversationEpochKeyStore;
   final LocalSecretStore _secretStore;
-  final PayloadFormatRegistry _payloadFormatRegistry;
   final ProtocolVersionManager protocolVersionManager;
+
+  PayloadFormatRegistry get _payloadFormatRegistry =>
+      protocolVersionManager.registry;
 
   late final KeyContinuityGuard keyContinuityGuard = KeyContinuityGuard(
     registry: keyMaterialRegistry,
@@ -62,9 +63,29 @@ class CryptoCoreFacade {
         .prefix;
   }
 
+  String activeAttachmentCipherVersion({
+    required bool isGroup,
+    Iterable<String> remoteAttachmentVersions = const [],
+  }) {
+    final writer = activeMessageWriterPrefix(isGroup: isGroup);
+    final prefersV3 =
+        writer.startsWith('pqc:v3:') || writer.startsWith('group:v3:');
+    final candidates = prefersV3
+        ? const ['attachment:v3', 'attachment:v2']
+        : const ['attachment:v2'];
+    final remote = remoteAttachmentVersions.toSet();
+    if (remote.isNotEmpty) {
+      final selected = candidates.where(remote.contains).firstOrNull;
+      if (selected != null) return selected;
+    }
+    return candidates.first;
+  }
+
   void assertRemoteSupportsActiveMessageWriter({
     required bool isGroup,
     required Iterable<String> remotePrefixes,
+    Iterable<String> remoteAttachmentVersions = const [],
+    bool hasAttachments = false,
   }) {
     final writer = activeMessageWriterPrefix(isGroup: isGroup);
     if (!remotePrefixes.contains(writer)) {
@@ -73,6 +94,28 @@ class CryptoCoreFacade {
         'Update the server before sending encrypted messages.',
       );
     }
+    if (hasAttachments) {
+      final supportsAttachment = remoteAttachmentVersions.any(
+        (version) => version == 'attachment:v2' || version == 'attachment:v3',
+      );
+      if (!supportsAttachment) {
+        throw StateError(
+          'Server does not advertise a supported attachment cipher. Update '
+          'the server before sending attachments.',
+        );
+      }
+    }
+  }
+
+  void configureGroupEnvelopeWriter({
+    required Iterable<String> readablePrefixes,
+    required Iterable<String> writablePrefixes,
+  }) {
+    groupKeyStore.configureGroupEnvelopeWriter(
+      readablePrefixes: readablePrefixes,
+      writablePrefixes: writablePrefixes,
+      writeProfile: _payloadFormatRegistry.writeProfile,
+    );
   }
 
   Future<void> initialize() {

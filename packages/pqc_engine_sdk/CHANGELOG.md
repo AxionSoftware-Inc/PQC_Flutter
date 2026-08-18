@@ -1,10 +1,6 @@
-# Changelog
+## 2.0.0
 
-## 0.1.0-dev.1
-
-- Initial pure Dart engine package.
-- Frozen PQCv2 private, group and attachment codecs.
-- Historical keyset decoding and explicit recovery classification.
-- Protocol registry, capability negotiation and writer gate.
-- Secure-storage and encrypted-recovery host interfaces.
-- VM tests and JavaScript compile verification.
+- Frozen V2 private, group and attachment engine.
+- Capability-gated V2.5 group-key envelope reader/writer.
+- Standalone V3 engine kept behind an explicit production writer gate.
+- Cross-language keyset-binding vector and pure Dart verification suite.

@@ -572,10 +572,12 @@ class ConversationKeyEnvelopeView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if serializer.validated_data['algorithm'] != GROUP_ENVELOPE_ALGORITHM:
+        if serializer.validated_data['algorithm'] not in set(
+            get_protocol_capabilities()['group_envelope_algorithms'].values()
+        ):
             return Response(
                 {
-                    'detail': 'Only group-ml-kem-768-aesgcm-v2 is accepted.',
+                    'detail': 'The group-key envelope algorithm is not enabled on this server.',
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -734,6 +736,23 @@ class AttachmentSessionChunkView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         chunk_bytes = request.body or b''
+        if session.cipher_version in {'attachment:v2', 'attachment:v3'}:
+            plaintext_offset = chunk_index * session.chunk_size
+            expected_plaintext_size = min(
+                session.chunk_size,
+                session.plaintext_size - plaintext_offset,
+            )
+            expected_ciphertext_size = expected_plaintext_size + 16
+            if len(chunk_bytes) != expected_ciphertext_size:
+                return Response(
+                    {
+                        'detail': (
+                            'Authenticated attachment chunk must contain the '
+                            'plaintext bytes plus a 16-byte AEAD tag.'
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         expected_size = request.headers.get('X-Chunk-Size', '').strip()
         checksum = request.headers.get('X-Chunk-Sha256', '').strip().lower()
         if not checksum:

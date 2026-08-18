@@ -19,6 +19,7 @@ abstract interface class PqcEngine {
     required String plaintext,
     required PqcDeviceKeyset sender,
     required Iterable<PqcDevicePublicKey> recipientDevices,
+    String messageId = '',
   });
 
   Future<PqcDecodeResult> decodePrivate({
@@ -33,12 +34,15 @@ abstract interface class PqcEngine {
     required String plaintext,
     required PqcGroupEpoch epoch,
     PqcDeviceKeyset? sender,
+    Iterable<PqcDevicePublicKey> recipientDevices = const [],
+    String messageId = '',
   });
 
   Future<PqcDecodeResult> decodeGroup({
     required PqcConversation conversation,
     required String payload,
     required Map<String, PqcGroupEpoch> epochsById,
+    Iterable<PqcDeviceKeyset> localKeysets = const [],
     Map<String, Set<String>> trustedSigningKeysByDevice = const {},
     bool requireAuthenticatedSender = false,
   });
@@ -100,6 +104,7 @@ class PqcV2Engine implements PqcEngine {
     required String plaintext,
     required PqcDeviceKeyset sender,
     required Iterable<PqcDevicePublicKey> recipientDevices,
+    String messageId = '',
   }) => private.encrypt(
     conversation: conversation,
     plaintext: plaintext,
@@ -126,6 +131,8 @@ class PqcV2Engine implements PqcEngine {
     required String plaintext,
     required PqcGroupEpoch epoch,
     PqcDeviceKeyset? sender,
+    Iterable<PqcDevicePublicKey> recipientDevices = const [],
+    String messageId = '',
   }) => group.encrypt(
     conversation: conversation,
     plaintext: plaintext,
@@ -138,6 +145,7 @@ class PqcV2Engine implements PqcEngine {
     required PqcConversation conversation,
     required String payload,
     required Map<String, PqcGroupEpoch> epochsById,
+    Iterable<PqcDeviceKeyset> localKeysets = const [],
     Map<String, Set<String>> trustedSigningKeysByDevice = const {},
     bool requireAuthenticatedSender = false,
   }) => group.decrypt(
@@ -147,6 +155,55 @@ class PqcV2Engine implements PqcEngine {
     trustedSigningKeysByDevice: trustedSigningKeysByDevice,
     requireAuthenticatedSender: requireAuthenticatedSender,
   );
+
+  Future<String> encodeGroupEnvelope({
+    required PqcConversation conversation,
+    required PqcGroupEpoch epoch,
+    required PqcDeviceKeyset sender,
+    required PqcDevicePublicKey recipient,
+  }) => enableV25GroupEnvelopeWriter
+      ? groupEpochV25.wrapEpoch(
+          conversation: conversation,
+          epoch: epoch,
+          sender: sender,
+          recipient: recipient,
+        )
+      : group.wrapEpoch(
+          conversation: conversation,
+          epoch: epoch,
+          sender: sender,
+          recipient: recipient,
+        );
+
+  Future<PqcGroupEpoch?> decodeGroupEnvelope({
+    required PqcConversation conversation,
+    required String wrappedEpoch,
+    required PqcDeviceKeyset recipient,
+    String? epochId,
+    Map<String, Set<String>> trustedSigningKeysByDevice = const {},
+    Map<String, Set<String>> trustedKeysetBindingsByDevice = const {},
+  }) {
+    if (wrappedEpoch.startsWith('${PqcV2Wire.groupWrapV25Prefix}:')) {
+      return groupEpochV25.unwrapEpoch(
+        conversation: conversation,
+        wrappedEpoch: wrappedEpoch,
+        recipient: recipient,
+        trustedSigningKeysByDevice: trustedSigningKeysByDevice,
+        trustedKeysetBindingsByDevice: trustedKeysetBindingsByDevice,
+      );
+    }
+    final resolvedEpochId = epochId;
+    if (resolvedEpochId == null || resolvedEpochId.isEmpty) {
+      return Future.value(null);
+    }
+    return group.unwrapEpoch(
+      conversation: conversation,
+      epochId: resolvedEpochId,
+      wrappedEpoch: wrappedEpoch,
+      recipient: recipient,
+      trustedSigningKeysByDevice: trustedSigningKeysByDevice,
+    );
+  }
 
   @override
   bool recognizesPrivate(String payload) =>

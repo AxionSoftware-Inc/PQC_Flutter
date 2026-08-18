@@ -21,5 +21,10 @@ Rules:
   cross-device tests and a server capability handshake before the gate opens.
 * The manager has no Flutter, HTTP, database or platform imports.
 
-The current branch contains only the safe module boundary and draft contract;
-it deliberately does not pretend that a cryptographic V3 codec is complete.
+The cryptographic V3 codec now lives in the pure `pqc_engine_sdk` package.
+`crypto_core` remains a Flutter host adapter for key lifecycle and recovery; it
+must not fork or alter the SDK wire serialization.
+
+V3 envelopes carry the sender KEM public key alongside the signing public key.
+The decoder recomputes the keyset binding from both keys and the device id, so
+an opaque sender binding id cannot be swapped independently of the key pair.

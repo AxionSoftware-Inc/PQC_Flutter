@@ -1,3 +1,5 @@
+import re
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
@@ -114,6 +116,17 @@ class AttachmentSessionCreateSerializer(serializers.Serializer):
     recovery_manifest_sequence = serializers.IntegerField(required=False, min_value=0, default=0)
 
     def validate(self, attrs):
+        supported_cipher_versions = set(
+            get_protocol_capabilities()['readable_attachment_cipher_versions']
+        )
+        if attrs.get('cipher_version') not in supported_cipher_versions:
+            raise serializers.ValidationError(
+                {
+                    'cipher_version': (
+                        'Attachment cipher version is not enabled on this server.'
+                    )
+                }
+            )
         plaintext_size = attrs.get('plaintext_size', 0)
         ciphertext_size = attrs.get('ciphertext_size', 0)
         chunk_size = attrs.get('chunk_size', 0)
@@ -154,6 +167,28 @@ class AttachmentSessionCreateSerializer(serializers.Serializer):
                     )
                 }
             )
+        if attrs.get('cipher_version') in {'attachment:v2', 'attachment:v3'}:
+            expected_ciphertext_size = plaintext_size + (total_chunks * 16)
+            if ciphertext_size != expected_ciphertext_size:
+                raise serializers.ValidationError(
+                    {
+                        'ciphertext_size': (
+                            'Authenticated attachment ciphertext must include '
+                            'one 16-byte tag per chunk.'
+                        )
+                    }
+                )
+            for field_name in ('plaintext_sha256', 'manifest_sha256'):
+                value = attrs.get(field_name, '')
+                if not re.fullmatch(r'[0-9a-fA-F]{64}', value):
+                    raise serializers.ValidationError(
+                        {
+                            field_name: (
+                                'Authenticated attachment manifests require a '
+                                '64-character SHA-256 hex digest.'
+                            )
+                        }
+                    )
         return attrs
 
 
@@ -331,9 +366,12 @@ class ConversationKeyEnvelopeInputSerializer(serializers.Serializer):
     wrapped_key = serializers.CharField()
 
     def validate_wrapped_key(self, value):
-        if not value.startswith(GROUP_ENVELOPE_PREFIX):
+        prefixes = tuple(
+            get_protocol_capabilities()['readable_group_envelope_prefixes']
+        )
+        if not value.startswith(prefixes):
             raise serializers.ValidationError(
-                'wrapped_key must use group-wrap:pqc:v2 payloads.'
+                'wrapped_key must use an advertised group-key envelope format.'
             )
         return value
 
@@ -344,11 +382,30 @@ class ConversationKeyEnvelopeSyncSerializer(serializers.Serializer):
     envelopes = ConversationKeyEnvelopeInputSerializer(many=True)
 
     def validate_algorithm(self, value):
-        if value != GROUP_ENVELOPE_ALGORITHM:
+        allowed = set(get_protocol_capabilities()['group_envelope_algorithms'].values())
+        if value not in allowed:
             raise serializers.ValidationError(
-                'Only group-ml-kem-768-aesgcm-v2 is accepted.'
+                'The group-key envelope algorithm is not enabled on this server. '
+                f'Enabled algorithms: {", ".join(sorted(allowed))}.'
             )
         return value
+
+    def validate(self, attrs):
+        algorithm_by_prefix = get_protocol_capabilities()['group_envelope_algorithms']
+        expected_algorithms = {
+            algorithm
+            for item in attrs['envelopes']
+            for prefix, algorithm in algorithm_by_prefix.items()
+            if item['wrapped_key'].startswith(prefix)
+        }
+        if expected_algorithms and (
+            len(expected_algorithms) != 1 or
+            attrs['algorithm'] not in expected_algorithms
+        ):
+            raise serializers.ValidationError(
+                {'algorithm': 'Algorithm does not match the envelope prefix.'}
+            )
+        return attrs
 
 
 class ConversationSerializer(serializers.ModelSerializer):

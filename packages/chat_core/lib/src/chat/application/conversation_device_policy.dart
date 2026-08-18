@@ -1,7 +1,4 @@
-// ignore_for_file: implementation_imports
-
-import 'package:crypto_core/src/models/app_user.dart';
-import 'package:crypto_core/src/models/conversation.dart';
+import 'package:crypto_core/crypto_core.dart';
 import 'chat_models.dart';
 
 class ConversationDevicePolicy {

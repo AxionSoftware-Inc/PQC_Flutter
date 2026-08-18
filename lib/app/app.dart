@@ -7,8 +7,11 @@ import '../features/auth/session_controller.dart';
 import '../features/chat/application/chat_facade.dart';
 import '../features/auth/presentation/login_page.dart';
 import '../features/chat/presentation/chat_list_page.dart';
+import '../features/account/data/account_repository.dart';
+import '../features/rbac/data/rbac_repository.dart';
+import '../features/tasks/data/task_kpi_repository.dart';
 import '../features/crypto/durability/crypto_core_facade.dart';
-import '../core/network/api_client.dart';
+import '../core/database/app_database.dart';
 
 class PqcChatApp extends StatelessWidget {
   const PqcChatApp({
@@ -18,7 +21,10 @@ class PqcChatApp extends StatelessWidget {
     required this.cryptoCoreFacade,
     required this.themeController,
     required this.skin,
-    required this.apiClient,
+    required this.accountRepository,
+    required this.taskKpiRepository,
+    required this.rbacRepository,
+    required this.database,
   });
 
   final SessionController sessionController;
@@ -26,7 +32,10 @@ class PqcChatApp extends StatelessWidget {
   final CryptoCoreFacade cryptoCoreFacade;
   final AppThemeController themeController;
   final AppSkin skin;
-  final ApiClient apiClient;
+  final AccountRepository accountRepository;
+  final TaskKpiRepository taskKpiRepository;
+  final RbacRepository rbacRepository;
+  final AppDatabase database;
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +82,10 @@ class PqcChatApp extends StatelessWidget {
                 chatFacade: chatFacade,
                 cryptoCoreFacade: cryptoCoreFacade,
                 themeController: themeController,
-                apiClient: apiClient,
+                accountRepository: accountRepository,
+                taskKpiRepository: taskKpiRepository,
+                rbacRepository: rbacRepository,
+                database: database,
               );
             },
           ),

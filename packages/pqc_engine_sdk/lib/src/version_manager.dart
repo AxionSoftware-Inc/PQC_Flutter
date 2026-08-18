@@ -97,6 +97,7 @@ class PqcEngineManager {
   PqcEngine requireWriter({
     required PqcConversationKind kind,
     required PqcRemoteCapabilities remote,
+    bool hasAttachments = false,
   }) {
     final writer = activeWriter;
     if (!writerEnabled || writer == null) {
@@ -144,9 +145,10 @@ class PqcEngineManager {
         '${remote.minimumDecoderVersion} or newer.',
       );
     }
-    if (!writer.attachmentCipherVersions.every(
-      remote.attachmentCipherVersions.contains,
-    )) {
+    if (hasAttachments &&
+        !writer.attachmentCipherVersions.every(
+          remote.attachmentCipherVersions.contains,
+        )) {
       throw const PqcCompatibilityException(
         'Attachment cipher capability mismatch.',
       );

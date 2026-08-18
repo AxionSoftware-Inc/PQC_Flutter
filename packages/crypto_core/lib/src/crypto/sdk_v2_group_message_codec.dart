@@ -2,6 +2,9 @@ import 'dart:convert';
 
 import 'package:pqc_engine_sdk/pqc_engine_sdk.dart' as sdk;
 
+import 'package:crypto_core/src/core/device/device_identity_service.dart';
+import 'package:crypto_core/src/core/device/device_pqc_key_service.dart';
+import 'package:crypto_core/src/core/device/device_pqc_signing_key_service.dart';
 import 'package:crypto_core/src/models/app_user.dart';
 import 'package:crypto_core/src/models/conversation.dart';
 
@@ -15,12 +18,18 @@ import 'message_codec.dart';
 class SdkV2GroupCipherMessageCodec extends GroupCipherMessageCodec {
   SdkV2GroupCipherMessageCodec({
     required super.groupKeyStore,
+    this.deviceIdentityService,
+    this.devicePqcKeyService,
+    this.devicePqcSigningKeyService,
     sdk.PqcV2Engine? engine,
   }) : _groupKeyStore = groupKeyStore,
        _engine = engine ?? sdk.PqcV2Engine();
 
   final GroupKeyProvider _groupKeyStore;
   final sdk.PqcV2Engine _engine;
+  final DeviceIdentityService? deviceIdentityService;
+  final DevicePqcKeyService? devicePqcKeyService;
+  final DevicePqcSigningKeyService? devicePqcSigningKeyService;
 
   @override
   Future<String> encrypt({
@@ -42,6 +51,7 @@ class SdkV2GroupCipherMessageCodec extends GroupCipherMessageCodec {
         epochId: key.keyId,
         secretKeyBytes: key.secretKeyBytes,
       ),
+      sender: await _senderKeyset(),
     );
   }
 
@@ -75,6 +85,7 @@ class SdkV2GroupCipherMessageCodec extends GroupCipherMessageCodec {
           secretKeyBytes: key.secretKeyBytes,
         ),
       },
+      trustedSigningKeysByDevice: _trustedSigningKeys(usersById),
     );
     return switch (result) {
       sdk.PqcDecoded(:final plaintext) => plaintext,
@@ -82,6 +93,40 @@ class SdkV2GroupCipherMessageCodec extends GroupCipherMessageCodec {
         '[history-recovery-pending]',
       _ => '[decrypt-error]',
     };
+  }
+
+  Future<sdk.PqcDeviceKeyset?> _senderKeyset() async {
+    final identityService = deviceIdentityService;
+    final pqcKeyService = devicePqcKeyService;
+    final signingKeyService = devicePqcSigningKeyService;
+    if (identityService == null ||
+        pqcKeyService == null ||
+        signingKeyService == null) {
+      return null;
+    }
+    final identity = await identityService.getIdentity();
+    final pqc = await pqcKeyService.getOrCreateKeyMaterial();
+    final signing = await signingKeyService.getOrCreateKeyMaterial();
+    return sdk.PqcDeviceKeyset(
+      deviceId: identity.id,
+      kemPublicKeyBase64: pqc.publicKey,
+      kemSecretKeyBase64: pqc.secretKey,
+      signingPublicKeyBase64: signing.publicKey,
+      signingSecretKeyBase64: signing.secretKey,
+    );
+  }
+
+  Map<String, Set<String>> _trustedSigningKeys(Map<int, AppUser> usersById) {
+    final trusted = <String, Set<String>>{};
+    for (final user in usersById.values) {
+      for (final device in user.devices) {
+        if (!device.hasUsableMlDsaKey) continue;
+        trusted
+            .putIfAbsent(device.deviceId, () => <String>{})
+            .add(device.pqcSigningPublicKey);
+      }
+    }
+    return trusted;
   }
 
   String? _epochIdFor(String payload, Conversation conversation) {

@@ -1,19 +1,19 @@
 # Application migration
 
-This package is intentionally not wired into the existing Flutter application
-yet. Integration should be done through adapters so that UI and networking do
-not enter the engine package.
+The Flutter application consumes this package through adapters. UI, file I/O
+and networking remain outside the engine package; only key material, trust
+records and byte/file adapters cross the boundary.
 
 ## Recommended sequence
 
-1. Add the package by an immutable Git tag.
+1. Pin the package to an immutable Git tag for external consumers.
 2. Implement `PqcKeyRepository` over the application's secure storage.
 3. Import the current keyset and every historical V2 keyset without changing
    bytes or keyset ids.
 4. Build the trusted signing-key map from current and historical device
    records.
-5. Run the SDK as a read-only shadow decoder and compare results with the
-   frozen production decoder.
+5. Run the SDK decoder beside the frozen production decoder and compare
+   results during migration.
 6. Exercise reinstall, relogin, account switch, key rotation, device revoke
    and group rekey recovery tests.
 7. Enable the writer only after the server advertises all required
@@ -35,5 +35,6 @@ the historical reader during the entire rollout.
 
 The SDK does not migrate V2 keys into new cryptographic bytes. A future V3
 engine must have its own writer and decoder while retaining this V2 decoder.
-The application-level V3 coordinator currently lives in `crypto_core`; it is
-kept outside this pure SDK until its vectors and release boundary are ready.
+The V3 wire engine and V3 attachment codec now live in this pure SDK.
+`crypto_core` provides the Flutter primitive/key/file adapters and keeps the
+V3 writer behind the server capability gate.

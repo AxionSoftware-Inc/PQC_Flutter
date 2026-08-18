@@ -30,7 +30,7 @@ class AntiQEngineRelease {
   static const v25 = AntiQEngineRelease(
     releaseId: '2.5.0',
     wireProtocol: 'v2',
-    writerProfile: PayloadWriteProfile.v2,
+    writerProfile: PayloadWriteProfile.v25,
   );
 
   static const v3 = AntiQEngineRelease(
@@ -57,7 +57,7 @@ class AntiQProtocolSdk {
   factory AntiQProtocolSdk.v25() => AntiQProtocolSdk._(
     release: AntiQEngineRelease.v25,
     protocols: ProtocolVersionManager(
-      registry: PayloadFormatRegistry(writeProfile: PayloadWriteProfile.v2),
+      registry: PayloadFormatRegistry(writeProfile: PayloadWriteProfile.v25),
     ),
   );
 

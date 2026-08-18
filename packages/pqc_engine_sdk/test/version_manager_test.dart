@@ -97,6 +97,48 @@ void main() {
     );
   });
 
+  test('V3 can be registered beside V2 without prefix ambiguity', () {
+    final v2 = PqcV2Engine();
+    final v3 = PqcV3Engine();
+    final manager = PqcEngineManager(
+      decoders: [v2, v3],
+      activeWriterId: v3.engineId,
+      writerEnabled: true,
+    );
+    final capabilities = PqcRemoteCapabilities(
+      privateReadPrefixes: {PqcV2Wire.privatePrefix, PqcV3Wire.privatePrefix},
+      groupReadPrefixes: {PqcV2Wire.groupPrefix, PqcV3Wire.groupPrefix},
+      privateWritePrefixes: {PqcV3Wire.privatePrefix},
+      groupWritePrefixes: {PqcV3Wire.groupPrefix},
+      attachmentCipherVersions: {PqcV2Wire.attachmentCipherVersion},
+      minimumDecoderVersion: 3,
+      groupEnvelopeReadPrefixes: {PqcV2Wire.groupWrapPrefix},
+      groupEnvelopeWritePrefixes: {PqcV2Wire.groupWrapPrefix},
+    );
+    expect(
+      manager.requireWriter(
+        kind: PqcConversationKind.private,
+        remote: capabilities,
+      ),
+      same(v3),
+    );
+    expect(
+      () => manager.requireWriter(
+        kind: PqcConversationKind.private,
+        remote: capabilities,
+        hasAttachments: true,
+      ),
+      throwsA(isA<PqcCompatibilityException>()),
+    );
+    expect(
+      manager.resolveDecoder(
+        kind: PqcConversationKind.private,
+        payload: '${PqcV3Wire.privatePrefix}:payload',
+      ),
+      same(v3),
+    );
+  });
+
   test('rejects read/write asymmetry and decoder downgrade', () {
     final manager = PqcEngineManager(
       decoders: [engine],

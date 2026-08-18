@@ -12,7 +12,9 @@ UI, HTTP, login, database, file-system or platform-storage dependency.
 - frozen PQCv2 private-message reader/writer
 - frozen PQCv2 group-message and group-epoch reader/writer
 - isolated V2.5 candidate group-epoch codec with a new envelope prefix
+- standalone V3 private/group engine with stable message-id and keyset binding
 - byte-oriented PQCv2 attachment encryption
+- byte-oriented PQCv3 attachment encryption with chunk-bound AAD
 - historical keyset decoding
 - explicit protocol registry and production write gate
 - capability negotiation checks
@@ -87,6 +89,7 @@ final writer = manager.requireWriter(
   kind: PqcConversationKind.private,
   remote: serverCapabilities,
 );
+
 ```
 
 The host should leave `writerEnabled` false until its recovery, real-device
@@ -97,6 +100,11 @@ different protocol after authentication fails.
 candidate uses `group-wrap:pqc:v2.5` and must be enabled only after the server
 advertises that envelope prefix. Existing `group-wrap:pqc:v2` history remains
 readable through the frozen codec.
+
+`PqcV3Engine` is available as a pure SDK decoder/writer, but its production
+writer must still be opened only after the server capability, golden-vector,
+recovery and two-device migration gates pass. The application may keep its
+host adapter during migration; it must not fork or alter the V3 wire codec.
 
 ## Host responsibilities
 

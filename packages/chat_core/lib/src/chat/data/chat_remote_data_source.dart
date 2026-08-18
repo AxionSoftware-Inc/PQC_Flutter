@@ -1,11 +1,5 @@
-// ignore_for_file: implementation_imports
-
-import 'package:crypto_core/src/crypto/group_key_store.dart';
-import 'package:crypto_core/src/models/app_user.dart';
-import 'package:crypto_core/src/models/attachment.dart';
-import 'package:crypto_core/src/models/chat_message.dart';
-import 'package:crypto_core/src/models/conversation.dart';
-import 'package:crypto_core/src/models/conversation_key_envelope.dart';
+import 'package:crypto/crypto.dart' as crypto;
+import 'package:crypto_core/crypto_core.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
@@ -170,12 +164,109 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
     return ChatAttachment.fromJson(_extractAttachmentPayload(decoded));
   }
 
+  Future<Map<String, dynamic>> createAttachmentSession(
+    int conversationId, {
+    required String filename,
+    required String mimeType,
+    required String cipherVersion,
+    required int plaintextSize,
+    required int ciphertextSize,
+    required int chunkSize,
+    required int totalChunks,
+    required String plaintextSha256,
+    required String manifestSha256,
+    required String fileKeyWrap,
+    String conversationEpochId = '',
+    int recoveryManifestSequence = 0,
+  }) async {
+    final response = await apiClient
+        .post('/conversations/$conversationId/attachment-sessions', {
+          'filename': filename,
+          'mime_type': mimeType,
+          'cipher_version': cipherVersion,
+          'plaintext_size': plaintextSize,
+          'ciphertext_size': ciphertextSize,
+          'chunk_size': chunkSize,
+          'total_chunks': totalChunks,
+          'plaintext_sha256': plaintextSha256,
+          'manifest_sha256': manifestSha256,
+          'file_key_wrap': fileKeyWrap,
+          'conversation_epoch_id': conversationEpochId,
+          'recovery_manifest_sequence': recoveryManifestSequence,
+        });
+    if (response is! Map<String, dynamic>) {
+      throw ApiException(
+        'Attachment session response is invalid.',
+        code: 'attachment_session_response_invalid',
+        isRetryable: false,
+      );
+    }
+    return response;
+  }
+
+  Future<void> uploadAttachmentChunk({
+    required String sessionId,
+    required int chunkIndex,
+    required List<int> ciphertext,
+  }) async {
+    await apiClient.putBytes(
+      '/attachment-sessions/$sessionId/chunks/$chunkIndex',
+      bytes: ciphertext,
+      headers: {
+        'X-Chunk-Size': '${ciphertext.length}',
+        'X-Chunk-Sha256': _sha256Hex(ciphertext),
+      },
+    );
+  }
+
+  Future<ChatAttachment> completeAttachmentSession({
+    required String sessionId,
+    required String manifestSha256,
+  }) async {
+    final response = await apiClient.post(
+      '/attachment-sessions/$sessionId/complete',
+      {'manifest_sha256': manifestSha256},
+    );
+    if (response is! Map<String, dynamic>) {
+      throw ApiException(
+        'Attachment completion response is invalid.',
+        code: 'attachment_completion_response_invalid',
+        isRetryable: false,
+      );
+    }
+    return ChatAttachment.fromJson(response);
+  }
+
+  Future<ChatAttachment> fetchAttachmentDescriptor(int attachmentId) async {
+    final response = await apiClient.get('/attachments/$attachmentId/download');
+    if (response is! Map<String, dynamic>) {
+      throw ApiException(
+        'Attachment descriptor response is invalid.',
+        code: 'attachment_descriptor_response_invalid',
+        isRetryable: false,
+      );
+    }
+    return ChatAttachment.fromJson(response);
+  }
+
+  Future<List<int>> downloadAttachmentChunk({
+    required int attachmentId,
+    required int chunkIndex,
+  }) async {
+    final response = await apiClient.getBytes(
+      '/attachments/$attachmentId/chunks/$chunkIndex',
+    );
+    return response.bytes;
+  }
+
   Future<List<int>> downloadAttachmentFile(int attachmentId) async {
     final response = await apiClient.getBytes(
       '/attachments/$attachmentId/file',
     );
     return response.bytes;
   }
+
+  String _sha256Hex(List<int> bytes) => crypto.sha256.convert(bytes).toString();
 
   MediaType? _parseMediaType(String mimeType) {
     try {
@@ -238,11 +329,21 @@ class CryptoProtocolCapabilities {
     required this.privateMessagePrefixes,
     required this.groupMessagePrefixes,
     required this.attachmentCipherVersions,
+    this.readableAttachmentCipherVersions = const [],
+    this.readableGroupEnvelopePrefixes = const [],
+    this.groupEnvelopePrefixes = const [],
+    this.minimumDecoderVersion = 0,
+    this.activeGroupEnvelopeWriter = 'v2',
   });
 
   final List<String> privateMessagePrefixes;
   final List<String> groupMessagePrefixes;
   final List<String> attachmentCipherVersions;
+  final List<String> readableAttachmentCipherVersions;
+  final List<String> readableGroupEnvelopePrefixes;
+  final List<String> groupEnvelopePrefixes;
+  final int minimumDecoderVersion;
+  final String activeGroupEnvelopeWriter;
 
   factory CryptoProtocolCapabilities.fromJson(Map<String, dynamic> json) {
     List<String> read(String name) => (json[name] as List<dynamic>? ?? const [])
@@ -252,6 +353,18 @@ class CryptoProtocolCapabilities {
       privateMessagePrefixes: read('private_message_prefixes'),
       groupMessagePrefixes: read('group_message_prefixes'),
       attachmentCipherVersions: read('attachment_cipher_versions'),
+      readableAttachmentCipherVersions: read(
+        'readable_attachment_cipher_versions',
+      ),
+      readableGroupEnvelopePrefixes: read('readable_group_envelope_prefixes'),
+      groupEnvelopePrefixes: read('group_envelope_prefixes'),
+      minimumDecoderVersion:
+          int.tryParse(
+            json['minimum_decoder_version']?.toString().split('.').first ?? '',
+          ) ??
+          0,
+      activeGroupEnvelopeWriter:
+          json['active_group_envelope_writer'] as String? ?? 'v2',
     );
   }
 }

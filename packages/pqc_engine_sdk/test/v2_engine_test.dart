@@ -230,6 +230,16 @@ void main() {
       );
       expect(recovered?.epochId, epoch.epochId);
       expect(recovered?.secretKeyBytes, epoch.secretKeyBytes);
+      expect(
+        await engine.groupEpochV25.unwrapEpoch(
+          conversation: conversation,
+          wrappedEpoch: wrapped,
+          recipient: bob,
+          trustedSigningKeysByDevice: _trust(alice),
+          trustedKeysetBindingsByDevice: {},
+        ),
+        isNull,
+      );
 
       final document = _decodeUrlDocument(
         wrapped.substring(PqcV2Wire.groupWrapV25Prefix.length + 1),

@@ -195,7 +195,8 @@ class PqcV2AttachmentCodec {
         manifest.plaintextSize < 0 ||
         manifest.ciphertextSize < 0 ||
         manifest.totalChunks < 0 ||
-        manifest.recoveryManifestSequence < 0) {
+        manifest.recoveryManifestSequence < 0 ||
+        manifest.fileKeyWrap.trim().isEmpty) {
       throw const FormatException('Invalid attachment manifest metadata.');
     }
     final expectedChunks = manifest.plaintextSize == 0

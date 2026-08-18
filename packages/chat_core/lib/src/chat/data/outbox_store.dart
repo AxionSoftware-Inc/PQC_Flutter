@@ -1,5 +1,3 @@
-// ignore_for_file: implementation_imports
-
 import 'dart:convert';
 
 import 'package:drift/drift.dart' as drift;
@@ -7,8 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../application/chat_models.dart';
 import '../../core/database/app_database.dart';
-import 'package:crypto_core/src/models/chat_message.dart';
-import 'package:crypto_core/src/core/storage/local_data_protector.dart';
+import 'package:crypto_core/crypto_core.dart';
 
 class QueuedOutgoingMessage {
   const QueuedOutgoingMessage({
@@ -74,9 +71,8 @@ class QueuedOutgoingMessage {
       messageType: json['message_type'] as String? ?? 'text',
       attachments: (json['attachments'] as List<dynamic>? ?? const [])
           .map(
-            (item) => PendingAttachmentUpload.fromJson(
-              item as Map<String, dynamic>,
-            ),
+            (item) =>
+                PendingAttachmentUpload.fromJson(item as Map<String, dynamic>),
           )
           .toList(),
       encryptedPayload: json['encrypted_payload'] as String? ?? '',
@@ -291,9 +287,8 @@ class OutboxStore {
     final decoded = jsonDecode(raw) as List<dynamic>;
     return decoded
         .map(
-          (item) => PendingAttachmentUpload.fromJson(
-            item as Map<String, dynamic>,
-          ),
+          (item) =>
+              PendingAttachmentUpload.fromJson(item as Map<String, dynamic>),
         )
         .toList();
   }

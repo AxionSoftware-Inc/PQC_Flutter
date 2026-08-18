@@ -60,7 +60,36 @@ class CryptoProtocolContractTests(SimpleTestCase):
             ['pqc:v2:', 'pqc:v3:'],
         )
         self.assertEqual(response.data['private_message_prefixes'], ['pqc:v2:', 'pqc:v3:'])
+        self.assertEqual(response.data['attachment_cipher_versions'], ['attachment:v2'])
         self.assertEqual(response.data['backup_schema_revision'], 3)
+
+    def test_v3_full_mode_advertises_v3_attachment_writer(self):
+        with patch.dict(os.environ, {'CRYPTO_PROTOCOL_MODE': 'v3_full'}):
+            response = self.client.get('/api/crypto/protocols')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['active_writer'], 'v3')
+        self.assertEqual(response.data['attachment_cipher_versions'], ['attachment:v2', 'attachment:v3'])
+        self.assertEqual(
+            response.data['readable_attachment_cipher_versions'],
+            ['attachment:v1', 'attachment:v2', 'attachment:v3'],
+        )
+
+    def test_v25_mode_advertises_dual_group_envelope_read_and_v25_write(self):
+        with patch.dict(os.environ, {'CRYPTO_PROTOCOL_MODE': 'v25'}):
+            response = self.client.get('/api/crypto/protocols')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['active_writer'], 'v2')
+        self.assertEqual(response.data['active_group_envelope_writer'], 'v2.5')
+        self.assertEqual(
+            response.data['readable_group_envelope_prefixes'],
+            ['group-wrap:pqc:v2:', 'group-wrap:pqc:v2.5:'],
+        )
+        self.assertEqual(
+            response.data['group_envelope_prefixes'],
+            ['group-wrap:pqc:v2.5:'],
+        )
 
 
 class SimpleAttachmentUploadContractTests(SimpleTestCase):

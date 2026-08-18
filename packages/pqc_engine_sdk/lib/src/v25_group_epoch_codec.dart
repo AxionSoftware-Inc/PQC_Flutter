@@ -119,7 +119,7 @@ class PqcV25GroupEpochCodec {
         return null;
       }
       final trustedBindings = trustedKeysetBindingsByDevice[senderDeviceId];
-      if (trustedBindings != null &&
+      if (trustedBindings == null ||
           !trustedBindings.contains(senderBindingId)) {
         return null;
       }

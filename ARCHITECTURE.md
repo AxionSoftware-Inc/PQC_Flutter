@@ -263,6 +263,47 @@ Izoh:
 3. `services/backend` mustaqil Python path sifatida ishga tushadi; u Flutter root’ini import qilmaydi.
 4. `packages/pqc_engine_sdk/` pinned SDK source’ni local package sifatida beradi; SDK’ning nested `.git` metadata’si parent repo’ga kiritilmaydi.
 
+### 8.1 Navigatsiya va qatlam chegaralari
+
+Yangi kod uchun quyidagi yo‘l qo‘llanadi:
+
+```text
+lib/
+  app/
+    bootstrap/       barcha dependency composition shu yerda
+    design_system/   theme tokens, factory va reusable UI primitives
+  core/              app-wide transport, storage, config va generated DB
+  features/
+    account/data/    account settings, device va recovery API adapterlari
+    auth/            login va session oqimi
+    chat/
+      presentation/ screen shell'lari va ekran-specific parts
+      application/  facade/controller uchun Flutter adapterlari
+    rbac/data/       RBAC repository
+    tasks/data/      Task/KPI repository
+
+packages/
+  chat_core/
+    .../application/ chat use-case orchestration, outbox va controllers
+    .../data/        remote/local data source va repository
+    .../security/    trust models va verification service
+    .../transfer/    transfer models, persistence store va facade
+  crypto_core/
+    .../crypto/      active protocol codecs va group key boundaries
+    .../durability/  backup, key continuity va protocol registry
+  pqc_engine_sdk/
+    lib/src/         pure Dart V2/V2.5/V3 wire implementation
+```
+
+`presentation` qatlamida `ApiClient` import qilinmaydi. HTTP endpointlar
+`lib/features/*/data` yoki `packages/chat_core/.../data` ichida qoladi. Katta
+classlar qator soni bo‘yicha emas, ownership bo‘yicha bo‘linadi: ekranlar
+part fayllariga, outgoing send oqimi queue/delivery/attachment/crypto qismlariga,
+transfer esa model/store/facade'ga ajratilgan. Crypto engine va `ChatFacade`
+esa bitta aniq public application/protocol boundary sifatida saqlanadi.
+Public barrel fayllari eski importlarni saqlaydi, lekin yangi kodni to‘g‘ri
+boundary'ga yo‘naltiradi.
+
 ## 9. Tavsiya Etiladigan Tech Stack
 
 Bu faqat arxitektura uchun tavsiya, hali implementatsiya emas.

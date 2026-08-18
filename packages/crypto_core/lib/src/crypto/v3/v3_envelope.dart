@@ -9,6 +9,7 @@ class V3Envelope {
     required this.senderDeviceId,
     required this.keysetId,
     required this.ciphertext,
+    this.senderKemPublicKey,
     this.metadata = const {},
     this.conversationId,
     this.conversationType,
@@ -23,6 +24,7 @@ class V3Envelope {
   final String senderDeviceId;
   final String keysetId;
   final String ciphertext;
+  final String? senderKemPublicKey;
   final Map<String, dynamic> metadata;
   final int? conversationId;
   final String? conversationType;
@@ -40,6 +42,7 @@ class V3Envelope {
     'message_id': messageId,
     'sender_device_id': senderDeviceId,
     'keyset_id': keysetId,
+    if (senderKemPublicKey != null) 'sender_kem_public_key': senderKemPublicKey,
     'ciphertext': ciphertext,
     'metadata': metadata,
     if (conversationId != null) 'conversation_id': conversationId,
@@ -80,6 +83,7 @@ class V3Envelope {
       senderDeviceId: decoded['sender_device_id'] as String? ?? '',
       keysetId: decoded['keyset_id'] as String? ?? '',
       ciphertext: decoded['ciphertext'] as String? ?? '',
+      senderKemPublicKey: decoded['sender_kem_public_key'] as String?,
       metadata: Map<String, dynamic>.from(
         decoded['metadata'] as Map? ?? const {},
       ),

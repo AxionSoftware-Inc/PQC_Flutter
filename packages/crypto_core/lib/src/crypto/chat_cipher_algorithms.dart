@@ -8,7 +8,8 @@ import 'chat_crypto_context.dart';
 import 'group_key_store.dart';
 import 'message_codec.dart';
 
-class GroupChatCipherAlgorithm implements ChatCipherAlgorithm {
+class GroupChatCipherAlgorithm
+    implements ChatCipherAlgorithm, ChatCipherWriter {
   GroupChatCipherAlgorithm({
     required GroupKeyProvider groupKeyStore,
     GroupCipherMessageCodec? codec,
@@ -22,6 +23,10 @@ class GroupChatCipherAlgorithm implements ChatCipherAlgorithm {
   @override
   bool canDecrypt(String payload) =>
       payload.startsWith('${GroupCipherMessageCodec.prefix}:');
+
+  @override
+  bool canWritePrefix(String prefix) =>
+      prefix == '${GroupCipherMessageCodec.prefix}:';
 
   @override
   Future<String> encrypt({
@@ -48,7 +53,7 @@ class GroupChatCipherAlgorithm implements ChatCipherAlgorithm {
   }
 }
 
-class PqcPrivateChatAlgorithm implements ChatCipherAlgorithm {
+class PqcPrivateChatAlgorithm implements ChatCipherAlgorithm, ChatCipherWriter {
   PqcPrivateChatAlgorithm({
     required DeviceIdentityService deviceIdentityService,
     required DevicePqcKeyService devicePqcKeyService,
@@ -72,6 +77,10 @@ class PqcPrivateChatAlgorithm implements ChatCipherAlgorithm {
   @override
   bool canDecrypt(String payload) =>
       payload.startsWith('${PqcPrivateMessageCodec.prefix}:');
+
+  @override
+  bool canWritePrefix(String prefix) =>
+      prefix == '${PqcPrivateMessageCodec.prefix}:';
 
   @override
   Future<String> encrypt({

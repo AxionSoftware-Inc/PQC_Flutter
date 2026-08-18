@@ -25,6 +25,8 @@ jobs:
         run: python -m pip_audit -r services/backend/requirements.txt --strict
       - name: Audit Dart and Flutter dependencies
         run: python tools/audit_pub_dependencies.py
+      - name: Verify client architecture boundaries
+        run: python tools/check_architecture.py
       - name: Verify fail-closed production settings
         env:
           DJANGO_ENV: production
@@ -77,3 +79,18 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+
+  sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Test standalone PQC SDK
+        working-directory: packages/pqc_engine_sdk
+        run: |
+          dart pub get
+          dart analyze
+          dart test

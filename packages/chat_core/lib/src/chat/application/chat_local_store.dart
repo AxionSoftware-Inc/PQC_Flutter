@@ -1,14 +1,9 @@
-// ignore_for_file: implementation_imports
-
 import 'dart:convert';
 
 import 'package:drift/drift.dart' as drift;
 
 import '../../core/database/app_database.dart';
-import 'package:crypto_core/src/models/attachment.dart';
-import 'package:crypto_core/src/models/chat_message.dart';
-import 'package:crypto_core/src/models/conversation.dart';
-import 'package:crypto_core/src/core/storage/local_data_protector.dart';
+import 'package:crypto_core/crypto_core.dart';
 
 class ChatLocalStore {
   ChatLocalStore({required this._database, required this._localDataProtector});

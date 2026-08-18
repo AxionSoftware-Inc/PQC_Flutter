@@ -62,6 +62,8 @@ lib/       Flutter client
 test/      Flutter tests
 ```
 
+Yangi dasturchi uchun qisqa yo‘l xaritasi: [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md).
+
 ## Server Default
 
 Default API base URL:
@@ -170,13 +172,15 @@ Secret storage:
 
 ## Important Docs
 
-- [ARCHITECTURE.md](/Users/macbookpro/Documents/PQC%20Chat%20app/ARCHITECTURE.md)
-- [TECHNICAL_STATUS.md](/Users/macbookpro/Documents/PQC%20Chat%20app/TECHNICAL_STATUS.md)
-- [CRYPTO_DURABILITY_CORE.md](/Users/macbookpro/Documents/PQC%20Chat%20app/CRYPTO_DURABILITY_CORE.md)
-- [IMPLEMENTATION_NOTES.md](/Users/macbookpro/Documents/PQC%20Chat%20app/IMPLEMENTATION_NOTES.md)
-- [E2EE_FOUNDATION_STATUS.md](/Users/macbookpro/Documents/PQC%20Chat%20app/E2EE_FOUNDATION_STATUS.md)
-- [ENCRYPTION_STORAGE_MODES.md](/Users/macbookpro/Documents/PQC%20Chat%20app/ENCRYPTION_STORAGE_MODES.md)
-- [PROJECT_AUDIT_2026_07_04.md](/Users/macbookpro/Documents/PQC%20Chat%20app/PROJECT_AUDIT_2026_07_04.md)
+- [Codebase map](docs/CODEBASE_MAP.md)
+- [SDK release profiles](docs/release-profiles.md)
+- [ARCHITECTURE.md](ARCHITECTURE.md)
+- [TECHNICAL_STATUS.md](TECHNICAL_STATUS.md)
+- [CRYPTO_DURABILITY_CORE.md](CRYPTO_DURABILITY_CORE.md)
+- [IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md)
+- [E2EE_FOUNDATION_STATUS.md](E2EE_FOUNDATION_STATUS.md)
+- [ENCRYPTION_STORAGE_MODES.md](ENCRYPTION_STORAGE_MODES.md)
+- [PROJECT_AUDIT_2026_07_04.md](PROJECT_AUDIT_2026_07_04.md)
 
 ## Tests
 

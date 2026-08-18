@@ -1,36 +1,29 @@
 import '../chat_cipher_service.dart';
 import '../chat_crypto_context.dart';
 import '../durability/key_material_registry.dart';
+import '../durability/crypto_durability_models.dart';
 import '../../models/conversation.dart';
 import '../../core/device/device_identity_service.dart';
 import '../../core/device/device_pqc_key_service.dart';
 import '../../core/device/device_pqc_signing_key_service.dart';
-import 'pqc_v3_crypto_adapter.dart';
-import 'v3_message_codecs.dart';
+import 'package:pqc_engine_sdk/pqc_engine_sdk.dart' as sdk;
+import 'pqc_v3_sdk_primitive_suite.dart';
 import 'v3_envelope.dart';
 
 /// Adapter from the app's chat context to the isolated V3 codec.
-class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
+class V3ChatCipherAlgorithm implements ChatCipherAlgorithm, ChatCipherWriter {
   V3ChatCipherAlgorithm({
     required this.identityService,
     required this.pqcKeyService,
     required this.signingKeyService,
     required this.keyMaterialRegistry,
-    V3MessageCodec? codec,
-  }) : _codec =
-           codec ??
-           V3MessageCodec(
-             crypto: PqcV3CryptoAdapter(
-               keyService: pqcKeyService,
-               signingService: signingKeyService,
-             ),
-           );
+  }) : _engine = sdk.PqcV3Engine(primitives: PqcV3SdkPrimitiveSuite());
 
   final DeviceIdentityService identityService;
   final DevicePqcKeyService pqcKeyService;
   final DevicePqcSigningKeyService signingKeyService;
   final KeyMaterialRegistry keyMaterialRegistry;
-  final V3MessageCodec _codec;
+  final sdk.PqcV3Engine _engine;
 
   @override
   bool supportsConversation(Conversation conversation) => true;
@@ -38,6 +31,11 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
   @override
   bool canDecrypt(String payload) =>
       payload.startsWith('pqc:v3:') || payload.startsWith('group:v3:');
+
+  @override
+  bool canWritePrefix(String prefix) =>
+      prefix == '${sdk.PqcV3Wire.privatePrefix}:' ||
+      prefix == '${sdk.PqcV3Wire.groupPrefix}:';
 
   @override
   Future<String> encrypt({
@@ -49,7 +47,7 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
     }
     final current = await keyMaterialRegistry.ensureCurrentKeysetRegistered();
     final identity = await identityService.getIdentity();
-    final recipients = <V3DeviceRecipient>[];
+    final recipients = <sdk.PqcDevicePublicKey>[];
     // A private envelope must only ever contain the participants' device
     // wraps.  Using the workspace-wide directory here would give unrelated
     // users a valid content-key wrap.
@@ -60,38 +58,55 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
       for (final device in user.activeDevices) {
         if (!device.hasUsableMlKemKey || device.v3KeysetId.isEmpty) continue;
         recipients.add(
-          V3DeviceRecipient(
+          sdk.PqcDevicePublicKey(
             deviceId: device.deviceId,
-            keysetId: device.v3KeysetId,
-            publicKey: device.pqcPublicKey,
+            kemPublicKeyBase64: device.pqcPublicKey,
+            signingPublicKeyBase64: device.pqcSigningPublicKey,
           ),
         );
       }
     }
     if (!recipients.any((item) => item.deviceId == identity.id)) {
       recipients.add(
-        V3DeviceRecipient(
+        sdk.PqcDevicePublicKey(
           deviceId: identity.id,
-          keysetId: current.v3KeysetId,
-          publicKey: current.pqcPublicKey,
+          kemPublicKeyBase64: current.pqcPublicKey,
+          signingPublicKeyBase64: current.pqcSigningPublicKey,
         ),
       );
     }
-    final codecContext = V3CodecContext(
-      conversationId: context.conversation.id,
-      conversationType: context.conversation.type,
-      messageId: context.messageId,
-      senderDeviceId: identity.id,
-      senderKeysetId: current.v3KeysetId,
-      signingPublicKey: current.pqcSigningPublicKey,
-      localDeviceId: identity.id,
-      localKeysetId: current.v3KeysetId,
-      isGroup: context.conversation.isGroup,
-      recipients: recipients,
+    final sender = sdk.PqcDeviceKeyset(
+      deviceId: identity.id,
+      kemPublicKeyBase64: current.pqcPublicKey,
+      kemSecretKeyBase64: current.pqcSecretKey,
+      signingPublicKeyBase64: current.pqcSigningPublicKey,
+      signingSecretKeyBase64: current.pqcSigningSecretKey,
     );
     return context.conversation.isGroup
-        ? _codec.encryptGroup(context: codecContext, plaintext: plaintext)
-        : _codec.encryptPrivate(context: codecContext, plaintext: plaintext);
+        ? _engine.encodeGroup(
+            conversation: sdk.PqcConversation(
+              id: context.conversation.id,
+              type: context.conversation.type,
+            ),
+            plaintext: plaintext,
+            epoch: sdk.PqcGroupEpoch(
+              epochId: context.messageId,
+              secretKeyBytes: _engine.primitives.randomBytes(32),
+            ),
+            sender: sender,
+            recipientDevices: recipients,
+            messageId: context.messageId,
+          )
+        : _engine.encodePrivate(
+            conversation: sdk.PqcConversation(
+              id: context.conversation.id,
+              type: context.conversation.type,
+            ),
+            plaintext: plaintext,
+            sender: sender,
+            recipientDevices: recipients,
+            messageId: context.messageId,
+          );
   }
 
   @override
@@ -105,45 +120,61 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
         throw StateError('V3 sender keyset is not trusted for this message.');
       }
       final current = await keyMaterialRegistry.ensureCurrentKeysetRegistered();
-      final candidates = <dynamic>[
+      final candidates = [
         current,
         ...await keyMaterialRegistry.readHistoricalDecryptKeysets(),
       ];
-      Object? lastError;
-      for (final keyset in candidates) {
-        try {
-          // A reinstall creates a new installation id.  Historical keysets
-          // belong to the prior installation, so their recipient wrap must be
-          // resolved with *their* device id, not the newly-created one.  The
-          // envelope still requires both the old device id and exact keyset
-          // id, therefore trying retained keysets cannot decrypt a payload
-          // that was not addressed to this account's retained key material.
-          return await _codec.decrypt(
-            context: V3CodecContext(
-              conversationId: context.conversation.id,
-              conversationType: context.conversation.type,
-              messageId: context.messageId,
-              senderDeviceId: '',
-              senderKeysetId: '',
-              signingPublicKey: '',
-              localDeviceId: keyset.deviceId,
-              localKeysetId: keyset.v3KeysetId,
-              localSecretKey: keyset.pqcSecretKey,
-              isGroup: context.conversation.isGroup,
-            ),
-            payload: payload,
-          );
-        } catch (error) {
-          lastError = error;
-        }
-      }
-      if (lastError != null) throw lastError;
-      throw StateError('No local V3 keyset is available.');
+      final result = context.conversation.isGroup
+          ? await _engine.decodeGroup(
+              conversation: sdk.PqcConversation(
+                id: context.conversation.id,
+                type: context.conversation.type,
+              ),
+              payload: payload,
+              epochsById: const {},
+              localKeysets: candidates.map(_toSdkKeyset),
+              trustedSigningKeysByDevice: _trustedSigningKeys(context),
+            )
+          : await _engine.decodePrivate(
+              conversation: sdk.PqcConversation(
+                id: context.conversation.id,
+                type: context.conversation.type,
+              ),
+              payload: payload,
+              localKeysets: candidates.map(_toSdkKeyset),
+              trustedSigningKeysByDevice: _trustedSigningKeys(context),
+            );
+      return switch (result) {
+        sdk.PqcDecoded(:final plaintext) => plaintext,
+        _ => '[decrypt-error]',
+      };
     } catch (_) {
       // A lost/revoked device key must classify the message instead of
       // aborting the entire conversation sync with a SecretBox MAC error.
       return '[decrypt-error]';
     }
+  }
+
+  sdk.PqcDeviceKeyset _toSdkKeyset(KeysetSnapshot keyset) =>
+      sdk.PqcDeviceKeyset(
+        deviceId: keyset.deviceId,
+        kemPublicKeyBase64: keyset.pqcPublicKey,
+        kemSecretKeyBase64: keyset.pqcSecretKey,
+        signingPublicKeyBase64: keyset.pqcSigningPublicKey,
+        signingSecretKeyBase64: keyset.pqcSigningSecretKey,
+      );
+
+  Map<String, Set<String>> _trustedSigningKeys(ChatCryptoContext context) {
+    final trusted = <String, Set<String>>{};
+    for (final user in context.usersById.values) {
+      for (final device in user.devices) {
+        if (!device.hasUsableMlDsaKey) continue;
+        trusted
+            .putIfAbsent(device.deviceId, () => <String>{})
+            .add(device.pqcSigningPublicKey);
+      }
+    }
+    return trusted;
   }
 
   static bool _isTrustedSender({
@@ -161,6 +192,7 @@ class V3ChatCipherAlgorithm implements ChatCipherAlgorithm {
       (device) =>
           device.deviceId == envelope.senderDeviceId &&
           device.v3KeysetId == envelope.senderKeysetId &&
+          device.pqcPublicKey == envelope.senderKemPublicKey &&
           device.pqcSigningAlgorithm == 'ml-dsa-65' &&
           device.pqcSigningPublicKey == envelope.signingPublicKey,
     );

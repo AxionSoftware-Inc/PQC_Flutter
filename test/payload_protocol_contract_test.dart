@@ -29,6 +29,24 @@ void main() {
     },
   );
 
+  test('v2.5 keeps v2 messages and selects a dedicated envelope writer', () {
+    final registry = PayloadFormatRegistry(
+      writeProfile: PayloadWriteProfile.v25,
+    );
+
+    expect(
+      registry
+          .writersFor(PayloadKind.privateMessage)
+          .map((item) => item.prefix),
+      ['pqc:v2:'],
+    );
+    expect(
+      registry.writersFor(PayloadKind.groupEnvelope).map((item) => item.prefix),
+      ['group-wrap:pqc:v2.5:'],
+    );
+    expect(registry.describe('group-wrap:pqc:v2:legacy'), isNotNull);
+  });
+
   test('retired writer remains a decoder and cannot become an encoder', () {
     final manager = ProtocolVersionManager(
       registry: PayloadFormatRegistry(

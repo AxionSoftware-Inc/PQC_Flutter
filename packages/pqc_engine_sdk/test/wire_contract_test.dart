@@ -27,4 +27,15 @@ void main() {
     expect(first.keysetId, second.keysetId);
     expect(first.bindingId, isNot(second.bindingId));
   });
+
+  test('keyset binding id matches the cross-language vector', () {
+    expect(
+      computeKeysetBindingId(
+        'device-vector-1',
+        'a2VtLXB1YmxpYy1rZXk=',
+        'c2lnbmluZy1wdWJsaWMta2V5',
+      ),
+      'g-hOJDNYj9g_YdpEXzEW58AFJniIs5zYL99-fT47bpk',
+    );
+  });
 }

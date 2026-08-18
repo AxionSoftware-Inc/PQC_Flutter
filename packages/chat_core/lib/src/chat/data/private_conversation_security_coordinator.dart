@@ -1,8 +1,4 @@
-// ignore_for_file: implementation_imports
-
-import 'package:crypto_core/src/models/app_user.dart';
-import 'package:crypto_core/src/models/conversation.dart';
-import 'package:crypto_core/src/crypto/chat_crypto_exceptions.dart';
+import 'package:crypto_core/crypto_core.dart';
 import '../../security/key_verification_service.dart';
 
 class PrivateConversationSecurityCoordinator {

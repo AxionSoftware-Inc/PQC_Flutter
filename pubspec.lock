@@ -777,7 +777,7 @@ packages:
       path: packages/pqc_engine_sdk
       relative: true
     source: path
-    version: "0.1.0-dev.1"
+    version: "2.0.0"
   pqcrypto:
     dependency: "direct main"
     description:
