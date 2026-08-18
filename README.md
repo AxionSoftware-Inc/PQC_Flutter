@@ -74,7 +74,7 @@ Yangi dasturchi uchun qisqa yo‘l xaritasi: [docs/CODEBASE_MAP.md](docs/CODEBAS
 
 Default API base URL:
 
-`http://91.108.121.56/api`
+`http://169.58.123.200/api`
 
 Override qilish mumkin:
 

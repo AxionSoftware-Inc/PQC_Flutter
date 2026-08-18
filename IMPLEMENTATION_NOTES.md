@@ -88,12 +88,12 @@ Muhim qarorlar:
 
 Current default production-like target:
 
-`http://91.108.121.56/api`
+`http://169.58.123.200/api`
 
 Server routing:
 
-- `http://91.108.121.56/api/*` -> Django backend
-- `http://91.108.121.56/` -> boshqa mavjud site
+- `http://169.58.123.200/api/*` -> Django backend
+- `http://169.58.123.200/` -> boshqa mavjud site
 
 ## Known Weak Spots
 

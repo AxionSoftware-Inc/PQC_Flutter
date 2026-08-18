@@ -21,6 +21,6 @@ Production must not enable `v3_test` until the V3 app gate, server capability
 negotiation, and two-device migration tests are green.
 
 For the intermediate V2.5 group-key rollout, set
-`CRYPTO_PROTOCOL_MODE=v25`. The API then accepts historical V2 envelopes and
+`CRYPTO_PROTOCOL_MODE=v2.5`. The API then accepts historical V2 envelopes and
 advertises only `group-wrap:pqc:v2.5` as the new envelope writer. Message
 payloads remain V2, so V2 clients and V2 message history are not disrupted.

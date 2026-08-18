@@ -35,7 +35,7 @@ Muammo:
 Yechim:
 
 - serverda `nginx` orqali `/api` reverse proxy qo'yildi
-- app default URL `http://91.108.121.56/api` ga o'tkazildi
+- app default URL `http://169.58.123.200/api` ga o'tkazildi
 
 ### 3. Server DB wrong target
 

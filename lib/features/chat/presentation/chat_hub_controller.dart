@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../core/config/api_config.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/models/app_user.dart';
 import '../../../core/models/chat_message.dart';

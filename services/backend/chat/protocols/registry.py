@@ -26,10 +26,14 @@ def get_protocol_capabilities():
     if v3_enabled:
         readable_message_private.extend(v3.PRIVATE_PREFIXES)
         readable_message_group.extend(v3.GROUP_PREFIXES)
+    # V3 keeps the V2 envelope as its active writer, but must retain the V2.5
+    # envelope reader so envelopes created during the V2.5 rollout remain
+    # decryptable after the deployment advances to V3.
     readable_group_envelopes = [v2.GROUP_ENVELOPE_PREFIX]
     writable_group_envelopes = [v2.GROUP_ENVELOPE_PREFIX]
-    if v25_enabled:
+    if v25_enabled or v3_enabled:
         readable_group_envelopes.append(v2.GROUP_ENVELOPE_V25_PREFIX)
+    if v25_enabled:
         writable_group_envelopes = [v2.GROUP_ENVELOPE_V25_PREFIX]
     return {
         'protocol_version': 3 if v3_enabled else 2,

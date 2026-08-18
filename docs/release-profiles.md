@@ -8,14 +8,14 @@ are active.
 | Profile | Private/group message writer | Group-key envelope writer |
 | --- | --- | --- |
 | `v2` | `pqc:v2:` / `group:v2:` | `group-wrap:pqc:v2:` |
-| `v25` | `pqc:v2:` / `group:v2:` | `group-wrap:pqc:v2.5:` when the server advertises dual compatibility |
+| `v2.5` | `pqc:v2:` / `group:v2:` | `group-wrap:pqc:v2.5:` when the server advertises dual compatibility |
 | `v3` | `pqc:v3:` / `group:v3:` | V2 envelope remains the compatibility default |
 
 Run a profile locally with:
 
 ```bash
 flutter run --dart-define=SDK_RELEASE=v2
-flutter run --dart-define=SDK_RELEASE=v25
+flutter run --dart-define=SDK_RELEASE=v2.5
 flutter run --dart-define=SDK_RELEASE=v3
 ```
 
@@ -23,7 +23,7 @@ The backend must advertise the matching deployment mode:
 
 ```bash
 CRYPTO_PROTOCOL_MODE=v2
-CRYPTO_PROTOCOL_MODE=v25
+CRYPTO_PROTOCOL_MODE=v2.5
 CRYPTO_PROTOCOL_MODE=v3_test
 ```
 

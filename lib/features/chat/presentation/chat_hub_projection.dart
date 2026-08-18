@@ -23,16 +23,13 @@ mixin _ChatHubProjection on _ChatHubControllerBase {
       appPreferences: _appPreferences,
       appVersion: const String.fromEnvironment(
         'APP_VERSION',
-        defaultValue: '1.0.0+1',
+        defaultValue: '1.0.5+223',
       ),
       appSkinId: const String.fromEnvironment(
         'APP_SKIN',
         defaultValue: 'default',
       ),
-      apiBaseUrl: const String.fromEnvironment(
-        'API_BASE_URL',
-        defaultValue: 'http://91.108.121.56/api',
-      ),
+      apiBaseUrl: ApiConfig.baseUrl,
       supportEmail: const String.fromEnvironment(
         'SUPPORT_EMAIL',
         defaultValue: 'support@pqc-chat.local',

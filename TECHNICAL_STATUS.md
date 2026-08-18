@@ -48,7 +48,7 @@ Lekin hali:
 ### 2.4 Backend
 
 1. Django backend ciphertext va metadata tashiydi
-2. `91.108.121.56` serverda live deploy qilingan
+2. `169.58.123.200` serverda live deploy qilingan
 3. health endpoint ishlaydi
 4. login/device sync endpointlari PQC kalitlarni qabul qiladi va qaytaradi
 
