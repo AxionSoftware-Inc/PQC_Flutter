@@ -27,7 +27,7 @@ client directly.
 | Task | Start here | Then follow |
 | --- | --- | --- |
 | Login/session | `lib/features/auth/presentation/` | `lib/features/auth/data/` |
-| Chat list/contacts | `lib/features/chat/presentation/chat_list_page.dart` | `chat_hub_controller.dart` and `packages/chat_core/.../chat_facade.dart` |
+| Chat list/contacts | `lib/features/chat/presentation/chat_list_page.dart` | `chat_hub_controller.dart` and `packages/chat_core/.../chat_facade.dart` (users/conversations parts) |
 | Conversation UI | `lib/features/chat/presentation/chat_page.dart` | `chat_conversation_controller.dart` and `chat_page_*` parts |
 | Send/retry/outbox | `packages/chat_core/lib/src/chat/application/outgoing_message_service.dart` | `outgoing_message_queue.dart`, `outgoing_message_delivery.dart`, `outgoing_message_attachments.dart` |
 | Chat transport | `packages/chat_core/lib/src/chat/data/` | `chat_remote_data_source.dart`, `chat_repository.dart` |
@@ -39,7 +39,32 @@ client directly.
 | Tasks/KPI | `lib/features/tasks/` | `data/task_kpi_repository.dart`, then `presentation/` |
 | RBAC | `lib/features/rbac/` | `data/rbac_repository.dart`, then `presentation/` |
 | Account/recovery | `lib/features/account/data/` | `account_repository.dart`, then chat hub actions |
-| Backend endpoint | `services/backend/chat/` or `services/backend/users/` | serializer -> view -> protocol/test |
+| Backend endpoint | `services/backend/chat/` or `services/backend/users/` | serializer -> `api_views/` domain module -> compatibility `views.py` -> URL/test |
+
+## Backend API navigation
+
+The backend keeps the historical `views.py` import path as a small compatibility
+barrel. New endpoint work belongs in the domain module that owns the behavior:
+
+| Domain | Implementation modules | Boundary |
+| --- | --- | --- |
+| Authentication/account/recovery/devices | `services/backend/users/api_views/` | `users/urls.py` -> `users/views.py` barrel |
+| Conversations/messages/attachments/protocol | `services/backend/chat/api_views/` | `chat/urls.py` -> `chat/views.py` barrel |
+| Tasks/activity/notifications/KPI | `services/backend/backend_plugins/task_kpi/api_views/` | plugin URLs -> `task_kpi/views.py` barrel |
+
+The compatibility barrels contain exports only; they are not places for new
+business logic. This keeps URL contracts stable while making each API domain
+independently searchable and testable.
+
+## Chat application navigation
+
+`packages/chat_core/lib/src/chat/application/chat_facade.dart` is the stable
+public facade and composition boundary. Its implementation is split by
+responsibility into `chat_facade_users.dart`,
+`chat_facade_conversations.dart`, `chat_facade_messaging.dart`,
+`chat_facade_attachments.dart`, and `chat_facade_realtime.dart`. These are Dart
+library parts, so callers keep one facade while maintainers can work in a
+narrow domain file.
 
 ## Layer rules
 
