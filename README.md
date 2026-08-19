@@ -12,7 +12,9 @@ Hozirgi ishchi scope:
 - group chat uchun client-side group key + wrapped key envelopes
 - manual key verification va key-change warning
 
-Bu hali production messenger emas. Hozirgi maqsad: ishlaydigan, test qilsa bo'ladigan, keyin PQC qo'shish mumkin bo'lgan toza baza.
+Bu hali production messenger emas. Hozirgi maqsad: versioned PQC, recovery va
+capability negotiation bilan ishlaydigan, test qilsa bo'ladigan toza baza;
+production hardening alohida release gate'lar bilan bajariladi.
 
 ## Current Status
 
@@ -30,7 +32,7 @@ Ishlaydi:
 Hozircha yo'q:
 
 - WebSocket realtime
-- key rotation
+- full automatic key rotation / rekey UX
 - forward secrecy / double ratchet
 - production-grade trust center UX
 - full PQC trust-center UX

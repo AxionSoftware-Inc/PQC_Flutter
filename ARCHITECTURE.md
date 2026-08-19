@@ -1,6 +1,8 @@
 # PQC Chat App Architecture
 
-Bu hujjat `PQC Chat` ilovasi uchun tavsiya etilgan yuqori darajadagi arxitekturani tasvirlaydi. Maqsad: oddiy chat funksiyalarini keyinchalik post-quantum cryptography (`PQC`) bilan kengaytirish mumkin bo'lgan, bosqichma-bosqich rivojlanuvchi tizim qurish.
+Bu hujjat `PQC Chat` ilovasining hozirgi yuqori darajadagi arxitekturasini
+tasvirlaydi. Maqsad: PQC, recovery va protocol versioning qatlamlarini UI va
+transportdan mustaqil saqlaydigan, bosqichma-bosqich rivojlanuvchi tizim qurish.
 
 ## 1. Maqsad
 
@@ -17,9 +19,9 @@ Ilova quyidagilarni ta'minlashi kerak:
 
 1. `Security first` - kriptografiya ilovaning markazida bo'ladi.
 2. `Layered design` - UI, domain, data va crypto qatlamlari ajratiladi.
-3. `Replaceable crypto` - algoritmlar keyinchalik almashtirilishi mumkin bo'lgan modul sifatida yoziladi.
+3. `Replaceable crypto` - V2/V2.5/V3 encoder/decoder'lari registry va capability gate orqali ajratiladi.
 4. `Minimize trust` - server faqat transport va sinxronizatsiya uchun ishlatiladi.
-5. `Incremental delivery` - avval oddiy chat, so'ng E2EE, so'ng PQC.
+5. `Incremental delivery` - protocol writer'lar compatibility gate bilan bosqichma-bosqich yoqiladi.
 
 ## 3. Yuqori Darajadagi Komponentlar
 
@@ -359,4 +361,6 @@ Bu faqat arxitektura uchun tavsiya, hali implementatsiya emas.
 
 ## 12. Xulosa
 
-Eng to'g'ri yo'l - avval minimal chat platforma, keyin E2EE, undan keyin PQC qo'shish. Shunda loyiha nazoratli, test qilinadigan va kengaytiriladigan bo'lib qoladi.
+Eng to'g'ri yo'l - mavjud V2 kontraktini o'zgartirmasdan V2.5 va V3 writer'larini
+capability gate orqali rollout qilish. Shunda loyiha nazoratli, test qilinadigan
+va kengaytiriladigan bo'lib qoladi.

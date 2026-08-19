@@ -14,7 +14,9 @@ deployment uses only the core; it has no RBAC dependency.
   records.
 - `chat`: encrypted payload transport, conversation metadata, attachments and
   realtime events.
-- `packages/crypto_core`: client-side SDK-facing cryptographic implementation.
+- Client-side crypto lives outside the Django service in `packages/crypto_core`
+  and `packages/pqc_engine_sdk`; the backend stores ciphertext and protocol
+  capability metadata only.
 
 The server never imports a client private key and never decrypts message text.
 
@@ -35,9 +37,9 @@ extension point; it is not enabled and has no effect on the core API.
 
 1. Install PostgreSQL, Python 3 with `venv` support and Nginx.
 2. Create the database and a database user.
-3. Copy `deploy/backend.env.example` to `/etc/antiq/backend.env`, set secrets,
+3. Copy `deploy/backend.env.example` to `/etc/pqc-chat.env`, set secrets,
    allowed hosts and database values, then run `chmod 600` on it.
-4. Run `PUBLIC_HOST=chat.example.com ENV_FILE=/etc/antiq/backend.env
+4. Run `PUBLIC_HOST=chat.example.com ENV_FILE=/etc/pqc-chat.env
    deploy/install_server.sh` as root from the release checkout.
 
 The installer creates the virtual environment, validates and migrates Django,
