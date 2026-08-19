@@ -25,9 +25,9 @@ extension _ChatListStateViews on _ChatListPageState {
       ),
       if (_taskKpiModuleEnabled)
         _TabMeta(
-          label: context.antiQText(uz: 'KPI', en: 'KPI'),
+          label: context.antiQText(uz: 'Vazifalar', en: 'Tasks'),
           icon: HugeIcons.strokeRoundedTask01,
-          title: context.antiQText(uz: 'KPI markazi', en: 'KPI center'),
+          title: context.antiQText(uz: 'Vazifalar markazi', en: 'Task center'),
         ),
       _TabMeta(
         label: context.antiQText(uz: 'Sozlamalar', en: 'Settings'),
@@ -111,10 +111,11 @@ extension _ChatListStateViews on _ChatListPageState {
                     TaskKpiPage(
                       repository: widget.taskKpiRepository,
                       currentUserId: sessionUser.id,
-                      onOpenKpiChat: (conversation, title) => _openConversation(
-                        conversation: conversation,
-                        title: title,
-                      ),
+                      onOpenTaskChat: (conversation, title) =>
+                          _openConversation(
+                            conversation: conversation,
+                            title: title,
+                          ),
                     ),
                   RefreshIndicator(
                     onRefresh: _refresh,

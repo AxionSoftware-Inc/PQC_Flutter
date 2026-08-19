@@ -53,12 +53,12 @@ extension _TaskKpiDashboardViews on _TaskKpiPageState {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'KPI markazi',
+                      'Vazifalar markazi',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     SizedBox(height: spacing.xs),
                     Text(
-                      'Vazifalar, maqsadlar va jamoa natijalarini bir joyda boshqaring.',
+                      'Vazifalar, muddatlar va jamoa bajarilishini bir joyda boshqaring.',
                       style: Theme.of(
                         context,
                       ).textTheme.bodySmall?.copyWith(color: colors.textMuted),
@@ -67,7 +67,7 @@ extension _TaskKpiDashboardViews on _TaskKpiPageState {
                 ),
               ),
               IconButton(
-                tooltip: 'KPI ma’lumotlarini yangilash',
+                tooltip: 'Vazifalar ma’lumotlarini yangilash',
                 onPressed: _dashboardLoading ? null : () => _load(),
                 icon: const Icon(Icons.refresh_rounded),
               ),
@@ -166,9 +166,9 @@ extension _TaskKpiDashboardViews on _TaskKpiPageState {
                 ),
                 SizedBox(width: spacing.md),
                 OutlinedButton.icon(
-                  onPressed: _openKpiAnalytics,
+                  onPressed: _openOperationalReport,
                   icon: const Icon(Icons.bar_chart_rounded, size: 18),
-                  label: const Text('Hisobotlar'),
+                  label: const Text('Operatsion hisobot'),
                 ),
               ],
             ),

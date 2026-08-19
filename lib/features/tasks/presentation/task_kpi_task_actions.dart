@@ -7,7 +7,7 @@ extension _TaskKpiTaskActions on _TaskKpiPageState {
         builder: (_) => _TaskDetailPage(
           repository: widget.repository,
           currentUserId: widget.currentUserId,
-          onOpenKpiChat: widget.onOpenKpiChat,
+          onOpenTaskChat: widget.onOpenTaskChat,
           task: task,
           canReview: ((task['permissions'] as Map?)?['can_manage'] == true),
           onAdvance: () => _advanceTask(task),

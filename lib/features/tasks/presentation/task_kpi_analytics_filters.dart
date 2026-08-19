@@ -2,9 +2,7 @@ part of 'task_kpi_page.dart';
 
 // ignore_for_file: invalid_use_of_protected_member
 
-
 extension _TaskKpiAnalyticsFilters on _TaskKpiPageState {
-
   Widget _buildTaskFilters() {
     return Row(
       children: [
@@ -48,7 +46,7 @@ extension _TaskKpiAnalyticsFilters on _TaskKpiPageState {
                   return;
                 }
                 if (value == '_kpi') {
-                  unawaited(_openKpiAnalytics());
+                  unawaited(_openOperationalReport());
                   return;
                 }
                 setState(() => _statusFilter = value);
@@ -65,7 +63,7 @@ extension _TaskKpiAnalyticsFilters on _TaskKpiPageState {
                   value: '_notifications',
                   child: Text('Bildirishnomalar'),
                 ),
-                PopupMenuItem(value: '_kpi', child: Text('KPI analitikasi')),
+                PopupMenuItem(value: '_kpi', child: Text('Operatsion hisobot')),
               ],
               icon: Icon(
                 _statusFilter == 'open' || _statusFilter == 'all'
@@ -132,5 +130,4 @@ extension _TaskKpiAnalyticsFilters on _TaskKpiPageState {
   }
 
   // ignore: unused_element
-
 }

@@ -69,7 +69,7 @@ extension _TaskDetailViews on _TaskDetailPageState {
               tabs: [
                 const Tab(text: 'Topshiriq'),
                 Tab(text: 'Faoliyat (${_commentActivities.length})'),
-                const Tab(text: 'KPI chat'),
+                const Tab(text: 'Vazifa chati'),
                 Tab(text: 'Fayllar (${_fileEntries.length})'),
               ],
             ),
@@ -124,7 +124,7 @@ extension _TaskDetailViews on _TaskDetailPageState {
           Icon(Icons.forum_rounded, color: colors.primary, size: 28),
           SizedBox(height: spacing.sm),
           Text(
-            'KPI ishchi chati',
+            'Vazifa ishchi chati',
             style: Theme.of(
               context,
             ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
@@ -138,9 +138,9 @@ extension _TaskDetailViews on _TaskDetailPageState {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: _openKpiChat,
+              onPressed: _openTaskChat,
               icon: const Icon(Icons.chat_bubble_outline_rounded),
-              label: const Text('KPI chatni ochish'),
+              label: const Text('Vazifa chatini ochish'),
             ),
           ),
         ],

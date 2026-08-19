@@ -2,15 +2,12 @@ part of 'task_kpi_page.dart';
 
 // ignore_for_file: invalid_use_of_protected_member
 
-
 extension _TaskKpiAnalyticsViews on _TaskKpiPageState {
-
-  Future<void> _openKpiAnalytics() async {
+  Future<void> _openOperationalReport() async {
     try {
       final values = await Future.wait<dynamic>([
         widget.repository.get('/task-kpi/kpi-summary'),
         widget.repository.get('/task-kpi/reports'),
-        widget.repository.get('/task-kpi/kpi-goals'),
       ]);
       if (!mounted) return;
       final summary = values[0] is List
@@ -19,19 +16,11 @@ extension _TaskKpiAnalyticsViews on _TaskKpiPageState {
       final report = values[1] is Map
           ? Map<String, dynamic>.from(values[1] as Map)
           : const <String, dynamic>{};
-      final goals = values[2] is List
-          ? List<Map<String, dynamic>>.from(values[2] as List)
-          : const <Map<String, dynamic>>[];
-      final goalDetails = await Future.wait<dynamic>(
-        goals.map(
-          (goal) => widget.repository.get('/task-kpi/kpi-goals/${goal['id']}'),
-        ),
-      );
       if (!mounted) return;
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('KPI ko‘rsatkichlari'),
+          title: const Text('Operatsion hisobot'),
           content: SizedBox(
             width: 420,
             child: ListView(
@@ -69,42 +58,6 @@ extension _TaskKpiAnalyticsViews on _TaskKpiPageState {
                     trailing: Text('$done/$total'),
                   );
                 }),
-                if (goals.isNotEmpty) ...[
-                  const Divider(height: 24),
-                  Text(
-                    'KPI maqsadlari',
-                    style: Theme.of(dialogContext).textTheme.titleMedium,
-                  ),
-                  ...goals.asMap().entries.map((entry) {
-                    final goal = entry.value;
-                    final current =
-                        (goal['current_value'] as num?)?.toDouble() ?? 0;
-                    final target =
-                        (goal['target_value'] as num?)?.toDouble() ?? 0;
-                    final progress = target <= 0
-                        ? 0.0
-                        : (current / target).clamp(0, 1).toDouble();
-                    final detail = goalDetails[entry.key];
-                    final historyCount =
-                        detail is Map && detail['history'] is List
-                        ? (detail['history'] as List).length
-                        : 0;
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(goal['title'] as String? ?? 'KPI'),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 6),
-                          LinearProgressIndicator(value: progress),
-                          const SizedBox(height: 4),
-                          Text('Tarix: $historyCount ta o‘zgarish'),
-                        ],
-                      ),
-                      trailing: Text('$current/$target'),
-                    );
-                  }),
-                ],
               ],
             ),
           ),
@@ -119,7 +72,7 @@ extension _TaskKpiAnalyticsViews on _TaskKpiPageState {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('KPI ma’lumotlarini yuklab bo‘lmadi: $error')),
+        SnackBar(content: Text('Operatsion hisobotni yuklab bo‘lmadi: $error')),
       );
     }
   }
@@ -182,6 +135,4 @@ extension _TaskKpiAnalyticsViews on _TaskKpiPageState {
     if (lower.endsWith('.mp3')) return 'audio/mpeg';
     return 'application/octet-stream';
   }
-
-
 }

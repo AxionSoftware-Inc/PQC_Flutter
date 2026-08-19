@@ -4,7 +4,7 @@ class _TaskDetailPage extends StatefulWidget {
   const _TaskDetailPage({
     required this.repository,
     required this.currentUserId,
-    required this.onOpenKpiChat,
+    required this.onOpenTaskChat,
     required this.task,
     required this.canReview,
     required this.onAdvance,
@@ -15,7 +15,7 @@ class _TaskDetailPage extends StatefulWidget {
   final TaskKpiRepository repository;
   final int currentUserId;
   final Future<void> Function(Conversation conversation, String title)
-  onOpenKpiChat;
+  onOpenTaskChat;
   final Map<String, dynamic> task;
   final bool canReview;
   final Future<void> Function() onAdvance;
@@ -39,7 +39,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
   Timer? _activityRefreshTimer;
   bool _loadingActivities = true;
   bool _sendingUpdate = false;
-  bool _openingKpiChat = false;
+  bool _openingTaskChat = false;
   String? _activityError;
 
   Map<String, dynamic> get task => widget.task;

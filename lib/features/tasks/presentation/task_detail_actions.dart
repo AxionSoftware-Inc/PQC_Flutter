@@ -3,25 +3,25 @@ part of 'task_kpi_page.dart';
 // ignore_for_file: invalid_use_of_protected_member
 
 extension _TaskDetailActions on _TaskDetailPageState {
-  Future<void> _openKpiChat() async {
-    if (_openingKpiChat) return;
+  Future<void> _openTaskChat() async {
+    if (_openingTaskChat) return;
     final taskId = (task['id'] as num?)?.toInt();
     if (taskId == null) return;
-    setState(() => _openingKpiChat = true);
+    setState(() => _openingTaskChat = true);
     try {
       final conversation = await widget.repository.openTaskConversation(taskId);
       if (!mounted) return;
-      await widget.onOpenKpiChat(
+      await widget.onOpenTaskChat(
         conversation,
-        'KPI • ${task['title']?.toString() ?? 'Vazifa'}',
+        'Vazifa • ${task['title']?.toString() ?? 'Vazifa'}',
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('KPI chatni ochib bo‘lmadi: $error')),
+        SnackBar(content: Text('Vazifa chatini ochib bo‘lmadi: $error')),
       );
     } finally {
-      if (mounted) setState(() => _openingKpiChat = false);
+      if (mounted) setState(() => _openingTaskChat = false);
     }
   }
 

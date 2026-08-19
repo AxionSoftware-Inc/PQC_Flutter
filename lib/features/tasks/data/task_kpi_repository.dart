@@ -3,7 +3,11 @@ import 'package:crypto_core/crypto_core.dart';
 
 import '../../../core/network/api_client.dart';
 
-/// Feature boundary for task/KPI HTTP operations.
+/// Feature boundary for task-center HTTP operations.
+///
+/// KPI goals and scoring remain backend-owned contracts for the future
+/// standalone KPI app; this client currently consumes task workflow and
+/// operational reporting only.
 ///
 /// Presentation code depends on this contract instead of the shared transport
 /// client. Endpoint details stay in the task data layer until typed DTOs are

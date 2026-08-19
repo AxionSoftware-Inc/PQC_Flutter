@@ -14,8 +14,9 @@ import '../../../app/design_system/app_design_system.dart';
 import '../data/task_kpi_repository.dart';
 import '../../chat/presentation/chat_thread_widget.dart';
 
-/// Optional Task/KPI module shell. Its APIs are supplied by the independent
-/// `task_kpi` backend plugin, not by chat or crypto core.
+/// Optional task-center shell. Its APIs are supplied by the independent
+/// `task_kpi` backend plugin, not by chat or crypto core. The future KPI app
+/// can reuse the backend goal/scoring APIs without coupling them to this UI.
 
 part 'task_detail_page.dart';
 part 'task_create_page.dart';
@@ -40,13 +41,13 @@ class TaskKpiPage extends StatefulWidget {
     super.key,
     required this.repository,
     required this.currentUserId,
-    required this.onOpenKpiChat,
+    required this.onOpenTaskChat,
   });
 
   final TaskKpiRepository repository;
   final int currentUserId;
   final Future<void> Function(Conversation conversation, String title)
-  onOpenKpiChat;
+  onOpenTaskChat;
 
   @override
   State<TaskKpiPage> createState() => _TaskKpiPageState();
