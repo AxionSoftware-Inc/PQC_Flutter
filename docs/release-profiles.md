@@ -19,6 +19,15 @@ flutter run --dart-define=SDK_RELEASE=v2.5
 flutter run --dart-define=SDK_RELEASE=v3
 ```
 
+For an Android release build, pass the HTTPS API URL explicitly because the
+host rejects HTTP defaults in product mode:
+
+```bash
+flutter build apk --release \
+  --dart-define=API_BASE_URL=https://chat.example.com/api \
+  --dart-define=SDK_RELEASE=v2
+```
+
 The backend must advertise the matching deployment mode:
 
 ```bash

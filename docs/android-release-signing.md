@@ -11,7 +11,9 @@ export ANDROID_KEYSTORE_PATH=/secure/path/axion-release.jks
 export ANDROID_KEYSTORE_PASSWORD='...'
 export ANDROID_KEY_ALIAS='axion-release'
 export ANDROID_KEY_PASSWORD='...'
-flutter build apk --release
+flutter build apk --release \
+  --dart-define=API_BASE_URL=https://chat.example.com/api \
+  --dart-define=SDK_RELEASE=v2
 ```
 
 For a local install-only release test, the debug key can be enabled explicitly:
