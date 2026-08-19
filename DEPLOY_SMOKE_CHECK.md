@@ -17,6 +17,14 @@
 - Failed send shows retry state
 - Retry button clears failed-retryable message after sync succeeds
 
+## Scaling/load test
+
+`tools/chat_stress_test.py` queries `/api/crypto/protocols` before creating
+traffic and uses the advertised V2 or V3 message writer. Use
+`--protocol-mode v2`, `--protocol-mode v2.5`, or `--protocol-mode v3` to test a
+specific rollout profile; V2.5 keeps V2 private/group message prefixes and
+selects its distinct group-envelope writer in the SDK.
+
 ## Security Notes
 - Device-bound account bootstrap is implemented
 - Ciphertext storage is implemented

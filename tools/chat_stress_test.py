@@ -120,6 +120,45 @@ def login_user(base_url, run_id, index):
     }
 
 
+def fetch_protocol_capabilities(base_url):
+    response = call_with_retry(
+        lambda: request_json("GET", f"{base_url}/crypto/protocols")
+    )
+    if response["status"] != 200:
+        raise RuntimeError(
+            f"protocol capabilities failed: {response['status']} {response['json']}"
+        )
+    capabilities = response["json"] or {}
+    private_prefixes = tuple(capabilities.get("private_message_prefixes", ()))
+    group_prefixes = tuple(capabilities.get("group_message_prefixes", ()))
+    if not private_prefixes or not group_prefixes:
+        raise RuntimeError("protocol capabilities do not advertise message writers")
+    return capabilities
+
+
+def select_message_prefixes(capabilities, requested_mode=None):
+    """Select load-test payload prefixes from the deployment contract.
+
+    The stress tool only exercises message transport, not group-key envelope
+    rotation. V2.5 therefore uses the V2 message prefixes while still relying
+    on the server's capability advertisement for compatibility.
+    """
+    private_prefixes = tuple(capabilities.get("private_message_prefixes", ()))
+    group_prefixes = tuple(capabilities.get("group_message_prefixes", ()))
+    mode = (requested_mode or capabilities.get("active_writer", "v2")).lower()
+    if mode in {"v3", "v3_test", "v3-test", "v3_full", "v3-full"}:
+        private_prefix = "pqc:v3:"
+        group_prefix = "group:v3:"
+    else:
+        private_prefix = "pqc:v2:"
+        group_prefix = "group:v2:"
+    if private_prefix not in private_prefixes or group_prefix not in group_prefixes:
+        raise RuntimeError(
+            f"requested message writer {mode!r} is not advertised by the deployment"
+        )
+    return private_prefix, group_prefix
+
+
 def auth_headers(session):
     return {
         "Authorization": f"Token {session['token']}",
@@ -171,11 +210,11 @@ def create_private_conversation(base_url, session, other_account_id):
     }
 
 
-def build_group_ciphertext(index):
+def build_group_ciphertext(index, prefix="group:v2:"):
     key_id = f"load-group-key-{index:03d}"
     return ":".join(
         [
-            "group:v1",
+            prefix.rstrip(":"),
             key_id,
             b64_random(12),
             b64_random(96),
@@ -184,10 +223,14 @@ def build_group_ciphertext(index):
     )
 
 
-def build_synthetic_pqc_payload(sender_device_id, target_device_id):
+def build_synthetic_pqc_payload(
+    sender_device_id,
+    target_device_id,
+    prefix="pqc:v2:",
+):
     return ":".join(
         [
-            "pqc:v1",
+            prefix.rstrip(":"),
             sender_device_id,
             b64_random(1952),
             target_device_id,
@@ -328,10 +371,20 @@ def main():
     parser.add_argument("--base-url", default="http://127.0.0.1:8000/api")
     parser.add_argument("--users", type=int, default=200)
     parser.add_argument("--workers", type=int, default=50)
+    parser.add_argument(
+        "--protocol-mode",
+        choices=("v2", "v2.5", "v3"),
+        help="message writer profile; defaults to the deployment active writer",
+    )
     parser.add_argument("--server-pid", type=int)
     parser.add_argument("--memory-sample-interval", type=float, default=0.2)
     args = parser.parse_args()
 
+    capabilities = fetch_protocol_capabilities(args.base_url)
+    private_prefix, group_prefix = select_message_prefixes(
+        capabilities,
+        args.protocol_mode,
+    )
     run_id = time.strftime("%Y%m%d%H%M%S")
     server_pid = find_server_pid(args.server_pid)
     memory_before_kb = read_rss_kb(server_pid)
@@ -363,7 +416,7 @@ def main():
             args.base_url,
             session,
             session["group_conversation_id"],
-            build_group_ciphertext(session["index"]),
+            build_group_ciphertext(session["index"], group_prefix),
         ),
     )
 
@@ -391,7 +444,11 @@ def main():
             args.base_url,
             pair[0],
             pair[0]["private_conversation_id"],
-            build_synthetic_pqc_payload(pair[0]["device_id"], pair[1]["device_id"]),
+            build_synthetic_pqc_payload(
+                pair[0]["device_id"],
+                pair[1]["device_id"],
+                private_prefix,
+            ),
         ),
     )
 
@@ -406,6 +463,9 @@ def main():
         "run_id": run_id,
         "users": args.users,
         "workers": args.workers,
+        "protocol_mode": args.protocol_mode or capabilities.get("active_writer", "v2"),
+        "private_message_prefix": private_prefix,
+        "group_message_prefix": group_prefix,
         "duration_seconds": round(duration_seconds, 2),
         "server_pid": server_pid,
         "memory": {
@@ -422,9 +482,13 @@ def main():
             summarize_latencies("private_send", private_send_latencies),
         ],
         "message_shapes": {
-            "group_payload_chars": len(build_group_ciphertext(0)),
+            "group_payload_chars": len(build_group_ciphertext(0, group_prefix)),
             "synthetic_private_pqc_payload_chars": len(
-                build_synthetic_pqc_payload("sender-device", "target-device")
+                build_synthetic_pqc_payload(
+                    "sender-device",
+                    "target-device",
+                    private_prefix,
+                )
             ),
         },
     }
