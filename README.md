@@ -138,6 +138,18 @@ Muhim:
 - bu app-side persistent identity
 - test bosqichi uchun ataylab shunday qilingan
 
+### Android Google OAuth
+
+Google login Android package va build certificate bilan bog‘langan. `com.axion.pqc`
+package uchun har bir build turi o‘z SHA-1 fingerprintiga ega bo‘lishi kerak.
+Hozir planshetda tekshirilgan debug APK fingerprinti:
+
+`91:88:71:FD:7A:3D:C3:0E:28:42:97:5B:3E:D2:FE:24:5B:90:11:05`
+
+Bu SHA-1 Google Cloud’dagi Android OAuth client’ga qo‘shilmasa, Google account
+tanlangandan keyin login `canceled` ko‘rinishida qaytishi mumkin. Release build
+uchun esa release keystore SHA-1’i alohida ro‘yxatdan o‘tkaziladi.
+
 ## Persistence Rules
 
 App hozir quyidagilarni eslab qoladi:

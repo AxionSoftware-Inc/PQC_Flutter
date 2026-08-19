@@ -64,7 +64,9 @@ mixin _AuthGoogleActions on _AuthRepositoryBase {
     final suffix = detail == null || detail.isEmpty ? '' : ' ($detail)';
     return switch (error.code) {
       GoogleSignInExceptionCode.canceled =>
-        'Google orqali kirish bekor qilindi.',
+        'Google login oynasi yopildi yoki Android OAuth sozlamasi mos emas. '
+            'com.axion.pqc package va build SHA-1 Google Cloud’da ro‘yxatdan '
+            'o‘tganini tekshiring.',
       GoogleSignInExceptionCode.interrupted =>
         'Google orqali kirish uzildi. Internetni tekshirib, qayta urinib ko‘ring.',
       GoogleSignInExceptionCode.clientConfigurationError =>
