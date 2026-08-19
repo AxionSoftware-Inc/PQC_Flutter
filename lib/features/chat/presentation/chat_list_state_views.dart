@@ -25,9 +25,9 @@ extension _ChatListStateViews on _ChatListPageState {
       ),
       if (_taskKpiModuleEnabled)
         _TabMeta(
-          label: context.antiQText(uz: 'Vazifalar', en: 'Tasks'),
+          label: context.antiQText(uz: 'KPI', en: 'KPI'),
           icon: HugeIcons.strokeRoundedTask01,
-          title: context.antiQText(uz: 'Vazifalar', en: 'Tasks'),
+          title: context.antiQText(uz: 'KPI markazi', en: 'KPI center'),
         ),
       _TabMeta(
         label: context.antiQText(uz: 'Sozlamalar', en: 'Settings'),

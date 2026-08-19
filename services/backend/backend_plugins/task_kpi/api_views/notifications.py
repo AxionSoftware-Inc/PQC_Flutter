@@ -9,25 +9,12 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from users.models import OrganizationMember, WorkspaceMember
 from users.serializers import avatar_url_for_user
 
-from ..activity import record_activity
-from ..models import KpiGoal, KpiGoalHistory, TaskActivity, TaskAttachment, TaskNotification, TaskWatcher, WorkTask
-from ..permissions import can_comment_on_task, can_manage_task, can_view_task
-from ..serializers import (
-    KpiGoalSerializer,
-    KpiGoalHistorySerializer,
-    TaskActivitySerializer,
-    TaskAttachmentSerializer,
-    TaskNotificationSerializer,
-    WorkTaskSerializer,
-)
-from ..workflow import ACTION_STATUS, available_actions
+from ..models import TaskNotification, WorkTask
+from ..serializers import TaskNotificationSerializer
 
-
-
-from .common import _assignable_members, _membership
+from .common import _assignable_members, _membership, _visible_tasks
 
 class TaskNotificationView(APIView):
     def get(self, request):
@@ -148,19 +135,3 @@ class TaskReportView(APIView):
         writer.writerow(['total', 'done', 'returned', 'overdue', 'average_completion_hours'])
         writer.writerow([payload[key] for key in ('total', 'done', 'returned', 'overdue', 'average_completion_hours')])
         return response
-
-
-class KpiSummaryView(APIView):
-    def get(self, request):
-        member = _membership(request)
-        if not member:
-            return Response({'detail': 'Active workspace not found.'}, status=403)
-        visible = _assignable_members(member) | WorkspaceMember.objects.filter(id=member.id)
-        totals = WorkTask.objects.filter(workspace=member.workspace, assignee__in=visible).values('assignee_id').annotate(total=Count('id'), done=Count('id', filter=Q(status='done')))
-        stats = {row['assignee_id']: row for row in totals}
-        return Response([{
-            'member_id': item.id,
-            'name': item.organization_member.user.first_name or item.organization_member.user.username,
-            'total': stats.get(item.id, {}).get('total', 0),
-            'done': stats.get(item.id, {}).get('done', 0),
-        } for item in visible.distinct()])

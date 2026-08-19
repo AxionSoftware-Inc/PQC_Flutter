@@ -65,6 +65,8 @@ extension _TaskKpiDataActions on _TaskKpiPageState {
               widget.repository.get('/task-kpi/assignees'),
               _optionalGet('/task-kpi/notifications'),
               _optionalGet('/task-kpi/kpi-summary'),
+              _optionalGet('/task-kpi/dashboard'),
+              _optionalGet('/task-kpi/reports'),
             ]);
       final taskResponse = values[0];
       final taskItems = _extractTaskItems(taskResponse);
@@ -89,11 +91,19 @@ extension _TaskKpiDataActions on _TaskKpiPageState {
           _kpiSummary = values[3] is List
               ? List<Map<String, dynamic>>.from(values[3] as List)
               : const [];
+          _dashboard = values[4] is Map
+              ? Map<String, dynamic>.from(values[4] as Map)
+              : const {};
+          _report = values[5] is Map
+              ? Map<String, dynamic>.from(values[5] as Map)
+              : const {};
+          _dashboardLoading = false;
         }
         _hasMore = taskPage['has_more'] == true;
         _nextOffset = taskPage['next_offset'] as int?;
         _loading = false;
         _loadingMore = false;
+        if (!append) _dashboardLoading = false;
       });
     } catch (error) {
       if (!mounted) return;

@@ -1,6 +1,5 @@
 part of 'task_kpi_page.dart';
 
-
 class _TaskKpiPageState extends State<TaskKpiPage> {
   bool _loading = true;
   bool _loadingMore = false;
@@ -9,6 +8,9 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
   List<Map<String, dynamic>> _assignees = const [];
   List<Map<String, dynamic>> _notifications = const [];
   List<Map<String, dynamic>> _kpiSummary = const [];
+  Map<String, dynamic> _dashboard = const {};
+  Map<String, dynamic> _report = const {};
+  bool _dashboardLoading = true;
   int _unreadNotifications = 0;
   int? _nextOffset;
   bool _hasMore = false;
@@ -37,7 +39,6 @@ class _TaskKpiPageState extends State<TaskKpiPage> {
   }
 
   @override
-
   void initState() {
     super.initState();
     _load();

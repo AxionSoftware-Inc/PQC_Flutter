@@ -167,3 +167,23 @@ class TaskKpiPluginTests(APITestCase):
         self.assertTrue(page.data['has_more'])
         legacy = self.client.get('/api/task-kpi/tasks', **self.headers)
         self.assertIsInstance(legacy.data, list)
+
+    def test_dashboard_and_report_return_scoped_metrics(self):
+        self.client.force_authenticate(self.manager)
+        created = self.client.post(
+            '/api/task-kpi/tasks',
+            {'title': 'Haftalik KPI', 'assignee_id': self.worker_member.id},
+            format='json',
+            **self.headers,
+        )
+        self.assertEqual(created.status_code, 201)
+
+        dashboard = self.client.get('/api/task-kpi/dashboard', **self.headers)
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertEqual(dashboard.data['assigned_by_me_open'], 1)
+        self.assertIn('team', dashboard.data)
+
+        report = self.client.get('/api/task-kpi/reports', **self.headers)
+        self.assertEqual(report.status_code, 200)
+        self.assertEqual(report.data['total'], 1)
+        self.assertEqual(report.data['done'], 0)

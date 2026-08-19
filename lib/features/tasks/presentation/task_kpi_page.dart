@@ -28,6 +28,7 @@ part 'task_detail_files.dart';
 part 'task_detail_activity_views.dart';
 part 'task_kpi_state.dart';
 part 'task_kpi_data_actions.dart';
+part 'task_kpi_dashboard_views.dart';
 part 'task_kpi_views.dart';
 part 'task_kpi_analytics_views.dart';
 part 'task_kpi_analytics_filters.dart';

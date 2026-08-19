@@ -26,6 +26,14 @@ extension _TaskKpiViews on _TaskKpiPageState {
           child: ListView(
             padding: EdgeInsets.all(spacing.md),
             children: [
+              _buildKpiDashboard(context),
+              SizedBox(height: spacing.lg),
+              AppSectionHeader(
+                title: 'Vazifalar',
+                subtitle:
+                    'Bajariladigan ishlar va ularning jarayonini boshqaring.',
+              ),
+              SizedBox(height: spacing.sm),
               _buildTaskFilters(),
               SizedBox(height: spacing.sm),
               if (_tasks.isEmpty)
