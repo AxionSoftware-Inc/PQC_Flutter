@@ -8,7 +8,6 @@ from chat.views import (
     AttachmentSessionCompleteView,
     AttachmentSessionCreateView,
     AttachmentSessionDetailView,
-    AttachmentUploadView,
     ConversationListView,
     CryptoProtocolCapabilitiesView,
     ConversationKeyEnvelopeView,
@@ -31,11 +30,6 @@ urlpatterns = [
     path('messages/<int:message_id>', MessageActionView.as_view(), name='message-action'),
     path('messages/<int:message_id>/reaction', MessageReactionView.as_view(), name='message-reaction'),
     path('messages/<int:message_id>/read', MessageReadView.as_view(), name='message-read'),
-    path(
-        'conversations/<int:conversation_id>/attachments',
-        AttachmentUploadView.as_view(),
-        name='conversation-attachments',
-    ),
     path(
         'conversations/<int:conversation_id>/attachment-sessions',
         AttachmentSessionCreateView.as_view(),

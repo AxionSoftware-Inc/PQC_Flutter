@@ -114,11 +114,31 @@ class CryptoCoreFacade {
     required Iterable<String> readablePrefixes,
     required Iterable<String> writablePrefixes,
   }) {
+    final expectedPrefix = protocolVersionManager
+        .activeWriter(PayloadKind.groupEnvelope)
+        .prefix;
+    final readable = readablePrefixes.map(_withoutTrailingColon).toSet();
+    final writable = writablePrefixes.map(_withoutTrailingColon).toSet();
+    final normalizedExpected = _withoutTrailingColon(expectedPrefix);
+    if (!readable.contains(normalizedExpected) ||
+        !writable.contains(normalizedExpected)) {
+      throw StateError(
+        'Remote endpoint cannot read and write the active group-envelope '
+        'format $expectedPrefix.',
+      );
+    }
     groupKeyStore.configureGroupEnvelopeWriter(
       readablePrefixes: readablePrefixes,
       writablePrefixes: writablePrefixes,
       writeProfile: _payloadFormatRegistry.writeProfile,
     );
+  }
+
+  static String _withoutTrailingColon(String value) {
+    final normalized = value.trim();
+    return normalized.endsWith(':')
+        ? normalized.substring(0, normalized.length - 1)
+        : normalized;
   }
 
   Future<void> initialize() {

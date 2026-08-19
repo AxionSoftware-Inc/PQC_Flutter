@@ -1,28 +1,12 @@
-import hashlib
-import logging
-import os
-import tempfile
-import uuid
-from datetime import timedelta
-
-from django.contrib.auth import get_user_model
-from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
 from django.db import transaction
-from django.db.models import Q
-from django.http import Http404, HttpResponse
+from django.db.models import Prefetch
 from django.utils import timezone
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
 from rest_framework import generics, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from chat.models import (
-    AttachmentChunkReceipt,
-    AttachmentUploadSession,
-    Conversation,
     ConversationCryptoEpoch,
     Message,
     MessageReceipt,
@@ -30,41 +14,26 @@ from chat.models import (
     MessageAttachment,
 )
 from chat.serializers import (
-    AttachmentUploadSerializer,
-    AttachmentSessionCompleteSerializer,
-    AttachmentSessionCreateSerializer,
-    AttachmentUploadSessionSerializer,
-    ConversationSerializer,
-    GROUP_ENVELOPE_ALGORITHM,
     ConversationKeyEnvelopeSerializer,
     ConversationKeyEnvelopeSyncSerializer,
     MessageCreateSerializer,
-    MessageAttachmentSerializer,
     MessageSerializer,
     MessageReactionSerializer,
-    PrivateConversationSerializer,
-    get_or_create_private_conversation,
 )
 from chat.protocols import get_protocol_capabilities
 from chat.protocols import v2 as v2_protocol
-from users.models import UserDevice, WorkspaceMember
+from users.models import UserDevice
 from users.serializers import (
     is_valid_ml_kem_768_public_key,
     normalize_supported_protocols,
 )
-
-
-User = get_user_model()
-DEFAULT_ATTACHMENT_SESSION_TTL_DAYS = 7
-logger = logging.getLogger(__name__)
-
-
 
 from .common import (
     get_request_device_or_400,
     get_user_conversation_or_404,
     publish_workspace_event_on_commit,
 )
+
 
 class MessageListCreateView(APIView):
     def get(self, request, conversation_id):
@@ -76,7 +45,18 @@ class MessageListCreateView(APIView):
             limit = min(max(int(limit_value), 1), 100) if limit_value else None
         except (TypeError, ValueError):
             limit = 50
-        messages_query = conversation.messages.select_related('sender').prefetch_related('attachments')
+        messages_query = conversation.messages.select_related(
+            'conversation',
+            'sender',
+        ).prefetch_related(
+            'attachments',
+            Prefetch('reactions', to_attr='prefetched_reactions'),
+            Prefetch('receipts', to_attr='prefetched_receipts'),
+            Prefetch(
+                'conversation__participants',
+                to_attr='prefetched_participants',
+            ),
+        )
         if after_id.isdigit():
             messages = messages_query.filter(id__gt=int(after_id)).order_by('id')
             if limit is not None:
@@ -113,6 +93,31 @@ class MessageListCreateView(APIView):
         if not conversation.participants.filter(id=request.user.id).exists():
             raise PermissionDenied('Not a participant of this conversation.')
 
+        requested_attachment_ids = serializer.validated_data['attachment_ids']
+        unique_attachment_ids = set(requested_attachment_ids)
+        if len(unique_attachment_ids) != len(requested_attachment_ids):
+            return Response(
+                {'detail': 'Duplicate attachment_ids are not allowed.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        attachments = list(MessageAttachment.objects.select_for_update().filter(
+            id__in=unique_attachment_ids,
+            conversation=conversation,
+            workspace=conversation.workspace,
+            uploaded_by=request.user,
+            message__isnull=True,
+        ))
+        if len(attachments) != len(unique_attachment_ids):
+            return Response(
+                {
+                    'detail': (
+                        'Every attachment_id must belong to this conversation, '
+                        'the current workspace and the current user.'
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         client_message_id = serializer.validated_data['client_message_id'].strip()
         message_defaults = {
             'body': serializer.validated_data['body'].strip(),
@@ -137,16 +142,12 @@ class MessageListCreateView(APIView):
                 client_message_id='',
                 **message_defaults,
             )
-        attachments = MessageAttachment.objects.filter(
-            id__in=serializer.validated_data['attachment_ids'],
-            conversation=conversation,
-            workspace=conversation.workspace,
-            uploaded_by=request.user,
-            message__isnull=True,
-        )
-        attachment_count = attachments.count()
+        attachment_count = len(attachments)
         if attachment_count:
-            attachments.update(message=message)
+            MessageAttachment.objects.filter(
+                id__in=[attachment.id for attachment in attachments],
+                message__isnull=True,
+            ).update(message=message)
             message.attachment_count = attachment_count
             message.save(update_fields=['attachment_count'])
         conversation.save(update_fields=['updated_at'])
@@ -188,34 +189,22 @@ class MessageActionView(APIView):
         message = self._message(request, message_id)
         if message.sender_id != request.user.id:
             raise PermissionDenied('Only the sender can edit a message.')
-        body = request.data.get('body')
-        if not isinstance(body, str) or not body.strip():
-            return Response({'detail': 'body is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        message.body = body.strip()
+        if message.deleted_at is not None:
+            return Response(
+                {'detail': 'Deleted messages cannot be edited.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        serializer = MessageCreateSerializer(
+            data={'body': request.data.get('body', '')},
+            context={'conversation': message.conversation},
+        )
+        serializer.is_valid(raise_exception=True)
+        message.body = serializer.validated_data['body']
         message.edited_at = timezone.now()
         message.save(update_fields=['body', 'edited_at'])
         serialized = MessageSerializer(message, context={'request': request}).data
         publish_workspace_event_on_commit(message.conversation.workspace_id, 'message.updated', serialized)
         return Response(serialized)
-
-    @transaction.atomic
-    def post(self, request, message_id):
-        source = self._message(request, message_id)
-        target_id = request.data.get('conversation_id')
-        if not isinstance(target_id, int):
-            return Response({'detail': 'conversation_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        target = get_user_conversation_or_404(request, target_id)
-        forwarded = Message.objects.create(
-            conversation=target,
-            sender=request.user,
-            body=source.body,
-            message_type=source.message_type,
-            forwarded_from=source,
-        )
-        target.save(update_fields=['updated_at'])
-        serialized = MessageSerializer(forwarded, context={'request': request}).data
-        publish_workspace_event_on_commit(target.workspace_id, 'message.created', serialized)
-        return Response(serialized, status=status.HTTP_201_CREATED)
 
     def delete(self, request, message_id):
         message = self._message(request, message_id)
@@ -454,5 +443,3 @@ class ConversationKeyEnvelopeView(APIView):
             ConversationKeyEnvelopeSerializer(saved, many=True).data,
             status=status.HTTP_201_CREATED,
         )
-
-

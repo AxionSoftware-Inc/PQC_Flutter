@@ -72,9 +72,9 @@ test/      Flutter tests
 
 Yangi dasturchi uchun qisqa yo‘l xaritasi: [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md).
 
-## Server Default
+## Server URL
 
-Default API base URL:
+Debug builds use the current HTTP server as a development fallback:
 
 `http://169.58.123.200/api`
 
@@ -83,6 +83,18 @@ Override qilish mumkin:
 ```bash
 flutter run --dart-define=API_BASE_URL=http://YOUR_HOST:8000/api
 ```
+
+Release builds fail closed unless an HTTPS API URL is supplied:
+
+```bash
+flutter build apk --release \
+  --dart-define=API_BASE_URL=https://chat.example.com/api \
+  --dart-define=SDK_RELEASE=v2
+```
+
+The current server is still HTTP-only, so it is suitable for development and
+network smoke tests, not a secure public release. Domain, TLS certificate and
+reverse-proxy termination must be configured before production rollout.
 
 ## Backend Setup
 
@@ -196,7 +208,8 @@ Secret storage:
 ## Tests
 
 ```bash
-.venv/bin/python services/backend/manage.py test users chat
+.venv/bin/python services/backend/manage.py test --noinput
+ANTIQ_BACKEND_PLUGINS=rbac,task_kpi .venv/bin/python services/backend/manage.py test --noinput
 flutter test
 flutter analyze
 ```

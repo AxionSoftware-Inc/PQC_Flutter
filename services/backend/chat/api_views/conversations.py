@@ -1,66 +1,23 @@
-import hashlib
-import logging
-import os
-import tempfile
-import uuid
-from datetime import timedelta
-
 from django.contrib.auth import get_user_model
-from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
 from django.db import transaction
-from django.db.models import Q
-from django.http import Http404, HttpResponse
-from django.utils import timezone
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
+from django.db.models import Count, IntegerField, OuterRef, Prefetch, Q, Subquery, Value
+from django.db.models.functions import Coalesce
 from rest_framework import generics, status
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from chat.models import (
-    AttachmentChunkReceipt,
-    AttachmentUploadSession,
-    Conversation,
-    ConversationCryptoEpoch,
-    Message,
-    MessageReceipt,
-    MessageReaction,
-    MessageAttachment,
-)
+from chat.models import Conversation, Message
 from chat.serializers import (
-    AttachmentUploadSerializer,
-    AttachmentSessionCompleteSerializer,
-    AttachmentSessionCreateSerializer,
-    AttachmentUploadSessionSerializer,
     ConversationSerializer,
-    GROUP_ENVELOPE_ALGORITHM,
-    ConversationKeyEnvelopeSerializer,
-    ConversationKeyEnvelopeSyncSerializer,
-    MessageCreateSerializer,
-    MessageAttachmentSerializer,
-    MessageSerializer,
-    MessageReactionSerializer,
     PrivateConversationSerializer,
     get_or_create_private_conversation,
-)
-from chat.protocols import get_protocol_capabilities
-from chat.protocols import v2 as v2_protocol
-from users.models import UserDevice, WorkspaceMember
-from users.serializers import (
-    is_valid_ml_kem_768_public_key,
-    normalize_supported_protocols,
 )
 
 
 User = get_user_model()
-DEFAULT_ATTACHMENT_SESSION_TTL_DAYS = 7
-logger = logging.getLogger(__name__)
-
-
 
 from .common import get_request_workspace_or_403
+
 
 class ConversationListView(APIView):
     def get(self, request):
@@ -68,12 +25,45 @@ class ConversationListView(APIView):
         workspace, error_response = get_request_workspace_or_403(request)
         if error_response is not None:
             return error_response
+        unread_messages = (
+            Message.objects.filter(conversation_id=OuterRef('pk'))
+            .exclude(sender_id=request.user.id)
+            .exclude(
+                receipts__user_id=request.user.id,
+                receipts__read_at__isnull=False,
+            )
+            .order_by()
+            .values('conversation_id')
+            .annotate(total=Count('id'))
+            .values('total')
+        )
+        latest_messages = Message.objects.select_related('sender').order_by(
+            '-created_at',
+            '-id',
+        )[:1]
         conversations = (
             Conversation.objects.filter(
                 participants=request.user,
                 workspace=workspace,
             )
-            .prefetch_related('participants', 'messages')
+            .annotate(
+                unread_count_value=Coalesce(
+                    Subquery(unread_messages, output_field=IntegerField()),
+                    Value(0),
+                )
+            )
+            .prefetch_related(
+                Prefetch(
+                    'participants',
+                    queryset=User.objects.only('id').order_by('id'),
+                    to_attr='ordered_participants',
+                ),
+                Prefetch(
+                    'messages',
+                    queryset=latest_messages,
+                    to_attr='latest_messages',
+                ),
+            )
             .distinct()
         )
         if updated_after:
@@ -135,5 +125,3 @@ class PrivateConversationView(APIView):
                 context={'request': request},
             ).data
         )
-
-

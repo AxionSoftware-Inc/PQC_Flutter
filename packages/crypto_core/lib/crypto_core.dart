@@ -1,4 +1,3 @@
-export 'src/config/api_config.dart';
 export 'src/core/device/device_identity_service.dart';
 export 'src/core/device/device_key_service.dart';
 export 'src/core/device/device_pqc_key_service.dart';

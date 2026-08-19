@@ -121,7 +121,7 @@ void main() {
       privateWritePrefixes: {PqcV3Wire.privatePrefix},
       groupWritePrefixes: {PqcV3Wire.groupPrefix},
       attachmentCipherVersions: {PqcV2Wire.attachmentCipherVersion},
-      minimumDecoderVersion: 3,
+      minimumDecoderVersion: 2,
       groupEnvelopeReadPrefixes: {PqcV2Wire.groupWrapPrefix},
       groupEnvelopeWritePrefixes: {PqcV2Wire.groupWrapPrefix},
     );
@@ -146,6 +146,109 @@ void main() {
         payload: '${PqcV3Wire.privatePrefix}:payload',
       ),
       same(v3),
+    );
+  });
+
+  test('V3 profile keeps V2 group-envelope compatibility writer', () {
+    final manager = PqcEngineManager.forRelease(
+      release: PqcProtocolRelease.v3,
+      writerEnabled: true,
+    );
+    final capabilities = PqcRemoteCapabilities(
+      privateReadPrefixes: {PqcV2Wire.privatePrefix, PqcV3Wire.privatePrefix},
+      groupReadPrefixes: {PqcV2Wire.groupPrefix, PqcV3Wire.groupPrefix},
+      privateWritePrefixes: {PqcV3Wire.privatePrefix},
+      groupWritePrefixes: {PqcV3Wire.groupPrefix},
+      attachmentCipherVersions: {
+        PqcV2Wire.attachmentCipherVersion,
+        PqcV3Wire.attachmentCipherVersion,
+      },
+      minimumDecoderVersion: 2,
+      groupEnvelopeReadPrefixes: {PqcV2Wire.groupWrapPrefix},
+      groupEnvelopeWritePrefixes: {PqcV2Wire.groupWrapPrefix},
+    );
+
+    expect(
+      manager.activeWriterFor(PqcConversationKind.private),
+      isA<PqcV3Engine>(),
+    );
+    expect(
+      manager.activeWriterFor(PqcConversationKind.group),
+      isA<PqcV3Engine>(),
+    );
+    expect(
+      manager.activeWriterFor(PqcConversationKind.groupEnvelope),
+      isA<PqcV2Engine>(),
+    );
+    expect(
+      manager.requireWriter(
+        kind: PqcConversationKind.private,
+        remote: capabilities,
+        hasAttachments: true,
+      ),
+      isA<PqcV3Engine>(),
+    );
+    expect(
+      manager.requireWriter(
+        kind: PqcConversationKind.groupEnvelope,
+        remote: capabilities,
+      ),
+      isA<PqcV2Engine>(),
+    );
+  });
+
+  test('V2.5 profile only changes the group-envelope writer', () {
+    final manager = PqcEngineManager.forRelease(
+      release: PqcProtocolRelease.v25,
+      writerEnabled: true,
+    );
+    final capabilities = PqcRemoteCapabilities(
+      privateReadPrefixes: {PqcV2Wire.privatePrefix},
+      groupReadPrefixes: {PqcV2Wire.groupPrefix},
+      privateWritePrefixes: {PqcV2Wire.privatePrefix},
+      groupWritePrefixes: {PqcV2Wire.groupPrefix},
+      attachmentCipherVersions: {PqcV2Wire.attachmentCipherVersion},
+      minimumDecoderVersion: 2,
+      groupEnvelopeReadPrefixes: {
+        PqcV2Wire.groupWrapPrefix,
+        PqcV2Wire.groupWrapV25Prefix,
+      },
+      groupEnvelopeWritePrefixes: {PqcV2Wire.groupWrapV25Prefix},
+    );
+
+    expect(
+      manager.requireWriter(
+        kind: PqcConversationKind.private,
+        remote: capabilities,
+      ),
+      isA<PqcV2Engine>(),
+    );
+    expect(
+      manager.requireWriter(
+        kind: PqcConversationKind.groupEnvelope,
+        remote: capabilities,
+      ),
+      isA<PqcV2Engine>(),
+    );
+    expect(
+      manager.activeWriterFor(PqcConversationKind.groupEnvelope)?.engineId,
+      'pqc-v2.5',
+    );
+  });
+
+  test('V3 cannot be selected as a group-envelope writer', () {
+    final v3 = PqcV3Engine();
+    final manager = PqcEngineManager(
+      decoders: [v3],
+      activeWriterId: v3.engineId,
+      writerEnabled: true,
+    );
+    expect(
+      () => manager.requireWriter(
+        kind: PqcConversationKind.groupEnvelope,
+        remote: capabilities,
+      ),
+      throwsA(isA<PqcCompatibilityException>()),
     );
   });
 
@@ -235,6 +338,14 @@ void main() {
       () => parsed.privateReadPrefixes.add('pqc:v3:'),
       throwsUnsupportedError,
     );
+    final normalized = PqcRemoteCapabilities.fromJson({
+      'readable_private_message_prefixes': ['  pqc:v3:  ', '', 42],
+      'private_message_prefixes': ['pqc:v3:'],
+      'minimum_decoder_version': '3.0.0',
+    });
+    expect(normalized.privateReadPrefixes, contains('pqc:v3'));
+    expect(normalized.privateReadPrefixes, isNot(contains('')));
+    expect(normalized.minimumDecoderVersion, 3);
   });
 
   test('accepts a single-use decoder iterable', () {

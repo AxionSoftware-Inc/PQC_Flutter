@@ -1,95 +1,38 @@
 import hashlib
-import logging
 import os
 import tempfile
 import uuid
 from datetime import timedelta
 
-from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
-from django.db.models import Q
-from django.http import Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse
 from django.utils import timezone
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
-from rest_framework import generics, status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from chat.models import (
     AttachmentChunkReceipt,
     AttachmentUploadSession,
-    Conversation,
-    ConversationCryptoEpoch,
-    Message,
-    MessageReceipt,
-    MessageReaction,
     MessageAttachment,
 )
 from chat.serializers import (
-    AttachmentUploadSerializer,
     AttachmentSessionCompleteSerializer,
     AttachmentSessionCreateSerializer,
     AttachmentUploadSessionSerializer,
-    ConversationSerializer,
-    GROUP_ENVELOPE_ALGORITHM,
-    ConversationKeyEnvelopeSerializer,
-    ConversationKeyEnvelopeSyncSerializer,
-    MessageCreateSerializer,
     MessageAttachmentSerializer,
-    MessageSerializer,
-    MessageReactionSerializer,
-    PrivateConversationSerializer,
-    get_or_create_private_conversation,
-)
-from chat.protocols import get_protocol_capabilities
-from chat.protocols import v2 as v2_protocol
-from users.models import UserDevice, WorkspaceMember
-from users.serializers import (
-    is_valid_ml_kem_768_public_key,
-    normalize_supported_protocols,
 )
 
 
-User = get_user_model()
 DEFAULT_ATTACHMENT_SESSION_TTL_DAYS = 7
-logger = logging.getLogger(__name__)
-
-
 
 from .common import (
     get_user_attachment_or_404,
     get_user_attachment_session_or_404,
     get_user_conversation_or_404,
 )
-
-class AttachmentUploadView(APIView):
-    @transaction.atomic
-    def post(self, request, conversation_id):
-        conversation = get_user_conversation_or_404(request, conversation_id)
-        serializer = AttachmentUploadSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        uploaded = serializer.validated_data['file']
-        storage_key = default_storage.save(
-            f'attachments/{conversation.workspace_id}/{conversation.id}/{uploaded.name}',
-            uploaded,
-        )
-        attachment = MessageAttachment.objects.create(
-            conversation=conversation,
-            workspace=conversation.workspace,
-            uploaded_by=request.user,
-            filename=uploaded.name,
-            mime_type=getattr(uploaded, 'content_type', 'application/octet-stream'),
-            size_bytes=uploaded.size,
-            storage_key=storage_key,
-        )
-        return Response(
-            MessageAttachmentSerializer(attachment).data,
-            status=status.HTTP_201_CREATED,
-        )
 
 
 def _chunk_storage_key(session, chunk_index):
@@ -114,6 +57,42 @@ def _mark_session_expired_if_needed(session):
         session.save(update_fields=['status', 'updated_at'])
         return True
     return session.status == AttachmentUploadSession.Status.EXPIRED
+
+
+def _store_chunk_at_exact_key(storage_key, chunk_bytes, checksum):
+    if default_storage.exists(storage_key):
+        try:
+            if default_storage.size(storage_key) == len(chunk_bytes):
+                digest = hashlib.sha256()
+                with default_storage.open(storage_key, 'rb') as existing:
+                    while True:
+                        piece = existing.read(1024 * 1024)
+                        if not piece:
+                            break
+                        digest.update(piece)
+                if digest.hexdigest() == checksum:
+                    return
+        except (OSError, NotImplementedError):
+            pass
+        default_storage.delete(storage_key)
+
+    saved_key = default_storage.save(storage_key, ContentFile(chunk_bytes))
+    if saved_key != storage_key:
+        default_storage.delete(saved_key)
+        raise RuntimeError('Attachment storage did not preserve the chunk key.')
+
+
+def _store_final_blob_at_exact_key(storage_key, temp_path):
+    # A previous worker may have committed the blob before its database
+    # transaction was interrupted. The session row is locked, so replacing
+    # this deterministic key is safe and lets the retry rebuild the record.
+    if default_storage.exists(storage_key):
+        default_storage.delete(storage_key)
+    with open(temp_path, 'rb') as completed_blob:
+        saved_key = default_storage.save(storage_key, completed_blob)
+    if saved_key != storage_key:
+        default_storage.delete(saved_key)
+        raise RuntimeError('Attachment storage did not preserve the blob key.')
 
 
 class AttachmentSessionCreateView(APIView):
@@ -161,6 +140,12 @@ class AttachmentSessionChunkView(APIView):
     @transaction.atomic
     def put(self, request, session_id, chunk_index):
         session = get_user_attachment_session_or_404(request, session_id)
+        # Serialize chunk receipt creation per session. Without this lock two
+        # concurrent retries can both pass the existence check, overwrite the
+        # same storage key, and race on the unique receipt constraint.
+        session = AttachmentUploadSession.objects.select_for_update().get(
+            pk=session.pk,
+        )
         if _mark_session_expired_if_needed(session):
             return Response(
                 {'detail': 'Attachment upload session expired.'},
@@ -226,7 +211,7 @@ class AttachmentSessionChunkView(APIView):
             )
 
         storage_key = _chunk_storage_key(session, chunk_index)
-        default_storage.save(storage_key, ContentFile(chunk_bytes))
+        _store_chunk_at_exact_key(storage_key, chunk_bytes, checksum)
         AttachmentChunkReceipt.objects.create(
             session=session,
             chunk_index=chunk_index,
@@ -247,6 +232,12 @@ class AttachmentSessionCompleteView(APIView):
     @transaction.atomic
     def post(self, request, session_id):
         session = get_user_attachment_session_or_404(request, session_id)
+        # Completion is idempotent, but it must be serialized with another
+        # completion request so two workers cannot create two attachments from
+        # one session.
+        session = AttachmentUploadSession.objects.select_for_update().get(
+            pk=session.pk,
+        )
         if _mark_session_expired_if_needed(session):
             return Response(
                 {'detail': 'Attachment upload session expired.'},
@@ -273,31 +264,30 @@ class AttachmentSessionCompleteView(APIView):
 
         blob_storage_key = _final_blob_storage_key(session)
         total_written = 0
-        with tempfile.NamedTemporaryFile(delete=False) as temp_handle:
-            temp_path = temp_handle.name
-            for receipt in session.chunk_receipts.order_by('chunk_index'):
-                with default_storage.open(receipt.storage_key, 'rb') as source:
-                    while True:
-                        chunk = source.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        temp_handle.write(chunk)
-                        total_written += len(chunk)
-        if total_written != session.ciphertext_size:
-            try:
-                os.unlink(temp_path)
-            except OSError:
-                pass
-            return Response(
-                {'detail': 'Ciphertext size mismatch during finalization.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        with open(temp_path, 'rb') as completed_blob:
-            default_storage.save(blob_storage_key, completed_blob)
+        temp_path = None
         try:
-            os.unlink(temp_path)
-        except OSError:
-            pass
+            with tempfile.NamedTemporaryFile(delete=False) as temp_handle:
+                temp_path = temp_handle.name
+                for receipt in session.chunk_receipts.order_by('chunk_index'):
+                    with default_storage.open(receipt.storage_key, 'rb') as source:
+                        while True:
+                            chunk = source.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            temp_handle.write(chunk)
+                            total_written += len(chunk)
+            if total_written != session.ciphertext_size:
+                return Response(
+                    {'detail': 'Ciphertext size mismatch during finalization.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            _store_final_blob_at_exact_key(blob_storage_key, temp_path)
+        finally:
+            if temp_path is not None:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
         attachment = MessageAttachment.objects.create(
             conversation=session.conversation,
             workspace=session.workspace,
@@ -358,15 +348,18 @@ class AttachmentDownloadFileView(APIView):
 
     def get(self, request, attachment_id):
         attachment = get_user_attachment_or_404(request, attachment_id)
-        with default_storage.open(attachment.storage_key, 'rb') as handle:
-            data = handle.read()
-        response = HttpResponse(
-            data,
+        handle = default_storage.open(attachment.storage_key, 'rb')
+        safe_filename = os.path.basename(attachment.filename).replace('"', '_')
+        response = FileResponse(
+            handle,
+            as_attachment=True,
+            filename=safe_filename or 'attachment.bin',
             content_type=attachment.mime_type or 'application/octet-stream',
         )
-        response['Content-Length'] = str(len(data))
-        safe_filename = attachment.filename.replace('"', '_')
-        response['Content-Disposition'] = f'attachment; filename="{safe_filename}"'
+        try:
+            response['Content-Length'] = str(default_storage.size(attachment.storage_key))
+        except (OSError, NotImplementedError):
+            pass
         return response
 
 

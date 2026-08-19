@@ -9,6 +9,7 @@ export 'src/chat/data/chat_remote_data_source.dart';
 export 'src/chat/data/chat_repository.dart';
 export 'src/chat/data/outbox_store.dart';
 export 'src/chat/data/private_conversation_security_coordinator.dart';
+export 'src/config/api_config.dart';
 export 'src/core/database/app_database.dart';
 export 'src/core/network/api_client.dart';
 export 'src/models/organization_context.dart';

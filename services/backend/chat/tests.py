@@ -4,7 +4,6 @@ import os
 from unittest.mock import patch
 
 from django.test import SimpleTestCase, override_settings
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework.test import APITestCase
@@ -14,9 +13,9 @@ from chat.models import (
     Conversation,
     ConversationKeyEnvelope,
     ConversationParticipant,
+    Message,
     MessageAttachment,
 )
-from chat.serializers import AttachmentUploadSerializer
 from users.models import UserDevice
 
 
@@ -98,33 +97,6 @@ class CryptoProtocolContractTests(SimpleTestCase):
             response.data['group_envelope_prefixes'],
             ['group-wrap:pqc:v2.5:'],
         )
-
-
-class SimpleAttachmentUploadContractTests(SimpleTestCase):
-    @override_settings(ATTACHMENTS_SIMPLE_UPLOAD_MAX_BYTES=3)
-    def test_whole_upload_rejects_files_over_configured_limit(self):
-        serializer = AttachmentUploadSerializer(
-            data={
-                'file': SimpleUploadedFile(
-                    'clip.mp4', b'1234', content_type='video/mp4'
-                ),
-            }
-        )
-
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('file', serializer.errors)
-
-    @override_settings(ATTACHMENTS_SIMPLE_UPLOAD_MAX_BYTES=4)
-    def test_whole_upload_accepts_video_content_type_within_limit(self):
-        serializer = AttachmentUploadSerializer(
-            data={
-                'file': SimpleUploadedFile(
-                    'clip.mp4', b'1234', content_type='video/mp4'
-                ),
-            }
-        )
-
-        self.assertTrue(serializer.is_valid(), serializer.errors)
 
 
 class ChatApiTests(APITestCase):
@@ -214,6 +186,83 @@ class ChatApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('supported encrypted payload', str(response.data))
+
+    def test_message_edit_keeps_the_encrypted_payload_contract(self):
+        created = self.client.post(
+            f'/api/conversations/{self.group.id}/messages',
+            {'body': _group_payload('before-edit')},
+            format='json',
+        )
+        self.assertEqual(created.status_code, 201)
+
+        plaintext = self.client.patch(
+            f"/api/messages/{created.data['id']}",
+            {'body': 'plaintext-edit'},
+            format='json',
+        )
+        self.assertEqual(plaintext.status_code, 400)
+        self.assertIn('supported encrypted payload', str(plaintext.data))
+
+        encrypted = self.client.patch(
+            f"/api/messages/{created.data['id']}",
+            {'body': _group_payload('after-edit')},
+            format='json',
+        )
+        self.assertEqual(encrypted.status_code, 200)
+        self.assertEqual(encrypted.data['body'], _group_payload('after-edit'))
+
+    def test_message_forwarding_endpoint_is_disabled_for_bound_ciphertexts(self):
+        created = self.client.post(
+            f'/api/conversations/{self.group.id}/messages',
+            {'body': _group_payload('cannot-forward-as-ciphertext')},
+            format='json',
+        )
+        self.assertEqual(created.status_code, 201)
+
+        response = self.client.post(
+            f"/api/messages/{created.data['id']}",
+            {'conversation_id': self.group.id},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 405)
+
+    def test_reply_target_must_belong_to_the_same_conversation(self):
+        foreign = Conversation.objects.create(
+            type=Conversation.ConversationType.PRIVATE,
+            title='foreign',
+        )
+        ConversationParticipant.objects.create(
+            conversation=foreign,
+            user=self.user,
+        )
+        foreign_message = Message.objects.create(
+            conversation=foreign,
+            sender=self.user,
+            body=_private_payload('foreign'),
+        )
+
+        response = self.client.post(
+            f'/api/conversations/{self.group.id}/messages',
+            {
+                'body': _group_payload('reply'),
+                'reply_to_id': foreign_message.id,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Reply target', str(response.data))
+
+    def test_attachment_ids_must_belong_to_the_current_conversation_and_sender(self):
+        response = self.client.post(
+            f'/api/conversations/{self.group.id}/messages',
+            {
+                'body': _group_payload('missing-attachment'),
+                'attachment_ids': [999999],
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Every attachment_id', str(response.data))
 
     def test_non_participant_cannot_post(self):
         self.client.post(

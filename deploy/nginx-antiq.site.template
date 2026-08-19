@@ -2,8 +2,9 @@ server {
     listen 80;
     server_name __ANTIQ_HOST__;
 
-    # Keep this aligned with ATTACHMENTS_SIMPLE_UPLOAD_MAX_BYTES.
-    client_max_body_size 512m;
+    # Chat attachments are encrypted resumable chunks. Keep each request
+    # bounded; the product-level file limit is enforced by Django sessions.
+    client_max_body_size 8m;
     client_body_timeout 600s;
 
     location /api/ws/chat {

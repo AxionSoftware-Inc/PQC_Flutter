@@ -4,15 +4,17 @@ from . import v2, v3
 
 
 def protocol_prefixes():
-    """Return all formats this deployment can read.
+    """Return the live message/envelope capability subsets.
 
-    The V3 test deployment opts into V3 writes with an environment variable;
-    the default remains V2 so an ordinary production process is unchanged.
+    Keep this compatibility helper derived from the single registry rather
+    than returning a stale V2-only snapshot when the process runs in V2.5 or
+    V3 mode.
     """
+    capabilities = get_protocol_capabilities()
     return {
-        'private_message_prefixes': list(v2.PRIVATE_PREFIXES),
-        'group_message_prefixes': list(v2.GROUP_PREFIXES),
-        'group_envelope_prefixes': [v2.GROUP_ENVELOPE_PREFIX],
+        'private_message_prefixes': capabilities['private_message_prefixes'],
+        'group_message_prefixes': capabilities['group_message_prefixes'],
+        'group_envelope_prefixes': capabilities['group_envelope_prefixes'],
     }
 
 

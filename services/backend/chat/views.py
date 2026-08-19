@@ -1,7 +1,5 @@
 """Compatibility exports for the domain-separated chat API views."""
 
-from asgiref.sync import async_to_sync
-
 from chat.api_views.attachments import (
     AttachmentDownloadChunkView,
     AttachmentDownloadDescriptorView,
@@ -10,7 +8,6 @@ from chat.api_views.attachments import (
     AttachmentSessionCompleteView,
     AttachmentSessionCreateView,
     AttachmentSessionDetailView,
-    AttachmentUploadView,
 )
 from chat.api_views.common import (
     get_request_device_or_400,

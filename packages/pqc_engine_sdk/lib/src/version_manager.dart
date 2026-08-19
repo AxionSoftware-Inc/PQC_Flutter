@@ -1,5 +1,7 @@
 import 'models.dart';
+import 'primitives.dart';
 import 'v2_engine.dart';
+import 'v3_engine.dart';
 
 enum PqcConversationKind { private, group, groupEnvelope }
 
@@ -20,20 +22,115 @@ class PqcEngineManager {
   PqcEngineManager({
     required Iterable<PqcEngine> decoders,
     String? activeWriterId,
-    this.writerEnabled = false,
-  }) : _decoders = _registerDecoders(decoders),
-       _activeWriterId = activeWriterId {
-    if (_decoders.isEmpty) {
-      throw ArgumentError('At least one decoder must be registered.');
-    }
-    if (activeWriterId != null && !_decoders.containsKey(activeWriterId)) {
-      throw ArgumentError('Active writer must be a registered engine.');
+    Map<PqcConversationKind, String>? activeWriterIds,
+    bool writerEnabled = false,
+  }) : this._(
+         decoders: _registerDecoders(decoders),
+         activeWriterId: activeWriterId,
+         activeWriterIds: activeWriterIds,
+         writerEnabled: writerEnabled,
+       );
+
+  PqcEngineManager._({
+    required Map<String, PqcEngine> decoders,
+    required String? activeWriterId,
+    required Map<PqcConversationKind, String>? activeWriterIds,
+    required this.writerEnabled,
+  }) : _decoders = decoders,
+       _activeWriterIds = _resolveWriterIds(
+         decoders: decoders,
+         activeWriterId: activeWriterId,
+         activeWriterIds: activeWriterIds,
+       );
+
+  /// Builds the production writer map for one of the shared release profiles.
+  ///
+  /// V3 intentionally uses the frozen V2 engine for group-key envelopes while
+  /// private and group messages use V3. This mixed mapping is part of the
+  /// compatibility contract and cannot be represented by one global writer
+  /// id.
+  factory PqcEngineManager.forRelease({
+    required PqcProtocolRelease release,
+    PqcPrimitiveSuite? primitives,
+    bool writerEnabled = false,
+  }) {
+    switch (release.profileId) {
+      case 'v2':
+        final v2 = PqcV2Engine(primitives: primitives);
+        return PqcEngineManager(
+          decoders: [v2],
+          activeWriterIds: {
+            for (final kind in PqcConversationKind.values) kind: v2.engineId,
+          },
+          writerEnabled: writerEnabled,
+        );
+      case 'v2.5':
+        final v25 = PqcV2Engine(
+          primitives: primitives,
+          enableV25GroupEnvelopeWriter: true,
+        );
+        return PqcEngineManager(
+          decoders: [v25],
+          activeWriterIds: {
+            for (final kind in PqcConversationKind.values) kind: v25.engineId,
+          },
+          writerEnabled: writerEnabled,
+        );
+      case 'v3':
+        final v2 = PqcV2Engine(primitives: primitives);
+        final v3 = PqcV3Engine(primitives: primitives);
+        return PqcEngineManager(
+          decoders: [v2, v3],
+          activeWriterIds: {
+            PqcConversationKind.private: v3.engineId,
+            PqcConversationKind.group: v3.engineId,
+            PqcConversationKind.groupEnvelope: v2.engineId,
+          },
+          writerEnabled: writerEnabled,
+        );
+      default:
+        throw ArgumentError.value(
+          release.profileId,
+          'release',
+          'Unsupported protocol release profile.',
+        );
     }
   }
 
   final Map<String, PqcEngine> _decoders;
-  final String? _activeWriterId;
+  final Map<PqcConversationKind, String> _activeWriterIds;
   final bool writerEnabled;
+
+  static Map<PqcConversationKind, String> _resolveWriterIds({
+    required Map<String, PqcEngine> decoders,
+    required String? activeWriterId,
+    required Map<PqcConversationKind, String>? activeWriterIds,
+  }) {
+    if (decoders.isEmpty) {
+      throw ArgumentError('At least one decoder must be registered.');
+    }
+    if (activeWriterId != null && activeWriterIds != null) {
+      throw ArgumentError(
+        'Provide activeWriterId or activeWriterIds, not both.',
+      );
+    }
+    final selected = <PqcConversationKind, String>{};
+    if (activeWriterId != null) {
+      for (final kind in PqcConversationKind.values) {
+        selected[kind] = activeWriterId;
+      }
+    } else if (activeWriterIds != null) {
+      selected.addAll(activeWriterIds);
+    }
+    for (final entry in selected.entries) {
+      if (entry.value.trim().isEmpty || !decoders.containsKey(entry.value)) {
+        throw ArgumentError(
+          'Active writer for ${entry.key} must be a registered engine.',
+        );
+      }
+    }
+    return Map.unmodifiable(selected);
+  }
 
   static Map<String, PqcEngine> _registerDecoders(Iterable<PqcEngine> source) {
     final engines = List<PqcEngine>.of(source, growable: false);
@@ -53,7 +150,12 @@ class PqcEngineManager {
       if (registered.containsKey(engine.engineId)) {
         throw ArgumentError('Engine ids must be unique.');
       }
-      if (!privatePrefixes.add(engine.privatePrefix) ||
+      if (engine.attachmentCipherVersions.any((item) => item.trim().isEmpty) ||
+          engine.groupEnvelopeReadPrefixes.any((item) => item.trim().isEmpty) ||
+          engine.groupEnvelopeWritePrefixes.any(
+            (item) => item.trim().isEmpty,
+          ) ||
+          !privatePrefixes.add(engine.privatePrefix) ||
           !groupPrefixes.add(engine.groupPrefix) ||
           !engine.groupEnvelopeReadPrefixes.every(groupEnvelopePrefixes.add)) {
         throw ArgumentError('Engine payload prefixes must be unique.');
@@ -65,8 +167,19 @@ class PqcEngineManager {
 
   List<PqcEngine> get decoders => List.unmodifiable(_decoders.values);
 
-  PqcEngine? get activeWriter =>
-      _activeWriterId == null ? null : _decoders[_activeWriterId];
+  String? get activeWriterId => _activeWriterIds[PqcConversationKind.private];
+
+  PqcEngine? get activeWriter => activeWriterFor(PqcConversationKind.private);
+
+  PqcEngine? activeWriterFor(PqcConversationKind kind) {
+    final id = _activeWriterIds[kind];
+    return id == null ? null : _decoders[id];
+  }
+
+  Map<PqcConversationKind, PqcEngine> get activeWriters => {
+    for (final entry in _activeWriterIds.entries)
+      entry.key: _decoders[entry.value]!,
+  };
 
   PqcEngine resolveDecoder({
     required PqcConversationKind kind,
@@ -99,10 +212,17 @@ class PqcEngineManager {
     required PqcRemoteCapabilities remote,
     bool hasAttachments = false,
   }) {
-    final writer = activeWriter;
+    final writer = activeWriterFor(kind);
     if (!writerEnabled || writer == null) {
       throw const PqcCompatibilityException(
         'Encrypted writer is disabled by the production gate.',
+      );
+    }
+    if (kind == PqcConversationKind.groupEnvelope &&
+        (writer is! PqcGroupEnvelopeEngine ||
+            writer.groupEnvelopeWritePrefixes.isEmpty)) {
+      throw PqcCompatibilityException(
+        'The selected engine cannot encode group-key envelopes.',
       );
     }
     final readable = switch (kind) {

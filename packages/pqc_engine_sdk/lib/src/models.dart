@@ -208,16 +208,20 @@ class PqcRemoteCapabilities {
   /// string, so the boundary normalizes it once instead of leaking that
   /// mismatch into every writer gate.
   factory PqcRemoteCapabilities.fromJson(Map<String, dynamic> json) {
-    String normalizePrefix(String value) =>
-        value.endsWith(':') ? value.substring(0, value.length - 1) : value;
+    String? normalizePrefix(dynamic raw) {
+      if (raw is! String) return null;
+      final value = raw.trim();
+      if (value.isEmpty) return null;
+      return value.endsWith(':') ? value.substring(0, value.length - 1) : value;
+    }
 
     Set<String> readSet(String key, String legacyKey) => {
-      ...(json[key] as List<dynamic>? ?? const []).whereType<String>().map(
-        normalizePrefix,
-      ),
+      ...(json[key] as List<dynamic>? ?? const [])
+          .map(normalizePrefix)
+          .whereType<String>(),
       ...(json[legacyKey] as List<dynamic>? ?? const [])
-          .whereType<String>()
-          .map(normalizePrefix),
+          .map(normalizePrefix)
+          .whereType<String>(),
     };
 
     final minimum = json['minimum_decoder_version'];

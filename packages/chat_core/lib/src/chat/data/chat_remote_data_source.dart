@@ -1,7 +1,5 @@
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:crypto_core/crypto_core.dart';
-import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 
 import '../../core/network/api_client.dart';
 
@@ -112,13 +110,6 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
     await apiClient.post('/messages/$messageId/read', const {});
   }
 
-  Future<ChatMessage> forwardMessage(int messageId, int conversationId) async {
-    final response = await apiClient.post('/messages/$messageId', {
-      'conversation_id': conversationId,
-    });
-    return ChatMessage.fromJson(response as Map<String, dynamic>);
-  }
-
   Future<Map<String, dynamic>> setReaction(int messageId, String emoji) async {
     final response = await apiClient.post('/messages/$messageId/reaction', {
       'emoji': emoji,
@@ -128,33 +119,6 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
 
   Future<void> removeReaction(int messageId) async {
     await apiClient.delete('/messages/$messageId/reaction');
-  }
-
-  Future<ChatAttachment> uploadAttachment(
-    int conversationId, {
-    required String filename,
-    List<int>? bytes,
-    String? filePath,
-    String mimeType = 'application/octet-stream',
-  }) async {
-    final file = filePath != null && filePath.trim().isNotEmpty
-        ? await http.MultipartFile.fromPath(
-            'file',
-            filePath,
-            filename: filename,
-            contentType: _parseMediaType(mimeType),
-          )
-        : http.MultipartFile.fromBytes(
-            'file',
-            bytes ?? const [],
-            filename: filename,
-            contentType: _parseMediaType(mimeType),
-          );
-    final decoded = await apiClient.multipartPost(
-      '/conversations/$conversationId/attachments',
-      files: [file],
-    );
-    return ChatAttachment.fromJson(_extractAttachmentPayload(decoded));
   }
 
   Future<Map<String, dynamic>> createAttachmentSession(
@@ -260,32 +224,6 @@ class ChatRemoteDataSource implements ConversationKeyEnvelopeGateway {
   }
 
   String _sha256Hex(List<int> bytes) => crypto.sha256.convert(bytes).toString();
-
-  MediaType? _parseMediaType(String mimeType) {
-    try {
-      return MediaType.parse(mimeType);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Map<String, dynamic> _extractAttachmentPayload(dynamic decoded) {
-    if (decoded is Map<String, dynamic>) {
-      if (decoded['id'] is int) {
-        return decoded;
-      }
-      for (final key in const ['attachment', 'data', 'result']) {
-        final nested = decoded[key];
-        if (nested is Map<String, dynamic> && nested['id'] is int) {
-          return nested;
-        }
-      }
-    }
-    throw ApiException(
-      'Attachment upload succeeded but response format was not recognized.',
-      code: 'attachment_response_invalid',
-    );
-  }
 
   @override
   Future<List<ConversationKeyEnvelope>> fetchConversationKeyEnvelopes(

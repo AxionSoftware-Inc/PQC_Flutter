@@ -1,7 +1,12 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:crypto_core/crypto_core.dart' show ConversationEpochKeyStore;
+import 'package:crypto_core/crypto_core.dart'
+    show
+        ConversationEpochKeyStore,
+        PayloadFormatRegistry,
+        PayloadWriteProfile,
+        ProtocolVersionManager;
 import 'package:pqc_chat_app/core/device/device_identity_service.dart';
 import 'package:pqc_chat_app/core/device/device_key_service.dart';
 import 'package:pqc_chat_app/core/device/device_pqc_key_service.dart';
@@ -925,6 +930,35 @@ void main() {
       expect(await targetStore.listManagedKeys(), isEmpty);
     },
   );
+
+  test('group envelope negotiation cannot silently downgrade V2.5', () async {
+    final store = _MemorySecretStore();
+    final registry = KeyMaterialRegistry(secretStore: store);
+    final core = _buildCryptoCore(
+      deviceId: 'v25-device',
+      secretStore: store,
+      registry: registry,
+      remoteDataSource: _FakeChatRemoteDataSource(),
+      protocolVersionManager: ProtocolVersionManager(
+        registry: PayloadFormatRegistry(writeProfile: PayloadWriteProfile.v25),
+      ),
+    );
+
+    expect(
+      () => core.configureGroupEnvelopeWriter(
+        readablePrefixes: const ['group-wrap:pqc:v2:'],
+        writablePrefixes: const ['group-wrap:pqc:v2:'],
+      ),
+      throwsStateError,
+    );
+    expect(
+      () => core.configureGroupEnvelopeWriter(
+        readablePrefixes: const ['group-wrap:pqc:v2.5:'],
+        writablePrefixes: const ['group-wrap:pqc:v2.5:'],
+      ),
+      returnsNormally,
+    );
+  });
 }
 
 final _privateConversation = Conversation(
@@ -1080,6 +1114,7 @@ CryptoCoreFacade _buildCryptoCore({
   required _MemorySecretStore secretStore,
   required KeyMaterialRegistry registry,
   required ChatRemoteDataSource remoteDataSource,
+  ProtocolVersionManager? protocolVersionManager,
 }) {
   final devicePqc = DevicePqcKeyService(secretStore: secretStore);
   final deviceSigning = DevicePqcSigningKeyService(secretStore: secretStore);
@@ -1102,6 +1137,7 @@ CryptoCoreFacade _buildCryptoCore({
       secretStore: secretStore,
     ),
     secretStore: secretStore,
+    protocolVersionManager: protocolVersionManager,
   );
 }
 

@@ -52,7 +52,31 @@ abstract interface class PqcEngine {
   bool recognizesGroupEnvelope(String payload);
 }
 
-class PqcV2Engine implements PqcEngine {
+/// Engine capability for the separately versioned group-key envelope.
+///
+/// V3 messages deliberately do not implement this interface: during the V3
+/// rollout the application keeps the frozen V2 group-envelope writer as its
+/// compatibility path. Keeping this capability explicit prevents a message
+/// engine from being selected for an operation it cannot actually encode.
+abstract interface class PqcGroupEnvelopeEngine {
+  Future<String> encodeGroupEnvelope({
+    required PqcConversation conversation,
+    required PqcGroupEpoch epoch,
+    required PqcDeviceKeyset sender,
+    required PqcDevicePublicKey recipient,
+  });
+
+  Future<PqcGroupEpoch?> decodeGroupEnvelope({
+    required PqcConversation conversation,
+    required String wrappedEpoch,
+    required PqcDeviceKeyset recipient,
+    String? epochId,
+    Map<String, Set<String>> trustedSigningKeysByDevice,
+    Map<String, Set<String>> trustedKeysetBindingsByDevice,
+  });
+}
+
+class PqcV2Engine implements PqcEngine, PqcGroupEnvelopeEngine {
   PqcV2Engine({
     PqcPrimitiveSuite? primitives,
     this.enableV25GroupEnvelopeWriter = false,
@@ -156,6 +180,7 @@ class PqcV2Engine implements PqcEngine {
     requireAuthenticatedSender: requireAuthenticatedSender,
   );
 
+  @override
   Future<String> encodeGroupEnvelope({
     required PqcConversation conversation,
     required PqcGroupEpoch epoch,
@@ -175,6 +200,7 @@ class PqcV2Engine implements PqcEngine {
           recipient: recipient,
         );
 
+  @override
   Future<PqcGroupEpoch?> decodeGroupEnvelope({
     required PqcConversation conversation,
     required String wrappedEpoch,

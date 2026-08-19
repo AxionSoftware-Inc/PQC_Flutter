@@ -274,17 +274,6 @@ MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 ATTACHMENTS_MAX_FILE_BYTES = int(
     os.environ.get('ATTACHMENTS_MAX_FILE_BYTES', str(2 * 1024 * 1024 * 1024))
 )
-# Normal chat uploads use one multipart request.  Keep that operational limit
-# explicit and below the product-level storage limit; resumable sessions keep
-# their own chunk-specific limits below.
-ATTACHMENTS_SIMPLE_UPLOAD_MAX_BYTES = int(
-    os.environ.get('ATTACHMENTS_SIMPLE_UPLOAD_MAX_BYTES', str(512 * 1024 * 1024))
-)
-if ATTACHMENTS_SIMPLE_UPLOAD_MAX_BYTES > ATTACHMENTS_MAX_FILE_BYTES:
-    raise ImproperlyConfigured(
-        'ATTACHMENTS_SIMPLE_UPLOAD_MAX_BYTES cannot exceed '
-        'ATTACHMENTS_MAX_FILE_BYTES.'
-    )
 ATTACHMENTS_DEFAULT_CHUNK_BYTES = int(
     os.environ.get('ATTACHMENTS_DEFAULT_CHUNK_BYTES', str(1024 * 1024))
 )

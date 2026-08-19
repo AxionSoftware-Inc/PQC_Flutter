@@ -201,10 +201,6 @@ class ChatConversationController extends ChangeNotifier {
     await refresh(showLoader: false);
   }
 
-  Future<void> forwardMessage(int messageId, int conversationId) {
-    return chatFacade.forwardMessage(messageId, conversationId);
-  }
-
   void markMessagesRead() {
     for (final message in _messages) {
       if (message.id <= 0 || message.senderId == currentUserId) continue;

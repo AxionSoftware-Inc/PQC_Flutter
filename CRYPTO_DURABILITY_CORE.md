@@ -151,7 +151,9 @@ Bu yadro kuchaydi, lekin hali quyidagilar product darajasida tugamagan:
 
 1. backup/recovery uchun user-facing UI yo'q
 2. server-side encrypted backup storage flow hali yo'q
-3. attachment encryption hali alohida durability contractga kirmagan
+3. encrypted attachment transporti mavjud, lekin attachment key recovery,
+   preview/decrypt UX va shared object-storage lifecycle hali to'liq product
+   contractga kirmagan
 4. full ratchet / forward secrecy hali yo'q
 5. historical decrypt statusni userga chiroyli ko'rsatish UX'i hali yo'q
 6. device transfer / QR migration flow hali yo'q

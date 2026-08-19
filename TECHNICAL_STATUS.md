@@ -131,10 +131,15 @@ Yadro ishlaydi, lekin quyidagilar hali qolgan:
 2. double ratchet yo'q
 3. message rekey/rotation policy hali chuqur emas
 4. multi-device trust UX minimal
-5. attachment encryption hali keyingi faza
+5. chat attachment transporti resumable va authenticated ciphertext chunklar
+   bilan ishlaydi; attachment preview/decrypt UX va shared object storage hali
+   alohida bosqich
 6. websocket realtime hali yo'q
-7. tenant hardening va role policy hali boshlang'ich bosqichda
+7. tenant hardening va role policy optional plugin sifatida ajratilgan; live
+   deployda kerakli pluginlar alohida yoqilishi va migratsiya qilinishi kerak
 8. HTTPS/domain/cert ops hardening alohida yakunlanishi kerak
+9. attachment storage hozir local filesystem; ko'p worker/host uchun shared
+   object storage va cleanup lifecycle kerak
 
 ## 5.1 Persistence Kontrakti
 

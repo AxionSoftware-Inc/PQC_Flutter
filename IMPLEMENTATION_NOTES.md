@@ -19,7 +19,8 @@ Ataylab sodda qilingan joylar:
 1. realtime o'rniga polling
 2. seeded userlar o'rniga dynamic name + device binding
 3. registration/password yo'q
-4. avatar, media, typing, seen yo'q
+4. typing indicator va rich-media presentation UX hali yo'q; avatar API va
+   encrypted resumable chat-attachment transport mavjud
 5. bitta fixed `General Group`
 
 ## Current Flutter Notes
@@ -77,6 +78,12 @@ Asosiy endpointlar:
 - `POST /api/conversations/{id}/messages`
 - `GET /api/conversations/{id}/keys`
 - `POST /api/conversations/{id}/keys`
+- `GET/PATCH /api/users/me/avatar`
+- `POST /api/conversations/{id}/attachment-sessions`
+- `PUT /api/attachment-sessions/{id}/chunks/{index}`
+- `POST /api/attachment-sessions/{id}/complete`
+- `GET /api/attachments/{id}/file`
+- `POST /api/messages/{id}/reaction` va `POST /api/messages/{id}/read`
 
 Muhim qarorlar:
 
@@ -87,7 +94,7 @@ Muhim qarorlar:
 
 ## Deploy Notes
 
-Current default production-like target:
+Current development/smoke-test target:
 
 `http://169.58.123.200/api`
 
@@ -95,6 +102,7 @@ Server routing:
 
 - `http://169.58.123.200/api/*` -> Django backend
 - `http://169.58.123.200/` -> boshqa mavjud site
+- release Flutter builds must use an HTTPS URL supplied with `API_BASE_URL`
 
 ## Known Weak Spots
 
@@ -102,7 +110,11 @@ Server routing:
 2. crypto flow hali full double ratchet ishlatmaydi
 3. group membership change bo'lsa rekey siyosati minimal
 4. local plaintext cache / forensic risk alohida audit talab qiladi
-5. session token secret store orqali saqlanadi, remembered identity esa UX uchun oddiy prefs'da qoladi
+5. attachment blobs default local storage'da; horizontal scaling uchun shared
+   object storage va orphan-cleanup worker kerak
+6. session token secret store orqali saqlanadi, remembered identity esa UX
+   uchun oddiy prefs'da qoladi
+7. live serverda domain/TLS hali o'rnatilmagan
 
 ## Recommended Next Work
 

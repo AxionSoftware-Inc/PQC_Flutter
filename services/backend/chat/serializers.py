@@ -16,20 +16,9 @@ from chat.models import (
     ConversationCryptoEpoch,
 )
 from chat.protocols import get_protocol_capabilities
-from chat.protocols import v2 as v2_protocol
-from chat.protocols import v3 as v3_protocol
 
 
 User = get_user_model()
-PRIVATE_MESSAGE_PREFIX = v2_protocol.PRIVATE_PREFIXES
-GROUP_MESSAGE_PREFIX = v2_protocol.GROUP_PREFIXES
-GROUP_ENVELOPE_PREFIX = v2_protocol.GROUP_ENVELOPE_PREFIX
-GROUP_ENVELOPE_ALGORITHM = v2_protocol.GROUP_ENVELOPE_ALGORITHM
-
-# This is a public wire-protocol contract.  Existing payload readers stay in
-# clients, while this list tells clients which current writers this deployment
-# can accept.  A client must check it before encrypting a new outgoing message.
-CRYPTO_PROTOCOL_CAPABILITIES = get_protocol_capabilities()
 
 
 class PrivateConversationSerializer(serializers.Serializer):
@@ -41,6 +30,7 @@ class MessageCreateSerializer(serializers.Serializer):
     client_message_id = serializers.CharField(
         required=False,
         allow_blank=True,
+        max_length=64,
         default='',
     )
     message_type = serializers.ChoiceField(
@@ -51,17 +41,27 @@ class MessageCreateSerializer(serializers.Serializer):
         child=serializers.IntegerField(),
         required=False,
         default=list,
+        max_length=32,
     )
     reply_to_id = serializers.IntegerField(required=False, allow_null=True)
 
     def validate(self, attrs):
         body = attrs.get('body', '').strip()
         attachment_ids = attrs.get('attachment_ids') or []
+        conversation = self.context.get('conversation')
+        if conversation is not None:
+            reply_to_id = attrs.get('reply_to_id')
+            if reply_to_id is not None and not Message.objects.filter(
+                id=reply_to_id,
+                conversation=conversation,
+            ).exists():
+                raise serializers.ValidationError(
+                    {'reply_to_id': 'Reply target must belong to this conversation.'}
+                )
         if not body and not attachment_ids:
             raise serializers.ValidationError(
                 'body or attachment_ids must be provided.'
             )
-        conversation = self.context.get('conversation')
         if conversation is None or not body:
             return attrs
         if conversation.type == Conversation.ConversationType.PRIVATE:
@@ -85,20 +85,6 @@ class MessageCreateSerializer(serializers.Serializer):
                     {'body': 'Group chat messages must use a supported encrypted payload.'}
                 )
         return attrs
-
-
-class AttachmentUploadSerializer(serializers.Serializer):
-    file = serializers.FileField()
-
-    def validate_file(self, uploaded):
-        if uploaded.size <= 0:
-            raise serializers.ValidationError('Attachment file is empty.')
-        if uploaded.size > settings.ATTACHMENTS_SIMPLE_UPLOAD_MAX_BYTES:
-            limit = settings.ATTACHMENTS_SIMPLE_UPLOAD_MAX_BYTES
-            raise serializers.ValidationError(
-                f'Attachment exceeds the simple upload limit ({limit} bytes).'
-            )
-        return uploaded
 
 
 class AttachmentSessionCreateSerializer(serializers.Serializer):
@@ -310,9 +296,12 @@ class MessageSerializer(serializers.ModelSerializer):
         return 'sent'
 
     def get_reactions(self, obj):
+        reactions = getattr(obj, 'prefetched_reactions', None)
+        if reactions is None:
+            reactions = obj.reactions.all()
         return [
             {'user_id': reaction.user_id, 'emoji': reaction.emoji}
-            for reaction in obj.reactions.all()
+            for reaction in reactions
         ]
 
     def get_is_read(self, obj):
@@ -320,17 +309,41 @@ class MessageSerializer(serializers.ModelSerializer):
         user = getattr(request, 'user', None)
         if user is None or not user.is_authenticated:
             return False
+        receipts = getattr(obj, 'prefetched_receipts', None)
         if obj.sender_id != user.id:
+            if receipts is not None:
+                return any(
+                    receipt.user_id == user.id and receipt.read_at is not None
+                    for receipt in receipts
+                )
             return obj.receipts.filter(
                 user_id=user.id,
                 read_at__isnull=False,
             ).exists()
-        recipient_ids = list(
-            obj.conversation.participants.exclude(id=obj.sender_id)
-            .values_list('id', flat=True)
+        participants = getattr(
+            obj.conversation,
+            'prefetched_participants',
+            None,
         )
+        if participants is None:
+            recipient_ids = list(
+                obj.conversation.participants.exclude(id=obj.sender_id)
+                .values_list('id', flat=True)
+            )
+        else:
+            recipient_ids = [
+                participant.id
+                for participant in participants
+                if participant.id != obj.sender_id
+            ]
         if not recipient_ids:
             return False
+        if receipts is not None:
+            return len({
+                receipt.user_id
+                for receipt in receipts
+                if receipt.user_id in recipient_ids and receipt.read_at is not None
+            }) >= len(recipient_ids)
         return obj.receipts.filter(
             user_id__in=recipient_ids,
             read_at__isnull=False,
@@ -435,6 +448,9 @@ class ConversationSerializer(serializers.ModelSerializer):
         ]
 
     def get_participant_ids(self, obj):
+        participants = getattr(obj, 'ordered_participants', None)
+        if participants is not None:
+            return [participant.id for participant in participants]
         return list(
             obj.participants.order_by('id').values_list('id', flat=True)
         )
@@ -446,6 +462,9 @@ class ConversationSerializer(serializers.ModelSerializer):
         return message.body
 
     def _latest_message(self, obj):
+        latest_messages = getattr(obj, 'latest_messages', None)
+        if latest_messages is not None:
+            return latest_messages[0] if latest_messages else None
         message = getattr(obj, 'latest_message', None)
         if message is None:
             message = obj.messages.select_related('sender').order_by(
@@ -454,6 +473,9 @@ class ConversationSerializer(serializers.ModelSerializer):
         return message
 
     def get_unread_count(self, obj):
+        annotated_count = getattr(obj, 'unread_count_value', None)
+        if annotated_count is not None:
+            return annotated_count
         request = self.context.get('request')
         user = getattr(request, 'user', None)
         if user is None or not user.is_authenticated:
