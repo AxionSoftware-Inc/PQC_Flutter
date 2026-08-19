@@ -110,8 +110,9 @@ Server routing:
 2. crypto flow hali full double ratchet ishlatmaydi
 3. group membership change bo'lsa rekey siyosati minimal
 4. local plaintext cache / forensic risk alohida audit talab qiladi
-5. attachment blobs default local storage'da; horizontal scaling uchun shared
-   object storage va orphan-cleanup worker kerak
+5. development attachment storage local filesystem; production esa shared
+   S3-compatible object storage va hourly orphan/temporary-object cleanup
+   timerini talab qiladi
 6. session token secret store orqali saqlanadi, remembered identity esa UX
    uchun oddiy prefs'da qoladi
 7. live serverda domain/TLS hali o'rnatilmagan

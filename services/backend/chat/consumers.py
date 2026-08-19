@@ -79,11 +79,14 @@ class ChatEventsConsumer(AsyncWebsocketConsumer):
             return
         event = decoded.get('event', '')
         payload = decoded.get('payload', {})
+        if not isinstance(payload, dict):
+            return
         if event in {'typing.started', 'typing.stopped', 'receipt.delivered', 'receipt.read'}:
-            if not await self._event_is_allowed(event):
+            if not await self._event_is_allowed(event, payload):
                 return
             if event.startswith('receipt.'):
-                await self._save_receipt(event, payload)
+                if not await self._save_receipt(event, payload):
+                    return
             await self.channel_layer.group_send(
                 self.workspace_group,
                 {
@@ -106,32 +109,44 @@ class ChatEventsConsumer(AsyncWebsocketConsumer):
         return settings is None or settings.online_visibility != 'nobody'
 
     @database_sync_to_async
-    def _event_is_allowed(self, event):
+    def _event_is_allowed(self, event, payload):
         from users.models import AccountSettings
 
         settings = AccountSettings.objects.filter(user=self.user).first()
-        if settings is None:
-            return True
         if event.startswith('typing.'):
-            return settings.typing_indicators_enabled
+            if settings is not None and not settings.typing_indicators_enabled:
+                return False
+            return self._conversation_is_visible(payload)
         if event.startswith('receipt.'):
-            return settings.read_receipts_enabled
-        return True
+            return settings is None or settings.read_receipts_enabled
+        return settings is None
+
+    def _conversation_is_visible(self, payload):
+        from chat.models import Conversation
+
+        conversation_id = payload.get('conversation_id')
+        if type(conversation_id) is not int:
+            return False
+        return Conversation.objects.filter(
+            id=conversation_id,
+            workspace_id=self.workspace_id,
+            participants=self.user,
+        ).exists()
 
     @database_sync_to_async
     def _save_receipt(self, event, payload):
         from chat.models import Message, MessageReceipt
 
         message_id = payload.get('message_id')
-        if not isinstance(message_id, int):
-            return
+        if type(message_id) is not int:
+            return False
         message = Message.objects.filter(
             id=message_id,
             conversation__workspace_id=self.workspace_id,
             conversation__participants=self.user,
         ).first()
         if message is None or message.sender_id == self.user.id:
-            return
+            return False
         receipt, _ = MessageReceipt.objects.get_or_create(
             message=message,
             user=self.user,
@@ -143,6 +158,7 @@ class ChatEventsConsumer(AsyncWebsocketConsumer):
         else:
             receipt.delivered_at = receipt.delivered_at or now
         receipt.save(update_fields=['delivered_at', 'read_at', 'updated_at'])
+        return True
 
     async def chat_event(self, event):
         await self.send_json(

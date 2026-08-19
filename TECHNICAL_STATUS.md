@@ -132,14 +132,15 @@ Yadro ishlaydi, lekin quyidagilar hali qolgan:
 3. message rekey/rotation policy hali chuqur emas
 4. multi-device trust UX minimal
 5. chat attachment transporti resumable va authenticated ciphertext chunklar
-   bilan ishlaydi; attachment preview/decrypt UX va shared object storage hali
-   alohida bosqich
-6. websocket realtime hali yo'q
+   bilan ishlaydi; attachment preview/decrypt UX hali alohida bosqich, storage
+   esa productionda shared S3-compatible backendga fail-closed ulanadi
+6. websocket realtime ishlaydi; productionda shared Redis channel layer va
+   HTTPS talab qilinadi, clientda HTTP polling fallback mavjud
 7. tenant hardening va role policy optional plugin sifatida ajratilgan; live
    deployda kerakli pluginlar alohida yoqilishi va migratsiya qilinishi kerak
 8. HTTPS/domain/cert ops hardening alohida yakunlanishi kerak
-9. attachment storage hozir local filesystem; ko'p worker/host uchun shared
-   object storage va cleanup lifecycle kerak
+9. production attachment storage uchun S3-compatible bucket va cleanup timer
+   konfiguratsiyasi talab qilinadi; developer/test local filesystemdan foydalanadi
 
 ## 5.1 Persistence Kontrakti
 
@@ -247,6 +248,5 @@ Productionga yaqinlashish uchun tavsiya etilgan tartib:
 2. websocket realtime qo'shish
 3. trust-center va verification UX'ni kuchaytirish
 4. key rotation / membership epoch / rekey siyosatini kuchaytirish
-5. attachment metadata + upload foundation
-6. attachment binary encryption
-7. observability, audit, backup, restore, ops checklist
+5. attachment preview/decrypt UX va recovery metadata UX
+6. observability, audit, backup, restore, ops checklist

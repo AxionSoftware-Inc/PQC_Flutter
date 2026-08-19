@@ -74,6 +74,7 @@ class UserListView(APIView):
             return error_response
         users = User.objects.filter(
             organization_memberships__workspace_memberships__workspace=workspace,
+            organization_memberships__is_active=True,
             organization_memberships__workspace_memberships__is_active=True,
         ).select_related('account_settings').distinct().order_by('id')
         workspace_members_by_user_id = {

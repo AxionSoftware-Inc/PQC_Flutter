@@ -1,11 +1,12 @@
 # Security hardening status
 
-Last reviewed: 2026-07-27
+Last reviewed: 2026-08-19
 
 ## Enforced controls
 
 - Production settings are fail-closed. Production refuses to boot without a
-  strong Django secret, explicit hosts, PostgreSQL, AWS region and KMS key.
+  strong Django secret, explicit hosts, PostgreSQL, AWS region/KMS key, shared
+  Redis channel layer and S3-compatible media storage.
 - HTTPS redirect, secure cookies and one-year HSTS are enabled automatically in
   production.
 - Recovery reads require all of the following:

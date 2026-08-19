@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import os
 import tempfile
 import uuid
@@ -27,6 +28,7 @@ from chat.serializers import (
 
 
 DEFAULT_ATTACHMENT_SESSION_TTL_DAYS = 7
+logger = logging.getLogger(__name__)
 
 from .common import (
     get_user_attachment_or_404,
@@ -93,6 +95,18 @@ def _store_final_blob_at_exact_key(storage_key, temp_path):
     if saved_key != storage_key:
         default_storage.delete(saved_key)
         raise RuntimeError('Attachment storage did not preserve the blob key.')
+
+
+def _delete_storage_keys(storage_keys):
+    for storage_key in storage_keys:
+        if not storage_key:
+            continue
+        try:
+            default_storage.delete(storage_key)
+        except Exception:
+            # Cleanup is deliberately retryable. A failed object delete must
+            # not turn an already committed message into a failed response.
+            logger.exception('Failed to delete attachment storage object')
 
 
 class AttachmentSessionCreateView(APIView):
@@ -316,6 +330,12 @@ class AttachmentSessionCompleteView(APIView):
                 'status',
                 'updated_at',
             ]
+        )
+        chunk_storage_keys = list(
+            session.chunk_receipts.values_list('storage_key', flat=True)
+        )
+        transaction.on_commit(
+            lambda: _delete_storage_keys(chunk_storage_keys)
         )
         return Response(
             MessageAttachmentSerializer(attachment).data,

@@ -13,9 +13,12 @@ class ChatRealtimeEvent {
   final Map<String, dynamic> payload;
 
   factory ChatRealtimeEvent.fromJson(Map<String, dynamic> json) {
+    final rawPayload = json['payload'];
     return ChatRealtimeEvent(
-      event: json['event'] as String? ?? '',
-      payload: (json['payload'] as Map<String, dynamic>?) ?? const {},
+      event: json['event'] is String ? json['event'] as String : '',
+      payload: rawPayload is Map
+          ? Map<String, dynamic>.from(rawPayload)
+          : const {},
     );
   }
 }
@@ -60,7 +63,19 @@ class ChatRealtimeService {
     _channel = channel;
     channel.stream.listen(
       (event) {
-        final decoded = jsonDecode(event as String) as Map<String, dynamic>;
+        if (event is! String) return;
+        final dynamic decodedJson;
+        try {
+          decodedJson = jsonDecode(event);
+        } on FormatException {
+          return;
+        }
+        if (decodedJson is! Map) return;
+        final decoded = Map<String, dynamic>.from(decodedJson);
+        // A successfully decoded server event proves that this connection is
+        // alive. Start the exponential backoff from the beginning next time
+        // it disconnects instead of permanently remaining at the cap.
+        _reconnectAttempt = 0;
         final eventKey = _eventKey(decoded);
         if (eventKey != null && !_seenEventKeys.add(eventKey)) {
           return;

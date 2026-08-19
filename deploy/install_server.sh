@@ -8,6 +8,8 @@ ENV_FILE="${ENV_FILE:-/etc/pqc-chat.env}"
 PUBLIC_HOST="${PUBLIC_HOST:?PUBLIC_HOST must be a domain or server IP}"
 SERVICE_USER="${SERVICE_USER:-root}"
 SYSTEMD_UNIT="${SYSTEMD_UNIT:-pqc-chat.service}"
+CLEANUP_SYSTEMD_UNIT="${CLEANUP_SYSTEMD_UNIT:-pqc-attachment-cleanup.service}"
+CLEANUP_TIMER_UNIT="${CLEANUP_TIMER_UNIT:-pqc-attachment-cleanup.timer}"
 NGINX_SITE="${NGINX_SITE:-/etc/nginx/sites-available/pqc-chat}"
 
 if [[ $EUID -ne 0 ]]; then
@@ -28,12 +30,23 @@ sed \
   -e "s|__ANTIQ_USER__|$SERVICE_USER|g" \
   "$ROOT/deploy/pqc-chat.service.template" \
   > "/etc/systemd/system/$SYSTEMD_UNIT"
+sed \
+  -e "s|__ANTIQ_ROOT__|$ROOT|g" \
+  -e "s|__ANTIQ_ENV_FILE__|$ENV_FILE|g" \
+  -e "s|__ANTIQ_USER__|$SERVICE_USER|g" \
+  "$ROOT/deploy/pqc-attachment-cleanup.service.template" \
+  > "/etc/systemd/system/$CLEANUP_SYSTEMD_UNIT"
+sed \
+  -e "s|pqc-attachment-cleanup.service|$CLEANUP_SYSTEMD_UNIT|g" \
+  "$ROOT/deploy/pqc-attachment-cleanup.timer.template" \
+  > "/etc/systemd/system/$CLEANUP_TIMER_UNIT"
 sed -e "s|__ANTIQ_HOST__|$PUBLIC_HOST|g" \
   "$ROOT/deploy/nginx-antiq.site.template" > "$NGINX_SITE"
 ln -sfn "$NGINX_SITE" "/etc/nginx/sites-enabled/antiq"
 
 systemctl daemon-reload
 systemctl enable --now "$SYSTEMD_UNIT"
+systemctl enable --now "$CLEANUP_TIMER_UNIT"
 nginx -t
 systemctl reload nginx
 curl --fail --silent --show-error http://127.0.0.1:8020/api/health >/dev/null

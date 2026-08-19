@@ -2,11 +2,14 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, IntegerField, OuterRef, Prefetch, Q, Subquery, Value
 from django.db.models.functions import Coalesce
+from django.utils.dateparse import parse_datetime
+from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from chat.models import Conversation, Message
+from users.models import WorkspaceMember
 from chat.serializers import (
     ConversationSerializer,
     PrivateConversationSerializer,
@@ -67,7 +70,15 @@ class ConversationListView(APIView):
             .distinct()
         )
         if updated_after:
-            conversations = conversations.filter(updated_at__gt=updated_after)
+            parsed_updated_after = parse_datetime(updated_after)
+            if parsed_updated_after is None:
+                return Response(
+                    {'detail': 'updated_after must be an ISO-8601 datetime.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if timezone.is_naive(parsed_updated_after):
+                parsed_updated_after = timezone.make_aware(parsed_updated_after)
+            conversations = conversations.filter(updated_at__gt=parsed_updated_after)
         search = request.query_params.get('search', '').strip()
         if search:
             conversations = conversations.filter(
@@ -113,6 +124,17 @@ class PrivateConversationView(APIView):
         workspace, error_response = get_request_workspace_or_403(request)
         if error_response is not None:
             return error_response
+        other_user_is_active_member = WorkspaceMember.objects.filter(
+            workspace=workspace,
+            organization_member__user=other_user,
+            organization_member__is_active=True,
+            is_active=True,
+        ).exists()
+        if not other_user_is_active_member:
+            return Response(
+                {'detail': 'User is not an active member of this workspace.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         conversation, _ = get_or_create_private_conversation(
             request.user,

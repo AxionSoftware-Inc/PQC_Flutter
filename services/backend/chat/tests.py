@@ -144,6 +144,11 @@ class ChatApiTests(APITestCase):
         self.assertIn(self.group.id, ids)
         self.assertNotIn(hidden.id, ids)
 
+    def test_conversation_delta_rejects_invalid_timestamp(self):
+        response = self.client.get('/api/conversations?updated_after=not-a-date')
+
+        self.assertEqual(response.status_code, 400)
+
     def test_private_conversation_endpoint_reuses_existing_conversation(self):
         self.client.post(
             '/api/auth/login',
@@ -165,6 +170,27 @@ class ChatApiTests(APITestCase):
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(first.data['id'], second.data['id'])
+
+    def test_private_conversation_rejects_user_outside_active_workspace(self):
+        outsider = User.objects.create_user(
+            username='outside-workspace',
+            first_name='Outside Workspace',
+        )
+
+        response = self.client.post(
+            '/api/private-conversations',
+            {'other_user_id': outsider.id},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(
+            Conversation.objects.filter(
+                type=Conversation.ConversationType.PRIVATE,
+                workspace=self.group.workspace,
+                participants=self.user,
+            ).exists()
+        )
 
     def test_group_chat_accepts_messages(self):
         payload = _group_payload('hello-group')

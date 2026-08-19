@@ -21,6 +21,9 @@ DJANGO_ALLOWED_HOSTS='chat.example.invalid' \
 DATABASE_URL='postgresql://audit:audit@127.0.0.1:5432/audit' \
 AWS_REGION='us-east-1' \
 AWS_KMS_ESCROW_KEY_ID='arn:aws:kms:us-east-1:000000000000:key/security-gate' \
+REDIS_URL='redis://127.0.0.1:6379/0' \
+DJANGO_MEDIA_STORAGE='s3' \
+AWS_STORAGE_BUCKET_NAME='security-gate-media' \
 "${BACKEND_PYTHON:-services/backend/.venv/bin/python}" services/backend/manage.py check --deploy
 
 flutter analyze

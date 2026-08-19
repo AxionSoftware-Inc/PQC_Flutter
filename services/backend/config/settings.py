@@ -34,6 +34,20 @@ GOOGLE_ANDROID_CLIENT_ID = os.environ.get(
 # adapter is intentionally allowed only outside a production deployment.
 AWS_REGION = os.environ.get('AWS_REGION', '')
 AWS_KMS_ESCROW_KEY_ID = os.environ.get('AWS_KMS_ESCROW_KEY_ID', '')
+REDIS_URL = os.environ.get('REDIS_URL', '').strip()
+MEDIA_STORAGE_BACKEND = os.environ.get(
+    'DJANGO_MEDIA_STORAGE',
+    'filesystem',
+).strip().lower()
+AWS_STORAGE_BUCKET_NAME = os.environ.get(
+    'AWS_STORAGE_BUCKET_NAME',
+    '',
+).strip()
+AWS_STORAGE_LOCATION = os.environ.get(
+    'AWS_STORAGE_LOCATION',
+    'antiq-media',
+).strip().strip('/')
+AWS_S3_ENDPOINT_URL = os.environ.get('AWS_S3_ENDPOINT_URL', '').strip()
 CRYPTO_ESCROW_REQUIRE_KMS = IS_PRODUCTION
 CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL = os.environ.get(
     'CRYPTO_RECOVERY_REQUIRE_DEVICE_APPROVAL', 'true'
@@ -74,6 +88,12 @@ if IS_PRODUCTION:
         errors.append('PostgreSQL DATABASE_URL or POSTGRES_DB is required')
     if not (os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_PASSWORD')):
         errors.append('POSTGRES_PASSWORD is required')
+    if not REDIS_URL:
+        errors.append('REDIS_URL is required for the distributed channel layer')
+    if MEDIA_STORAGE_BACKEND != 's3':
+        errors.append('DJANGO_MEDIA_STORAGE=s3 is required in production')
+    if not AWS_STORAGE_BUCKET_NAME:
+        errors.append('AWS_STORAGE_BUCKET_NAME is required for production media')
     if errors:
         raise ImproperlyConfigured(
             'Unsafe production configuration: ' + '; '.join(errors)
@@ -267,7 +287,46 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = Path(
     os.environ.get('DJANGO_MEDIA_ROOT', str(BASE_DIR.parent / 'shared' / 'media'))
 )
-MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+if MEDIA_STORAGE_BACKEND not in {'filesystem', 's3'}:
+    raise ImproperlyConfigured(
+        'DJANGO_MEDIA_STORAGE must be filesystem or s3.'
+    )
+if MEDIA_STORAGE_BACKEND == 'filesystem':
+    MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+
+if MEDIA_STORAGE_BACKEND == 's3':
+    _s3_options = {
+        'bucket_name': AWS_STORAGE_BUCKET_NAME,
+        'region_name': os.environ.get('AWS_S3_REGION_NAME', AWS_REGION),
+        'location': AWS_STORAGE_LOCATION,
+        'default_acl': None,
+        # Attachment keys are deterministic per upload session. A suffix on
+        # collision would make the DB point at the wrong object.
+        'file_overwrite': True,
+        'querystring_auth': True,
+    }
+    if AWS_S3_ENDPOINT_URL:
+        _s3_options['endpoint_url'] = AWS_S3_ENDPOINT_URL
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.s3.S3Storage',
+            'OPTIONS': _s3_options,
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
+else:
+    # Do not freeze MEDIA_ROOT into this dictionary: tests and local tools use
+    # override_settings(MEDIA_ROOT=...) to isolate uploaded files.
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
 
 # Resumable attachments are uploaded chunk-by-chunk, so the product-level file
 # limit can be large while each HTTP request stays small and predictable.
@@ -297,11 +356,25 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = int(
     os.environ.get('FILE_UPLOAD_MAX_MEMORY_SIZE', str(8 * 1024 * 1024))
 )
 
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [REDIS_URL],
+                'capacity': int(os.environ.get('REDIS_CHANNEL_CAPACITY', '1000')),
+                'group_expiry': int(os.environ.get('REDIS_GROUP_EXPIRY', '86400')),
+            },
+        }
     }
-}
+else:
+    # The in-memory layer is intentionally limited to development/tests. It
+    # cannot deliver events between separate Daphne/Gunicorn processes.
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        }
+    }
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [

@@ -15,6 +15,7 @@ from chat.models import (
     MessageAttachment,
     ConversationCryptoEpoch,
 )
+from users.models import Workspace
 from chat.protocols import get_protocol_capabilities
 
 
@@ -501,6 +502,11 @@ class ConversationSerializer(serializers.ModelSerializer):
 
 
 def get_or_create_private_conversation(user, other_user, workspace):
+    # A pair has no portable database constraint because the same two users
+    # may legitimately have one private conversation per workspace. Lock the
+    # workspace row while checking/creating so concurrent workers cannot
+    # create duplicate private conversations for the same pair.
+    workspace = Workspace.objects.select_for_update().get(pk=workspace.pk)
     existing = (
         Conversation.objects.filter(
             type=Conversation.ConversationType.PRIVATE,

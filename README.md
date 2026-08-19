@@ -111,6 +111,12 @@ Local API:
 
 PostgreSQL bilan ishlatish: [POSTGRES_SETUP.md](POSTGRES_SETUP.md)
 
+Production backend qo‘shimcha ravishda shared `REDIS_URL` va
+`DJANGO_MEDIA_STORAGE=s3`/`AWS_STORAGE_BUCKET_NAME` talab qiladi. Shu sababli
+websocket eventlari workerlar orasida yo‘qolmaydi va attachment chunklari
+serverning lokal diskiga bog‘lanib qolmaydi. Deploy script attachment temporary
+object cleanup timerini ham o‘rnatadi.
+
 ## Flutter Setup
 
 ```bash

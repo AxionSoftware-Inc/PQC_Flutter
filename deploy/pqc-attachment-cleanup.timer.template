@@ -1,0 +1,10 @@
+[Unit]
+Description=Run antiQ attachment temporary-object cleanup hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=pqc-attachment-cleanup.service
+
+[Install]
+WantedBy=timers.target
