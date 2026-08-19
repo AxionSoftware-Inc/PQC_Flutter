@@ -30,6 +30,28 @@ class $ConversationsTableTable extends ConversationsTable
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _moduleMeta = const VerificationMeta('module');
+  @override
+  late final GeneratedColumn<String> module = GeneratedColumn<String>(
+    'module',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('chat'),
+  );
+  static const VerificationMeta _moduleKeyMeta = const VerificationMeta(
+    'moduleKey',
+  );
+  @override
+  late final GeneratedColumn<String> moduleKey = GeneratedColumn<String>(
+    'module_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   static const VerificationMeta _typeMeta = const VerificationMeta('type');
   @override
   late final GeneratedColumn<String> type = GeneratedColumn<String>(
@@ -99,6 +121,8 @@ class $ConversationsTableTable extends ConversationsTable
   List<GeneratedColumn> get $columns => [
     id,
     workspaceId,
+    module,
+    moduleKey,
     type,
     title,
     lastMessagePreview,
@@ -128,6 +152,18 @@ class $ConversationsTableTable extends ConversationsTable
           data['workspace_id']!,
           _workspaceIdMeta,
         ),
+      );
+    }
+    if (data.containsKey('module')) {
+      context.handle(
+        _moduleMeta,
+        module.isAcceptableOrUnknown(data['module']!, _moduleMeta),
+      );
+    }
+    if (data.containsKey('module_key')) {
+      context.handle(
+        _moduleKeyMeta,
+        moduleKey.isAcceptableOrUnknown(data['module_key']!, _moduleKeyMeta),
       );
     }
     if (data.containsKey('type')) {
@@ -195,6 +231,14 @@ class $ConversationsTableTable extends ConversationsTable
         DriftSqlType.int,
         data['${effectivePrefix}workspace_id'],
       )!,
+      module: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}module'],
+      )!,
+      moduleKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}module_key'],
+      )!,
       type: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}type'],
@@ -232,6 +276,8 @@ class ConversationsTableData extends DataClass
     implements Insertable<ConversationsTableData> {
   final int id;
   final int workspaceId;
+  final String module;
+  final String moduleKey;
   final String type;
   final String title;
   final String lastMessagePreview;
@@ -241,6 +287,8 @@ class ConversationsTableData extends DataClass
   const ConversationsTableData({
     required this.id,
     required this.workspaceId,
+    required this.module,
+    required this.moduleKey,
     required this.type,
     required this.title,
     required this.lastMessagePreview,
@@ -253,6 +301,8 @@ class ConversationsTableData extends DataClass
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['workspace_id'] = Variable<int>(workspaceId);
+    map['module'] = Variable<String>(module);
+    map['module_key'] = Variable<String>(moduleKey);
     map['type'] = Variable<String>(type);
     map['title'] = Variable<String>(title);
     map['last_message_preview'] = Variable<String>(lastMessagePreview);
@@ -266,6 +316,8 @@ class ConversationsTableData extends DataClass
     return ConversationsTableCompanion(
       id: Value(id),
       workspaceId: Value(workspaceId),
+      module: Value(module),
+      moduleKey: Value(moduleKey),
       type: Value(type),
       title: Value(title),
       lastMessagePreview: Value(lastMessagePreview),
@@ -283,6 +335,8 @@ class ConversationsTableData extends DataClass
     return ConversationsTableData(
       id: serializer.fromJson<int>(json['id']),
       workspaceId: serializer.fromJson<int>(json['workspaceId']),
+      module: serializer.fromJson<String>(json['module']),
+      moduleKey: serializer.fromJson<String>(json['moduleKey']),
       type: serializer.fromJson<String>(json['type']),
       title: serializer.fromJson<String>(json['title']),
       lastMessagePreview: serializer.fromJson<String>(
@@ -299,6 +353,8 @@ class ConversationsTableData extends DataClass
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'workspaceId': serializer.toJson<int>(workspaceId),
+      'module': serializer.toJson<String>(module),
+      'moduleKey': serializer.toJson<String>(moduleKey),
       'type': serializer.toJson<String>(type),
       'title': serializer.toJson<String>(title),
       'lastMessagePreview': serializer.toJson<String>(lastMessagePreview),
@@ -311,6 +367,8 @@ class ConversationsTableData extends DataClass
   ConversationsTableData copyWith({
     int? id,
     int? workspaceId,
+    String? module,
+    String? moduleKey,
     String? type,
     String? title,
     String? lastMessagePreview,
@@ -320,6 +378,8 @@ class ConversationsTableData extends DataClass
   }) => ConversationsTableData(
     id: id ?? this.id,
     workspaceId: workspaceId ?? this.workspaceId,
+    module: module ?? this.module,
+    moduleKey: moduleKey ?? this.moduleKey,
     type: type ?? this.type,
     title: title ?? this.title,
     lastMessagePreview: lastMessagePreview ?? this.lastMessagePreview,
@@ -333,6 +393,8 @@ class ConversationsTableData extends DataClass
       workspaceId: data.workspaceId.present
           ? data.workspaceId.value
           : this.workspaceId,
+      module: data.module.present ? data.module.value : this.module,
+      moduleKey: data.moduleKey.present ? data.moduleKey.value : this.moduleKey,
       type: data.type.present ? data.type.value : this.type,
       title: data.title.present ? data.title.value : this.title,
       lastMessagePreview: data.lastMessagePreview.present
@@ -351,6 +413,8 @@ class ConversationsTableData extends DataClass
     return (StringBuffer('ConversationsTableData(')
           ..write('id: $id, ')
           ..write('workspaceId: $workspaceId, ')
+          ..write('module: $module, ')
+          ..write('moduleKey: $moduleKey, ')
           ..write('type: $type, ')
           ..write('title: $title, ')
           ..write('lastMessagePreview: $lastMessagePreview, ')
@@ -365,6 +429,8 @@ class ConversationsTableData extends DataClass
   int get hashCode => Object.hash(
     id,
     workspaceId,
+    module,
+    moduleKey,
     type,
     title,
     lastMessagePreview,
@@ -378,6 +444,8 @@ class ConversationsTableData extends DataClass
       (other is ConversationsTableData &&
           other.id == this.id &&
           other.workspaceId == this.workspaceId &&
+          other.module == this.module &&
+          other.moduleKey == this.moduleKey &&
           other.type == this.type &&
           other.title == this.title &&
           other.lastMessagePreview == this.lastMessagePreview &&
@@ -390,6 +458,8 @@ class ConversationsTableCompanion
     extends UpdateCompanion<ConversationsTableData> {
   final Value<int> id;
   final Value<int> workspaceId;
+  final Value<String> module;
+  final Value<String> moduleKey;
   final Value<String> type;
   final Value<String> title;
   final Value<String> lastMessagePreview;
@@ -399,6 +469,8 @@ class ConversationsTableCompanion
   const ConversationsTableCompanion({
     this.id = const Value.absent(),
     this.workspaceId = const Value.absent(),
+    this.module = const Value.absent(),
+    this.moduleKey = const Value.absent(),
     this.type = const Value.absent(),
     this.title = const Value.absent(),
     this.lastMessagePreview = const Value.absent(),
@@ -409,6 +481,8 @@ class ConversationsTableCompanion
   ConversationsTableCompanion.insert({
     this.id = const Value.absent(),
     this.workspaceId = const Value.absent(),
+    this.module = const Value.absent(),
+    this.moduleKey = const Value.absent(),
     required String type,
     this.title = const Value.absent(),
     this.lastMessagePreview = const Value.absent(),
@@ -421,6 +495,8 @@ class ConversationsTableCompanion
   static Insertable<ConversationsTableData> custom({
     Expression<int>? id,
     Expression<int>? workspaceId,
+    Expression<String>? module,
+    Expression<String>? moduleKey,
     Expression<String>? type,
     Expression<String>? title,
     Expression<String>? lastMessagePreview,
@@ -431,6 +507,8 @@ class ConversationsTableCompanion
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (workspaceId != null) 'workspace_id': workspaceId,
+      if (module != null) 'module': module,
+      if (moduleKey != null) 'module_key': moduleKey,
       if (type != null) 'type': type,
       if (title != null) 'title': title,
       if (lastMessagePreview != null)
@@ -444,6 +522,8 @@ class ConversationsTableCompanion
   ConversationsTableCompanion copyWith({
     Value<int>? id,
     Value<int>? workspaceId,
+    Value<String>? module,
+    Value<String>? moduleKey,
     Value<String>? type,
     Value<String>? title,
     Value<String>? lastMessagePreview,
@@ -454,6 +534,8 @@ class ConversationsTableCompanion
     return ConversationsTableCompanion(
       id: id ?? this.id,
       workspaceId: workspaceId ?? this.workspaceId,
+      module: module ?? this.module,
+      moduleKey: moduleKey ?? this.moduleKey,
       type: type ?? this.type,
       title: title ?? this.title,
       lastMessagePreview: lastMessagePreview ?? this.lastMessagePreview,
@@ -471,6 +553,12 @@ class ConversationsTableCompanion
     }
     if (workspaceId.present) {
       map['workspace_id'] = Variable<int>(workspaceId.value);
+    }
+    if (module.present) {
+      map['module'] = Variable<String>(module.value);
+    }
+    if (moduleKey.present) {
+      map['module_key'] = Variable<String>(moduleKey.value);
     }
     if (type.present) {
       map['type'] = Variable<String>(type.value);
@@ -498,6 +586,8 @@ class ConversationsTableCompanion
     return (StringBuffer('ConversationsTableCompanion(')
           ..write('id: $id, ')
           ..write('workspaceId: $workspaceId, ')
+          ..write('module: $module, ')
+          ..write('moduleKey: $moduleKey, ')
           ..write('type: $type, ')
           ..write('title: $title, ')
           ..write('lastMessagePreview: $lastMessagePreview, ')
@@ -3203,6 +3293,8 @@ typedef $$ConversationsTableTableCreateCompanionBuilder =
     ConversationsTableCompanion Function({
       Value<int> id,
       Value<int> workspaceId,
+      Value<String> module,
+      Value<String> moduleKey,
       required String type,
       Value<String> title,
       Value<String> lastMessagePreview,
@@ -3214,6 +3306,8 @@ typedef $$ConversationsTableTableUpdateCompanionBuilder =
     ConversationsTableCompanion Function({
       Value<int> id,
       Value<int> workspaceId,
+      Value<String> module,
+      Value<String> moduleKey,
       Value<String> type,
       Value<String> title,
       Value<String> lastMessagePreview,
@@ -3238,6 +3332,16 @@ class $$ConversationsTableTableFilterComposer
 
   ColumnFilters<int> get workspaceId => $composableBuilder(
     column: $table.workspaceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get module => $composableBuilder(
+    column: $table.module,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get moduleKey => $composableBuilder(
+    column: $table.moduleKey,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3291,6 +3395,16 @@ class $$ConversationsTableTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get module => $composableBuilder(
+    column: $table.module,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get moduleKey => $composableBuilder(
+    column: $table.moduleKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get type => $composableBuilder(
     column: $table.type,
     builder: (column) => ColumnOrderings(column),
@@ -3338,6 +3452,12 @@ class $$ConversationsTableTableAnnotationComposer
     column: $table.workspaceId,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get module =>
+      $composableBuilder(column: $table.module, builder: (column) => column);
+
+  GeneratedColumn<String> get moduleKey =>
+      $composableBuilder(column: $table.moduleKey, builder: (column) => column);
 
   GeneratedColumn<String> get type =>
       $composableBuilder(column: $table.type, builder: (column) => column);
@@ -3404,6 +3524,8 @@ class $$ConversationsTableTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<int> workspaceId = const Value.absent(),
+                Value<String> module = const Value.absent(),
+                Value<String> moduleKey = const Value.absent(),
                 Value<String> type = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<String> lastMessagePreview = const Value.absent(),
@@ -3413,6 +3535,8 @@ class $$ConversationsTableTableTableManager
               }) => ConversationsTableCompanion(
                 id: id,
                 workspaceId: workspaceId,
+                module: module,
+                moduleKey: moduleKey,
                 type: type,
                 title: title,
                 lastMessagePreview: lastMessagePreview,
@@ -3424,6 +3548,8 @@ class $$ConversationsTableTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<int> workspaceId = const Value.absent(),
+                Value<String> module = const Value.absent(),
+                Value<String> moduleKey = const Value.absent(),
                 required String type,
                 Value<String> title = const Value.absent(),
                 Value<String> lastMessagePreview = const Value.absent(),
@@ -3433,6 +3559,8 @@ class $$ConversationsTableTableTableManager
               }) => ConversationsTableCompanion.insert(
                 id: id,
                 workspaceId: workspaceId,
+                module: module,
+                moduleKey: moduleKey,
                 type: type,
                 title: title,
                 lastMessagePreview: lastMessagePreview,

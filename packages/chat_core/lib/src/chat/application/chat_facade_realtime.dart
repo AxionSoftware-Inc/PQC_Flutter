@@ -7,9 +7,9 @@ mixin _ChatFacadeRealtime on _ChatFacadeBase {
     if (_attachmentTransferFacade != null) {
       await _attachmentTransferFacade.resumePendingDownloads();
     }
-    final rows = await _localStore.readVisibleConversationRows(
-      _activeWorkspaceId,
-    );
+    // KPI conversations are intentionally hidden from the normal chat list,
+    // but their durable outbox entries must be retried after a restart too.
+    final rows = await _localStore.readAllConversationRows();
     for (final row in rows) {
       final conversation = await _localStore.mapConversationRow(
         row: row,

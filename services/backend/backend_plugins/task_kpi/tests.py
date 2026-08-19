@@ -187,3 +187,39 @@ class TaskKpiPluginTests(APITestCase):
         self.assertEqual(report.status_code, 200)
         self.assertEqual(report.data['total'], 1)
         self.assertEqual(report.data['done'], 0)
+
+    def test_task_chat_is_durable_idempotent_and_hidden_from_regular_chat_list(self):
+        self.client.force_authenticate(self.manager)
+        created = self.client.post(
+            '/api/task-kpi/tasks',
+            {'title': 'KPI chat', 'assignee_id': self.worker_member.id},
+            format='json',
+            **self.headers,
+        )
+        self.assertEqual(created.status_code, 201)
+        task_id = created.data['id']
+
+        first = self.client.post(
+            f'/api/task-kpi/tasks/{task_id}/conversation',
+            format='json',
+            **self.headers,
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.data['module'], 'kpi')
+        self.assertEqual(first.data['module_key'], f'task:{task_id}')
+        self.assertEqual(first.data['type'], 'group')
+
+        second = self.client.post(
+            f'/api/task-kpi/tasks/{task_id}/conversation',
+            format='json',
+            **self.headers,
+        )
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.data['id'], first.data['id'])
+
+        regular_chats = self.client.get('/api/conversations', **self.headers)
+        self.assertEqual(regular_chats.status_code, 200)
+        self.assertNotIn(
+            first.data['id'],
+            [item['id'] for item in regular_chats.data],
+        )

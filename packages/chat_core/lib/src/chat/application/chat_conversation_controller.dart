@@ -59,6 +59,10 @@ class ChatConversationController extends ChangeNotifier {
       _handleRealtimeEvent,
     );
     chatFacade.attachmentTransfers?.addListener(_handleTransferUpdates);
+    // Persist the conversation before reading or queueing the first message.
+    // This makes restart recovery independent of whether the first network
+    // request completed before the process was interrupted.
+    await chatFacade.ensureConversationCached(conversation);
     try {
       _attachmentTransfers = await chatFacade.loadAttachmentTransfers();
     } catch (_) {

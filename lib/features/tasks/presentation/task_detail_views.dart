@@ -68,7 +68,8 @@ extension _TaskDetailViews on _TaskDetailPageState {
               indicatorSize: TabBarIndicatorSize.label,
               tabs: [
                 const Tab(text: 'Topshiriq'),
-                Tab(text: 'Izohlar (${_commentActivities.length})'),
+                Tab(text: 'Faoliyat (${_commentActivities.length})'),
+                const Tab(text: 'KPI chat'),
                 Tab(text: 'Fayllar (${_fileEntries.length})'),
               ],
             ),
@@ -88,6 +89,8 @@ extension _TaskDetailViews on _TaskDetailPageState {
                       )
                     : _tabController.index == 1
                     ? _commentsSection()
+                    : _tabController.index == 2
+                    ? _kpiChatSection()
                     : _filesSection(),
               ),
             ),
@@ -106,6 +109,41 @@ extension _TaskDetailViews on _TaskDetailPageState {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _kpiChatSection() {
+    final spacing = context.appSpacing;
+    final colors = context.appColors;
+    return AppSurfaceCard(
+      backgroundColor: colors.primarySoft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.forum_rounded, color: colors.primary, size: 28),
+          SizedBox(height: spacing.sm),
+          Text(
+            'KPI ishchi chati',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          SizedBox(height: spacing.xs),
+          Text(
+            'Bu suhbat faqat shu topshiriqqa tegishli. U oddiy private chat tarixidan alohida saqlanadi, lekin asosiy app chatining shifrlash, outbox va qayta yuborish mexanizmlaridan foydalanadi.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          SizedBox(height: spacing.md),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _openKpiChat,
+              icon: const Icon(Icons.chat_bubble_outline_rounded),
+              label: const Text('KPI chatni ochish'),
+            ),
+          ),
+        ],
       ),
     );
   }

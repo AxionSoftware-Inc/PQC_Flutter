@@ -3,6 +3,28 @@ part of 'task_kpi_page.dart';
 // ignore_for_file: invalid_use_of_protected_member
 
 extension _TaskDetailActions on _TaskDetailPageState {
+  Future<void> _openKpiChat() async {
+    if (_openingKpiChat) return;
+    final taskId = (task['id'] as num?)?.toInt();
+    if (taskId == null) return;
+    setState(() => _openingKpiChat = true);
+    try {
+      final conversation = await widget.repository.openTaskConversation(taskId);
+      if (!mounted) return;
+      await widget.onOpenKpiChat(
+        conversation,
+        'KPI • ${task['title']?.toString() ?? 'Vazifa'}',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('KPI chatni ochib bo‘lmadi: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _openingKpiChat = false);
+    }
+  }
+
   Future<void> _loadActivities({bool silent = false}) async {
     if (!silent && mounted) setState(() => _loadingActivities = true);
     try {
@@ -55,9 +77,7 @@ extension _TaskDetailActions on _TaskDetailPageState {
       );
     }
     final valid = added
-        .where(
-          (file) => file.size <= _TaskDetailPageState._maxAttachmentBytes,
-        )
+        .where((file) => file.size <= _TaskDetailPageState._maxAttachmentBytes)
         .toList();
     if (valid.isNotEmpty) {
       setState(() {

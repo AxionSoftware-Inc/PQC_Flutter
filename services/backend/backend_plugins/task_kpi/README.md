@@ -27,6 +27,9 @@ flag. The backend is authoritative for permissions and allowed state changes.
 - `PATCH /api/task-kpi/tasks/:id/manage` — deadline, priority, assignee,
   watchers, or separate cancellation with a reason.
 - `GET/POST /api/task-kpi/tasks/:id/activity` — task conversation/timeline.
+- `POST /api/task-kpi/tasks/:id/conversation` — durable app-chat conversation
+  scoped to this task; KPI conversations never appear in the normal private
+  chat list.
 - `POST /api/task-kpi/tasks/:id/attachments` — authenticated file, image, or
   audio-file upload. Downloads use an authenticated endpoint rather than a
   raw media URL.

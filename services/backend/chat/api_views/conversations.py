@@ -48,6 +48,7 @@ class ConversationListView(APIView):
             Conversation.objects.filter(
                 participants=request.user,
                 workspace=workspace,
+                module=Conversation.Module.CHAT,
             )
             .annotate(
                 unread_count_value=Coalesce(

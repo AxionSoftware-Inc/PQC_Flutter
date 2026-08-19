@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:crypto_core/crypto_core.dart' show Conversation;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -39,10 +40,13 @@ class TaskKpiPage extends StatefulWidget {
     super.key,
     required this.repository,
     required this.currentUserId,
+    required this.onOpenKpiChat,
   });
 
   final TaskKpiRepository repository;
   final int currentUserId;
+  final Future<void> Function(Conversation conversation, String title)
+  onOpenKpiChat;
 
   @override
   State<TaskKpiPage> createState() => _TaskKpiPageState();

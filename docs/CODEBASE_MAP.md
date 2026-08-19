@@ -36,7 +36,7 @@ client directly.
 | Release/capability negotiation | `docs/release-profiles.md` | `PqcProtocolRelease`, `PayloadFormatRegistry`, backend `users/serializers.py` |
 | Key verification | `packages/chat_core/lib/src/security/` | `key_verification_service.dart` barrel and `key_verification_service_impl.dart` |
 | File transfers | `packages/chat_core/lib/src/transfer/` | models -> store -> facade |
-| Tasks/KPI | `lib/features/tasks/` | `data/task_kpi_repository.dart`, then `presentation/` |
+| Tasks/KPI | `lib/features/tasks/` | `data/task_kpi_repository.dart`, then `presentation/`; task activity stays a timeline and task chat opens through the shared `ChatPage` |
 | RBAC | `lib/features/rbac/` | `data/rbac_repository.dart`, then `presentation/` |
 | Account/recovery | `lib/features/account/data/` | `account_repository.dart`, then chat hub actions |
 | Backend endpoint | `services/backend/chat/` or `services/backend/users/` | serializer -> `api_views/` domain module -> compatibility `views.py` -> URL/test |
@@ -52,6 +52,13 @@ barrel. New endpoint work belongs in the domain module that owns the behavior:
 | Conversations/messages/attachments/protocol | `services/backend/chat/api_views/` | `chat/urls.py` -> `chat/views.py` barrel |
 | Optional RBAC | `services/backend/backend_plugins/rbac/` | plugin URLs -> `rbac/views.py` barrel |
 | Tasks/activity/notifications/KPI | `services/backend/backend_plugins/task_kpi/api_views/` | plugin URLs -> `task_kpi/views.py` barrel |
+
+The KPI plugin owns task visibility, workflow, activity and reporting. Its
+task conversation is created by `api_views/chat.py` as a `Conversation` with
+`module=kpi` and `module_key=task:<id>`. It deliberately reuses the standard
+chat message/crypto/outbox APIs, while the regular chat list and its local
+cache only expose `module=chat` rows. This keeps KPI extensible without
+duplicating the durable chat transport.
 
 The compatibility barrels contain exports only; they are not places for new
 business logic. This keeps URL contracts stable while making each API domain

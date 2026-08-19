@@ -11,20 +11,31 @@ class ChatLocalStore {
   final AppDatabase _database;
   final LocalDataProtector _localDataProtector;
 
+  /// Returns every locally known conversation for background outbox recovery.
+  ///
+  /// This is intentionally separate from [readVisibleConversationRows]: KPI
+  /// conversations must stay out of the normal chat list, but their pending
+  /// messages still need to be retried after an app restart.
+  Future<List<ConversationsTableData>> readAllConversationRows() {
+    return _database.readConversations();
+  }
+
   Future<List<ConversationsTableData>> readVisibleConversationRows(
     int activeWorkspaceId,
   ) async {
     if (activeWorkspaceId <= 0) {
-      return _database.readConversations();
+      final rows = await _database.readConversations();
+      return rows.where((row) => row.module == 'chat').toList();
     }
     final allRows = await _database.readConversations();
-    final visible = allRows.where((row) {
+    final chatRows = allRows.where((row) => row.module == 'chat').toList();
+    final visible = chatRows.where((row) {
       return row.workspaceId == activeWorkspaceId || row.workspaceId == 0;
     }).toList();
     if (visible.isNotEmpty) {
       return visible;
     }
-    return allRows;
+    return chatRows;
   }
 
   Future<void> persistConversation({
@@ -38,6 +49,8 @@ class ChatLocalStore {
       ConversationsTableCompanion(
         id: drift.Value(conversation.id),
         workspaceId: drift.Value(effectiveWorkspaceId),
+        module: drift.Value(conversation.module),
+        moduleKey: drift.Value(conversation.moduleKey),
         type: drift.Value(conversation.type),
         title: drift.Value(conversation.title),
         unreadCount: drift.Value(conversation.unreadCount),
@@ -57,6 +70,8 @@ class ChatLocalStore {
     return Conversation(
       id: row.id,
       workspaceId: row.workspaceId,
+      module: row.module,
+      moduleKey: row.moduleKey,
       type: row.type,
       title: row.title,
       participantIds: knownConversation?.participantIds ?? const [],

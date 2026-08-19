@@ -1,4 +1,5 @@
 import 'package:http/http.dart' as http;
+import 'package:crypto_core/crypto_core.dart';
 
 import '../../../core/network/api_client.dart';
 
@@ -15,10 +16,7 @@ class TaskKpiRepository {
 
   final ApiClient _apiClient;
 
-  Future<dynamic> get(
-    String path, {
-    Map<String, String>? queryParameters,
-  }) {
+  Future<dynamic> get(String path, {Map<String, String>? queryParameters}) {
     return _apiClient.get(path, queryParameters: queryParameters);
   }
 
@@ -28,6 +26,17 @@ class TaskKpiRepository {
 
   Future<dynamic> patch(String path, Map<String, dynamic> body) {
     return _apiClient.patch(path, body);
+  }
+
+  Future<Conversation> openTaskConversation(int taskId) async {
+    final response = await _apiClient.post(
+      '/task-kpi/tasks/$taskId/conversation',
+      const {},
+    );
+    if (response is! Map<String, dynamic>) {
+      throw StateError('KPI conversation response is invalid.');
+    }
+    return Conversation.fromJson(response);
   }
 
   Future<dynamic> multipartPost(

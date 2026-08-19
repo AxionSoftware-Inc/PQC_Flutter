@@ -437,6 +437,8 @@ class ConversationSerializer(serializers.ModelSerializer):
             'id',
             'workspace_id',
             'type',
+            'module',
+            'module_key',
             'title',
             'participant_ids',
             'last_message_preview',

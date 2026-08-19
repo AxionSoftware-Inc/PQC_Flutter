@@ -7,6 +7,7 @@ extension _TaskKpiTaskActions on _TaskKpiPageState {
         builder: (_) => _TaskDetailPage(
           repository: widget.repository,
           currentUserId: widget.currentUserId,
+          onOpenKpiChat: widget.onOpenKpiChat,
           task: task,
           canReview: ((task['permissions'] as Map?)?['can_manage'] == true),
           onAdvance: () => _advanceTask(task),
@@ -168,8 +169,10 @@ extension _TaskKpiTaskActions on _TaskKpiPageState {
   Future<void> _openCreateTaskPage() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) =>
-            _CreateTaskPage(repository: widget.repository, assignees: _assignees),
+        builder: (_) => _CreateTaskPage(
+          repository: widget.repository,
+          assignees: _assignees,
+        ),
       ),
     );
     if (mounted) await _load();

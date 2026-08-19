@@ -6,6 +6,7 @@ from backend_plugins.task_kpi.api_views.activity import (
     TaskAttachmentCreateView,
     TaskAttachmentDownloadView,
 )
+from backend_plugins.task_kpi.api_views.chat import TaskConversationView
 from backend_plugins.task_kpi.api_views.common import (
     _assignable_members,
     _can_assign,

@@ -4,6 +4,7 @@ class _TaskDetailPage extends StatefulWidget {
   const _TaskDetailPage({
     required this.repository,
     required this.currentUserId,
+    required this.onOpenKpiChat,
     required this.task,
     required this.canReview,
     required this.onAdvance,
@@ -13,6 +14,8 @@ class _TaskDetailPage extends StatefulWidget {
 
   final TaskKpiRepository repository;
   final int currentUserId;
+  final Future<void> Function(Conversation conversation, String title)
+  onOpenKpiChat;
   final Map<String, dynamic> task;
   final bool canReview;
   final Future<void> Function() onAdvance;
@@ -36,6 +39,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
   Timer? _activityRefreshTimer;
   bool _loadingActivities = true;
   bool _sendingUpdate = false;
+  bool _openingKpiChat = false;
   String? _activityError;
 
   Map<String, dynamic> get task => widget.task;
@@ -43,7 +47,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_onTabChanged);
     unawaited(_loadActivities());
     _activityRefreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {

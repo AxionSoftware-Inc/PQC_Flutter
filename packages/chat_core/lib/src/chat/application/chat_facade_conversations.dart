@@ -3,6 +3,13 @@ part of 'chat_facade.dart';
 // ignore_for_file: annotate_overrides
 
 mixin _ChatFacadeConversations on _ChatFacadeBase {
+  /// Registers a conversation before the first send so a crash between local
+  /// queueing and network delivery can still recover it on the next startup.
+  Future<void> ensureConversationCached(Conversation conversation) async {
+    _conversationsById[conversation.id] = conversation;
+    await _persistConversation(conversation);
+  }
+
   Future<ChatListState> loadChatList({
     required int currentUserId,
     String searchQuery = '',

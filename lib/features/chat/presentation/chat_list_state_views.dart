@@ -111,6 +111,10 @@ extension _ChatListStateViews on _ChatListPageState {
                     TaskKpiPage(
                       repository: widget.taskKpiRepository,
                       currentUserId: sessionUser.id,
+                      onOpenKpiChat: (conversation, title) => _openConversation(
+                        conversation: conversation,
+                        title: title,
+                      ),
                     ),
                   RefreshIndicator(
                     onRefresh: _refresh,

@@ -10,6 +10,16 @@ class Conversation(models.Model):
         PRIVATE = 'private', 'Private'
         GROUP = 'group', 'Group'
 
+    class Module(models.TextChoices):
+        CHAT = 'chat', 'Chat'
+        KPI = 'kpi', 'KPI'
+
+    module = models.CharField(
+        max_length=32,
+        choices=Module.choices,
+        default=Module.CHAT,
+    )
+    module_key = models.CharField(max_length=128, blank=True, default='')
     type = models.CharField(max_length=20, choices=ConversationType.choices)
     title = models.CharField(max_length=255, blank=True)
     workspace = models.ForeignKey(
@@ -29,6 +39,13 @@ class Conversation(models.Model):
 
     class Meta:
         ordering = ['-updated_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['workspace', 'module', 'module_key'],
+                condition=~models.Q(module_key=''),
+                name='chat_conversation_unique_module_key',
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.title or f'{self.type}:{self.pk}'
