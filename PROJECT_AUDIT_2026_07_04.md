@@ -23,7 +23,7 @@ Muammo:
 
 Yechim:
 
-- [AndroidManifest.xml](/Users/macbookpro/Documents/PQC%20Chat%20app/android/app/src/main/AndroidManifest.xml) ga `uses-permission android:name="android.permission.INTERNET"` qo'shildi
+- [`android/app/src/main/AndroidManifest.xml`](android/app/src/main/AndroidManifest.xml) ga `uses-permission android:name="android.permission.INTERNET"` qo'shildi
 
 ### 2. Server non-standard port
 
