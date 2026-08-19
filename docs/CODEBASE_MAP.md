@@ -50,6 +50,7 @@ barrel. New endpoint work belongs in the domain module that owns the behavior:
 | --- | --- | --- |
 | Authentication/account/recovery/devices | `services/backend/users/api_views/` | `users/urls.py` -> `users/views.py` barrel |
 | Conversations/messages/attachments/protocol | `services/backend/chat/api_views/` | `chat/urls.py` -> `chat/views.py` barrel |
+| Optional RBAC | `services/backend/backend_plugins/rbac/` | plugin URLs -> `rbac/views.py` barrel |
 | Tasks/activity/notifications/KPI | `services/backend/backend_plugins/task_kpi/api_views/` | plugin URLs -> `task_kpi/views.py` barrel |
 
 The compatibility barrels contain exports only; they are not places for new

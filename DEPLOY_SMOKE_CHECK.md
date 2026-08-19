@@ -4,10 +4,12 @@
 - `GET /api/health` returns `{"status":"ok"}`
 - `POST /api/auth/login` returns `token`, `account_id`, `device_id`, `user`
 - `GET /api/users/me` works with returned token
+- `POST /api/users/me/device/sync` accepts the current device capability set
 - `GET /api/conversations` works with token
 - `POST /api/conversations/{id}/messages` with `client_message_id` is idempotent
 - `GET /api/conversations/{id}/messages?after_id=N` returns only newer messages
-- `POST /api/users/{user_id}/devices/{device_id}/claim-prekey` returns JSON, not HTML
+- `POST /api/users/me/avatar` accepts a bounded JPEG, PNG or WebP upload and
+  the returned avatar URL streams the image
 
 ## Client
 - Login from Android works
