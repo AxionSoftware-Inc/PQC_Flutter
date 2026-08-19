@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from users.models import OrganizationMember, WorkspaceMember
+from users.serializers import avatar_url_for_user
 
 from ..activity import record_activity
 from ..models import KpiGoal, KpiGoalHistory, TaskActivity, TaskAttachment, TaskNotification, TaskWatcher, WorkTask
@@ -66,7 +67,10 @@ class AssignableMemberView(APIView):
             'member_id': item.id,
             'name': item.organization_member.user.first_name or item.organization_member.user.username,
             'role_name': getattr(assignments.get(item.id), 'role', None).name if getattr(assignments.get(item.id), 'role', None) else 'Lavozim belgilanmagan',
-            'avatar_url': getattr(item.organization_member.user, 'avatar_url', '') or '',
+            'avatar_url': avatar_url_for_user(
+                item.organization_member.user,
+                request,
+            ),
         } for item in rows])
 
 
@@ -160,4 +164,3 @@ class KpiSummaryView(APIView):
             'total': stats.get(item.id, {}).get('total', 0),
             'done': stats.get(item.id, {}).get('done', 0),
         } for item in visible.distinct()])
-

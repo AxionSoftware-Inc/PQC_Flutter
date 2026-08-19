@@ -354,6 +354,7 @@ class UserReport(models.Model):
 
 class AccountSettings(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='account_settings')
+    avatar_storage_key = models.CharField(max_length=512, blank=True)
     notifications_enabled = models.BooleanField(default=True)
     notification_previews = models.BooleanField(default=True)
     read_receipts_enabled = models.BooleanField(default=True)

@@ -2,6 +2,7 @@ import hashlib
 import json
 import base64
 import logging
+import mimetypes
 import secrets
 from datetime import timedelta
 from urllib.parse import urlencode
@@ -9,7 +10,9 @@ from urllib.request import urlopen
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
+from django.http import FileResponse, Http404
 from django.utils import timezone
 from django.utils.text import slugify
 from uuid import uuid4
@@ -58,6 +61,103 @@ from users.serializers import (
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
+_AVATAR_CONTENT_TYPES = {
+    'image/jpeg': '.jpg',
+    'image/png': '.png',
+    'image/webp': '.webp',
+}
+
+
+def _avatar_signature_matches(upload, content_type):
+    header = upload.read(12)
+    upload.seek(0)
+    if content_type == 'image/jpeg':
+        return header.startswith(b'\xff\xd8\xff')
+    if content_type == 'image/png':
+        return header.startswith(b'\x89PNG\r\n\x1a\n')
+    return (
+        content_type == 'image/webp'
+        and len(header) >= 12
+        and header[:4] == b'RIFF'
+        and header[8:12] == b'WEBP'
+    )
+
+
+def _save_avatar(request):
+    upload = request.FILES.get('avatar')
+    if upload is None:
+        return Response({'detail': 'avatar file is required.'}, status=400)
+    if upload.size <= 0:
+        return Response({'detail': 'avatar file is empty.'}, status=400)
+    if upload.size > settings.AVATAR_MAX_BYTES:
+        return Response(
+            {
+                'detail': (
+                    'avatar exceeds the configured limit '
+                    f'({settings.AVATAR_MAX_BYTES} bytes).'
+                )
+            },
+            status=400,
+        )
+
+    content_type = str(upload.content_type or '').lower().split(';', 1)[0]
+    extension = _AVATAR_CONTENT_TYPES.get(content_type)
+    if extension is None or not _avatar_signature_matches(upload, content_type):
+        return Response(
+            {'detail': 'avatar must be a valid JPEG, PNG or WebP image.'},
+            status=400,
+        )
+
+    storage_key = default_storage.save(
+        f'avatars/{request.user.id}/{uuid4().hex}{extension}',
+        upload,
+    )
+    settings_obj, _ = AccountSettings.objects.get_or_create(user=request.user)
+    previous_key = settings_obj.avatar_storage_key
+    try:
+        settings_obj.avatar_storage_key = storage_key
+        settings_obj.save(update_fields=['avatar_storage_key', 'updated_at'])
+    except Exception:
+        default_storage.delete(storage_key)
+        raise
+    if previous_key and previous_key != storage_key:
+        transaction.on_commit(lambda: default_storage.delete(previous_key))
+    return Response(
+        UserSerializer(
+            request.user,
+            context={'request': request},
+        ).data
+    )
+
+
+class UserAvatarView(APIView):
+    """Public, read-only avatar stream; uploads use the authenticated /me route."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, user_id):
+        storage_key = (
+            AccountSettings.objects.filter(user_id=user_id)
+            .values_list('avatar_storage_key', flat=True)
+            .first()
+        )
+        if not storage_key:
+            raise Http404
+        try:
+            avatar = default_storage.open(storage_key, 'rb')
+        except FileNotFoundError as exc:
+            raise Http404 from exc
+        content_type = mimetypes.guess_type(storage_key)[0] or 'application/octet-stream'
+        response = FileResponse(avatar, content_type=content_type)
+        response['Cache-Control'] = 'public, max-age=3600'
+        return response
+
+
+class CurrentUserAvatarView(APIView):
+    @transaction.atomic
+    def post(self, request):
+        return _save_avatar(request)
+
 
 
 from .common import _get_request_active_workspace, _serialize_org_context
@@ -67,7 +167,10 @@ class MeView(APIView):
         workspace, error_response = _get_request_active_workspace(request)
         if error_response is not None:
             return error_response
-        user_data = UserSerializer(request.user).data
+        user_data = UserSerializer(
+            request.user,
+            context={'request': request},
+        ).data
         return Response(
             {
                 **user_data,
@@ -91,7 +194,12 @@ class MeView(APIView):
             updates.append('email')
         if updates:
             request.user.save(update_fields=updates)
-        return Response(UserSerializer(request.user).data)
+        return Response(
+            UserSerializer(
+                request.user,
+                context={'request': request},
+            ).data
+        )
 
 
 class AccountSettingsView(APIView):
@@ -138,5 +246,3 @@ class UserReportView(APIView):
             return Response({'detail': 'reason is required.'}, status=400)
         report = UserReport.objects.create(reporter=request.user, target=target, reason=reason, details=str(request.data.get('details', '')).strip())
         return Response({'id': report.id, 'created': True}, status=201)
-
-

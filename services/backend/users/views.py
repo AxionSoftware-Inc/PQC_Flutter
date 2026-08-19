@@ -11,7 +11,9 @@ from users.escrow import get_key_escrow_provider
 
 from users.api_views.account import (
     AccountSettingsView,
+    CurrentUserAvatarView,
     MeView,
+    UserAvatarView,
     UserBlockView,
     UserReportView,
 )

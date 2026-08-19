@@ -2,9 +2,16 @@ import base64
 import hashlib
 import json
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 
-from users.models import Invitation, Organization, OrganizationMember, Workspace, WorkspaceMember
+from users.models import (
+    Invitation,
+    Organization,
+    OrganizationMember,
+    Workspace,
+    WorkspaceMember,
+)
 
 
 User = get_user_model()
@@ -12,6 +19,17 @@ ML_KEM_768_PUBLIC_KEY_BYTES = 1184
 ML_KEM_POLYVEC_BYTES = 1152
 ML_KEM_Q = 3329
 SUPPORTED_PROTOCOL_IDS = ('v2', 'v2.5', 'v3')
+
+
+def avatar_url_for_user(user, request=None):
+    try:
+        settings_obj = user.account_settings
+    except (AttributeError, ObjectDoesNotExist):
+        return ''
+    if not settings_obj.avatar_storage_key:
+        return ''
+    path = f'/api/users/{user.id}/avatar'
+    return request.build_absolute_uri(path) if request is not None else path
 
 
 def normalize_supported_protocols(value):
@@ -316,17 +334,28 @@ class UserSerializer(serializers.ModelSerializer):
     username = serializers.SerializerMethodField()
     display_name = serializers.SerializerMethodField()
     devices = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
     account_id = serializers.IntegerField(source='id')
 
     class Meta:
         model = User
-        fields = ['id', 'account_id', 'username', 'display_name', 'devices']
+        fields = [
+            'id',
+            'account_id',
+            'username',
+            'display_name',
+            'avatar_url',
+            'devices',
+        ]
 
     def get_username(self, obj):
         return obj.first_name or obj.username
 
     def get_display_name(self, obj):
         return obj.first_name or obj.username
+
+    def get_avatar_url(self, obj):
+        return avatar_url_for_user(obj, self.context.get('request'))
 
     def get_devices(self, obj):
         device_rows = [

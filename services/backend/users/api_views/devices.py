@@ -75,8 +75,14 @@ class UserListView(APIView):
         users = User.objects.filter(
             organization_memberships__workspace_memberships__workspace=workspace,
             organization_memberships__workspace_memberships__is_active=True,
-        ).distinct().order_by('id')
-        return Response(UserSerializer(users, many=True).data)
+        ).select_related('account_settings').distinct().order_by('id')
+        return Response(
+            UserSerializer(
+                users,
+                many=True,
+                context={'request': request},
+            ).data
+        )
 
 
 class DeviceSyncView(APIView):

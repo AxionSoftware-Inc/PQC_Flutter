@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from uuid import uuid4
 
 from users.models import Invitation, OrganizationMember, WorkspaceMember
+from users.serializers import avatar_url_for_user
 
 from .models import JobRole, JobRoleAssignment
 from .serializers import AssignmentWriteSerializer, InvitationWriteSerializer, JobRoleAssignmentSerializer, JobRoleSerializer
@@ -135,7 +136,7 @@ class MemberListView(APIView):
                 payload.append(JobRoleAssignmentSerializer(assignment).data)
             else:
                 user = item.organization_member.user
-                payload.append({'member_id': item.id, 'user_id': user.id, 'display_name': user.first_name or user.username, 'email': getattr(getattr(user, 'google_account', None), 'email', '') or getattr(user, 'email', ''), 'system_role': item.role, 'is_active': item.is_active, 'role': None})
+                payload.append({'member_id': item.id, 'user_id': user.id, 'display_name': user.first_name or user.username, 'email': getattr(getattr(user, 'google_account', None), 'email', '') or getattr(user, 'email', ''), 'avatar_url': avatar_url_for_user(user, request), 'system_role': item.role, 'is_active': item.is_active, 'role': None})
         return Response(payload)
 
 
@@ -154,7 +155,7 @@ class RegisteredUserListView(APIView):
                 'user_id': user.id,
                 'display_name': user.first_name or user.username,
                 'email': getattr(getattr(user, 'google_account', None), 'email', '') or getattr(user, 'email', ''),
-                'avatar_url': getattr(user, 'avatar_url', '') or '',
+                'avatar_url': avatar_url_for_user(user, request),
             }
             for user in users
         ])

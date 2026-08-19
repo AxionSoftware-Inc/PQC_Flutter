@@ -292,6 +292,13 @@ ATTACHMENTS_MAX_CHUNK_BYTES = int(
     os.environ.get('ATTACHMENTS_MAX_CHUNK_BYTES', str(4 * 1024 * 1024))
 )
 
+# Profile pictures are intentionally much smaller than chat attachments and
+# are stored under their own prefix so media access can never expose chat
+# blobs accidentally.
+AVATAR_MAX_BYTES = int(
+    os.environ.get('AVATAR_MAX_BYTES', str(2 * 1024 * 1024))
+)
+
 # Keep per-request buffering bounded. Large files are expected to arrive via
 # small chunk requests rather than one giant multipart body.
 DATA_UPLOAD_MAX_MEMORY_SIZE = int(

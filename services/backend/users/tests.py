@@ -1,12 +1,15 @@
 import base64
 import hashlib
 import json
+import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.files.storage import default_storage
 from django.db import close_old_connections, connection
 from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
@@ -18,6 +21,7 @@ from users.models import UserDevice
 from users.models import (
     AccountKeysetEscrowRecord,
     AccountRecoveryManifest,
+    AccountSettings,
     RecoveryAccessGrant,
     RecoveryDeviceApproval,
 )
@@ -778,3 +782,60 @@ class AccountSettingsSyncTests(APITestCase):
         self.assertFalse(fresh_read.data['read_receipts_enabled'])
         self.assertFalse(fresh_read.data['typing_indicators_enabled'])
         self.assertEqual(fresh_read.data['last_seen_visibility'], 'nobody')
+
+    def test_avatar_upload_returns_readable_public_url_and_replaces_old_blob(self):
+        with tempfile.TemporaryDirectory() as media_root, self.settings(
+            MEDIA_ROOT=media_root,
+        ):
+            first = self.client.post(
+                '/api/users/me/avatar',
+                {
+                    'avatar': SimpleUploadedFile(
+                        'first.png',
+                        b'\x89PNG\r\n\x1a\nfirst-avatar',
+                        content_type='image/png',
+                    )
+                },
+                format='multipart',
+            )
+            self.assertEqual(first.status_code, 200, first.data)
+            first_key = AccountSettings.objects.get(user=self.user).avatar_storage_key
+            self.assertTrue(first_key.startswith(f'avatars/{self.user.id}/'))
+            self.assertTrue(first.data['avatar_url'].endswith(f'/api/users/{self.user.id}/avatar'))
+
+            fetched = self.client.get(f'/api/users/{self.user.id}/avatar')
+            self.assertEqual(fetched.status_code, 200)
+            self.assertEqual(fetched['Content-Type'], 'image/png')
+            self.assertEqual(b''.join(fetched.streaming_content), b'\x89PNG\r\n\x1a\nfirst-avatar')
+
+            with self.captureOnCommitCallbacks(execute=True):
+                second = self.client.post(
+                    '/api/users/me/avatar',
+                    {
+                        'avatar': SimpleUploadedFile(
+                            'second.jpg',
+                            b'\xff\xd8\xffsecond-avatar',
+                            content_type='image/jpeg',
+                        )
+                    },
+                    format='multipart',
+                )
+            self.assertEqual(second.status_code, 200, second.data)
+            second_key = AccountSettings.objects.get(user=self.user).avatar_storage_key
+            self.assertNotEqual(first_key, second_key)
+            self.assertFalse(default_storage.exists(first_key))
+
+    def test_avatar_upload_rejects_content_type_spoofing(self):
+        response = self.client.post(
+            '/api/users/me/avatar',
+            {
+                'avatar': SimpleUploadedFile(
+                    'avatar.png',
+                    b'not-an-image',
+                    content_type='image/png',
+                )
+            },
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['detail'], 'avatar must be a valid JPEG, PNG or WebP image.')

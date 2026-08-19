@@ -190,7 +190,10 @@ class LoginView(APIView):
                     ],
                     many=True,
                 ).data,
-                'user': UserSerializer(user).data,
+                'user': UserSerializer(
+                    user,
+                    context={'request': request},
+                ).data,
             }
         )
 
@@ -273,7 +276,9 @@ class GoogleLoginView(APIView):
             'profile_fingerprint': device.profile_fingerprint,
             'active_workspace_id': workspace.id,
             'organizations': _serialize_org_context(user),
-            'user': UserSerializer(user).data,
+            'user': UserSerializer(
+                user,
+                context={'request': request},
+            ).data,
         })
-
 
