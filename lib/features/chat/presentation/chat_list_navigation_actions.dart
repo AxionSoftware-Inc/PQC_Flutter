@@ -153,13 +153,8 @@ extension _ChatListNavigationActions on _ChatListPageState {
                   _showMessage(
                     'Kontakt kaliti tasdiqlandi.',
                     tone: AppStatusTone.success,
-                  );
-                }
-              : null,
-          onRoleChanged: item.user.canManageRole
-              ? (role) async {
-                  await _controller.updateContactRole(item.user, role);
-                }
+                );
+              }
               : null,
         ),
       ),

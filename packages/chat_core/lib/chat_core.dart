@@ -1,5 +1,3 @@
-export 'src/access_control/access_control_models.dart';
-export 'src/access_control/access_control_repository.dart';
 export 'src/chat/application/chat_controllers.dart';
 export 'src/chat/application/chat_facade.dart';
 export 'src/chat/application/chat_local_store.dart';

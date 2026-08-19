@@ -88,11 +88,6 @@ mixin _ChatHubActions on _ChatHubControllerBase {
     await refresh();
   }
 
-  Future<void> updateContactRole(AppUser user, String role) async {
-    await chatFacade.updateUserRole(userId: user.id, role: role);
-    await refresh();
-  }
-
   Future<void> setChatSearchQuery(String value) async {
     _chatPreferences = _chatPreferences.copyWith(searchQuery: value);
     await _persistChatPreferences();
