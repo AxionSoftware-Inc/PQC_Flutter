@@ -9,7 +9,8 @@ Bu hujjat hozirgi kriptografik foundation qayergacha kelganini va hali qayerlari
 1. Har device local `identity key pair` yaratadi
 2. `ML-KEM-768` public key login yoki device sync vaqtida backendga yuboriladi
 3. `ML-DSA-65` signing public key ham backendga yuboriladi
-4. Yangi private chat xabari `pqc:v1` formatida encrypt qilinadi
+4. Yangi private chat xabari default `pqc:v2:` formatida encrypt qilinadi;
+   V3 release profile `pqc:v3:` yozadi
 5. Payload serverda PQC-wrapped ciphertext ko'rinishida saqlanadi
 6. Self-sent encrypted payload uchun local plaintext cache bor, shu sabab yuborgan xabar history reload'da ham ko'rinadi
 7. Oldin verified bo'lgan peer key o'zgarsa private send verify qilinmaguncha bloklanadi
@@ -21,7 +22,8 @@ Bu hujjat hozirgi kriptografik foundation qayergacha kelganini va hali qayerlari
 1. Group secret clientda yaratiladi
 2. Har participant device uchun alohida PQC wrapped key envelope yaratiladi
 3. Server faqat envelope'larni saqlaydi
-4. Payload `group:v1:*` ko'rinishida saqlanadi
+4. Payload default `group:v2:*` ko'rinishida saqlanadi; V3 profile `group:v3:*`
+   ishlatadi
 5. Participant usable device ro'yxati o'zgarsa keyingi yuborishda yangi group key yaratiladi
 6. Group key sync endi usable participant device'larning barchasi uchun envelope talab qiladi
 7. Kimdadir usable device key bo'lmasa group send to'xtatiladi, partial distribution bo'lmaydi

@@ -10,7 +10,7 @@ Hozirgi scope ataylab kichik:
 2. private chat
 3. 1 ta umumiy group chat
 4. minimal UI
-5. keyin PQC uchun toza foundation
+5. versioned PQC writer/reader foundation
 
 ## Deliberate Simplifications
 
@@ -49,7 +49,7 @@ Muhim implementatsiya eslatmalari:
 6. group key participant/device signature o'zgarsa qayta yaratiladi
 7. Android secretlar secure storage'ga qaytarildi, legacy local secretlar read vaqtida migratsiya qilinadi
 8. device login/sync vaqtida `ml-kem-768` va `ml-dsa-65` public key'lar backendga yuboriladi
-9. private chat payload hozir `pqc:v1` formatida yoziladi
+9. private chat default writer `pqc:v2:`; V3 release profile `pqc:v3:` yozadi
 10. private payload ichida content key `ML-KEM-768` bilan self va peer device uchun wrap qilinadi
 11. content plaintext `AES-GCM` bilan shifrlanadi
 12. payload `ML-DSA-65` bilan imzolanadi
@@ -58,7 +58,8 @@ Muhim implementatsiya eslatmalari:
 15. decoder successful decryptlardan keyin plaintext payload cache'ga yozadi
 16. group key create/sync vaqtida usable participant device'larning hammasi qamrab olinishi shart
 17. groupda biror participant usable PQC device key'siz bo'lsa xabar yuborish to'xtatiladi, partial envelope upload qilinmaydi
-18. group key envelope `group-wrap:pqc:v1` formatida yaratiladi
+18. group key envelope default `group-wrap:pqc:v2:`; V2.5 profile
+    `group-wrap:pqc:v2.5:` ni faqat server capability e'lon qilganda yozadi
 19. group wrap `ML-KEM-768` bilan encapsulate qilinadi va `ML-DSA-65` bilan imzolanadi
 20. outbound/inbound plaintext cache capped bo'lib yuradi va logout paytida tozalanadi
 

@@ -2,6 +2,10 @@
 
 Bu fayl xabarlar turli bosqichlarda serverda va clientda qanday ko'rinishda bo'lishini tushuntiradi.
 
+> Eslatma: `v1` formatlari tarixiy demo qatlamiga tegishli. Hozirgi production
+> contract `docs/release-profiles.md` bilan belgilanadi: V2 default, V2.5
+> group-envelope migration profili, V3 esa capability-gated writer/reader.
+
 ## 1. Oldingi Demo Qatlam
 
 Oldingi demo qatlam:
@@ -17,12 +21,12 @@ Bu foydali oraliq bosqich edi. Hozir aktiv write path endi bu emas.
 Format:
 
 ```text
-pqc:v1:<sender-device-id>:<signing-public-key>:<target-device-id>:...
+pqc:v2:<sender-device-id>:<signing-public-key>:<target-device-id>:...
 ```
 
 Ma'nosi:
 
-1. private chat uchun aktiv payload formati `pqc:v1`
+1. private chat uchun default payload formati `pqc:v2:`; V3 profile `pqc:v3:`
 2. message body `AES-GCM` bilan shifrlanadi
 3. content key self va peer device uchun `ML-KEM-768` bilan wrap qilinadi
 4. payload `ML-DSA-65` bilan imzolanadi
@@ -34,7 +38,7 @@ Server nuqtai nazaridan saqlanadigan narsa:
 ```text
 conversation_id=...
 sender_id=...
-body='pqc:v1:...'
+body='pqc:v2:...'  # V3 profile: pqc:v3:...
 ```
 
 ## 3. Hozirgi Group Chat Ko'rinishi
@@ -42,13 +46,13 @@ body='pqc:v1:...'
 Format:
 
 ```text
-group:v1:<key_id>:<nonce-base64>:<ciphertext-base64>:<mac-base64>
+group:v2:<key_id>:<nonce-base64>:<ciphertext-base64>:<mac-base64>
 ```
 
 Group key envelope formati:
 
 ```text
-group-wrap:pqc:v1:<sender-device-id>:<signing-public-key>:<kem-ciphertext>:...
+group-wrap:pqc:v2:<sender-device-id>:<signing-public-key>:<kem-ciphertext>:...
 ```
 
 Ma'nosi:
@@ -56,7 +60,7 @@ Ma'nosi:
 1. group secret clientda yaratiladi
 2. har target device uchun PQC wrap qilinadi
 3. server `ConversationKeyEnvelope` saqlaydi
-4. xabar esa alohida `group:v1:*` bo'lib saqlanadi
+4. xabar esa alohida `group:v2:*` bo'lib saqlanadi; V3 profile `group:v3:*`
 
 ## 4. Serverda Plaintext Qayerda Qolishi Mumkin
 
@@ -98,8 +102,8 @@ Shu sabab payload oddiy kichik klassik format emas.
 Bugungi real holat:
 
 1. server plaintext storage'dan chiqdi
-2. private chat aktiv `pqc:v1` formatda ishlaydi
-3. group chat PQC wrapped key modelida ishlaydi
+2. private chat default `pqc:v2:` formatda ishlaydi, V3 esa capability orqali yoqiladi
+3. group chat PQC wrapped key modelida ishlaydi; V2.5 envelope reader/writer alohida negotiate qilinadi
 4. manual verification bor, lekin hali full safety-number UX emas
 5. hali ratchet yo'q
 6. Android secret storage endi secure storage primary

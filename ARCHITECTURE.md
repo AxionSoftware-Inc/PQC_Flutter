@@ -154,9 +154,11 @@ PQC chat uchun ikki bosqichli model tavsiya etiladi:
 
 Hozirgi ishlab turgan yondashuv:
 
-1. Private chat uchun aktiv yozish formati ishlatiladi: `pqc:v1`
+1. Private chat uchun default yozish formati `pqc:v2:`; V3 writer capability-gated
+   ravishda `pqc:v3:` ishlatadi
 2. Private payload `ML-KEM-768` + `AES-GCM` + `ML-DSA-65` modelida ishlaydi
-3. Group chat uchun `group:v1` payload va `group-wrap:pqc:v1` envelope ishlatiladi
+3. Group chat uchun default `group:v2:` payload va `group-wrap:pqc:v2:` envelope
+   ishlatiladi; V2.5 envelope alohida rollout profile, V3 esa `group:v3:` reader/writer
 4. Eski klassik payloadlar endi aktiv write path emas
 
 Bu yondashuv platformalararo barqarorlikni tiklaydi va Flutter kod bazasini bir xil saqlab turadi.
@@ -165,8 +167,9 @@ Shu sabab crypto qatlam algoritmga qattiq bog'lanmasligi kerak. Hozirgi tavsiya:
 
 1. conversation oqimi `ChatCipherAlgorithm` kabi pluggable interfeys orqali ishlaydi
 2. private trust policy alohida coordinator'da turadi
-3. aktiv private transport va legacy decrypt transport alohida implementation bo'ladi
-4. keyin kerak bo'lsa yangi PQC/private transport shu interfeys ostida qayta kiritiladi
+3. aktiv private transport va historical decrypt transport alohida implementation
+   bo'ladi
+4. yangi protocol writer shu interfeys ostida capability gate orqali qo'shiladi
 
 ### 5.3 Tavsiya Etiladigan Crypto Flow
 

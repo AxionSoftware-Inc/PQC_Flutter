@@ -8,7 +8,7 @@ Hozirgi ishchi scope:
 - 1 ta umumiy `General Group`
 - istalgan 2 user orasida private chat
 - polling asosidagi refresh
-- private chat uchun bitta barqaror shared-secret transport
+- private chat uchun versioned PQC transport
 - group chat uchun client-side group key + wrapped key envelopes
 - manual key verification va key-change warning
 
@@ -22,7 +22,7 @@ Ishlaydi:
 - private chat
 - group chat
 - server deploy
-- Android release APK build
+- Android debug/release APK build
 - PQC private payloads
 - PQC group key wrapping
 - key verification banner
@@ -148,7 +148,7 @@ Qisqa amaliy xulosa:
 
 Private chat:
 
-- payload format: `pqc:v1:*`
+- default payload format: `pqc:v2:*`; V3 release profile writes `pqc:v3:*`
 - content plaintext `AES-GCM` bilan shifrlanadi
 - content key `ML-KEM-768` bilan self va peer device uchun wrap qilinadi
 - payload `ML-DSA-65` bilan imzolanadi
@@ -156,9 +156,12 @@ Private chat:
 
 Group chat:
 
-- payload format: `group:v1:<key_id>:<nonce>:<ciphertext>:<mac>`
+- default payload format: `group:v2:<key_id>:<nonce>:<ciphertext>:<mac>`;
+  V3 release profile writes `group:v3:*`
 - group secret clientda yaratiladi
 - har participant device uchun PQC wrapped key envelope serverga yuboriladi
+- group envelope writer `group-wrap:pqc:v2:` yoki negotiated V2.5
+  (`group-wrap:pqc:v2.5:`) bo‘ladi; V3 profile V2 envelope reader’ini saqlaydi
 
 Server nimalarni ko'radi:
 
@@ -196,4 +199,7 @@ flutter test
 flutter analyze
 ```
 
-Korporativ yo‘l bo‘yicha keyingi katta qatlam: private chat device signing key e’lon qilinganida payload ML-DSA-65 bilan ham imzolanadi. Flutter crypto va chat kodlari mos ravishda `packages/crypto_core/` va `packages/chat_core/` ichida, backend esa `services/backend/` ichida saqlanadi.
+Korporativ yo‘l bo‘yicha keyingi katta qatlam: mixed-device migration, recovery va
+trust-center UX’ni real qurilmalarda yakunlash. Flutter crypto va chat kodlari
+mos ravishda `packages/crypto_core/` va `packages/chat_core/` ichida, backend
+esa `services/backend/` ichida saqlanadi.

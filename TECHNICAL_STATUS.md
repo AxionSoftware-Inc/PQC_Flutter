@@ -29,7 +29,7 @@ Lekin hali:
 
 ### 2.2 Private chat
 
-1. private payload formati `pqc:v1`
+1. private payload default formati `pqc:v2:`; V3 profile `pqc:v3:`
 2. content plaintext `AES-GCM` bilan shifrlanadi
 3. content key peer qurilmalar uchun `ML-KEM-768` bilan wrap qilinadi
 4. payload `ML-DSA-65` bilan imzolanadi
@@ -41,7 +41,8 @@ Lekin hali:
 
 1. group secret client tomonda yaratiladi
 2. har participant device uchun alohida PQC wrapped envelope yaratiladi
-3. envelope formati `group-wrap:pqc:v1:*`
+3. envelope default formati `group-wrap:pqc:v2:*`; V2.5 dual-read/conditional-write
+   profile `group-wrap:pqc:v2.5:*`
 4. group key wrap ham `ML-KEM-768` + `ML-DSA-65` bilan ishlaydi
 5. usable device coverage to'liq bo'lmasa send bloklanadi
 
@@ -110,8 +111,10 @@ Bu pass davomida quyidagilar qattiqlashtirildi:
 
 1. secure storage ishlamasa fallback secretlar plain text emas, wrapped formatda saqlanadi
 2. legacy plain fallback qiymatlar o'qilish paytida avtomatik protected formatga migratsiya qilinadi
-3. backend private chat uchun plain text body qabul qilmaydi, faqat `pqc:v1`
-4. backend group chat uchun plain text body qabul qilmaydi, faqat `group:v1`
+3. backend private chat uchun plain text body qabul qilmaydi, faqat e'lon qilingan
+   `pqc:v2:`/`pqc:v3:` writer prefixlari
+4. backend group chat uchun plain text body qabul qilmaydi, faqat e'lon qilingan
+   `group:v2:`/`group:v3:` writer prefixlari
 5. backend group key envelope sync uchun faqat PQC algorithm va PQC envelope format qabul qiladi
 6. group envelope target coverage server tomonda ham PQC device registry bilan tekshiriladi
 7. local message/outbox plaintext endi protected at-rest ko'rinishda saqlanadi

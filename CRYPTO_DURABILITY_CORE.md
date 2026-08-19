@@ -36,9 +36,9 @@ Ularning vazifasi:
 ### `PayloadFormatRegistry`
 
 - qaysi payload qaysi formatga tegishli ekanini biladi
-- `pqc:v1`
-- `group:v1`
-- `group-wrap:pqc:v1`
+- `pqc:v2:` va `pqc:v3:` private payloadlar
+- `group:v2:` va `group:v3:` group payloadlar
+- `group-wrap:pqc:v2:` va `group-wrap:pqc:v2.5:` envelope'lar
 
 Muhim qoida:
 
