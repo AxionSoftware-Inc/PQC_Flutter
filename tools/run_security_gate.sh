@@ -25,3 +25,14 @@ AWS_KMS_ESCROW_KEY_ID='arn:aws:kms:us-east-1:000000000000:key/security-gate' \
 
 flutter analyze
 flutter test
+
+if ! command -v dart >/dev/null 2>&1; then
+  echo 'dart is required to validate the standalone PQC SDK.' >&2
+  exit 1
+fi
+(
+  cd packages/pqc_engine_sdk
+  dart pub get --enforce-lockfile
+  dart analyze
+  dart test
+)

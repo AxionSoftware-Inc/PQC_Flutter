@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:crypto_core/src/models/session_user.dart';
-import 'package:crypto_core/src/network/api_client.dart';
 import '../storage/local_secret_store.dart';
 import 'device_identity_service.dart';
 import 'device_key_service.dart';
@@ -261,41 +260,6 @@ class DeviceStateManager {
 
   Future<List<String>> listTrustedDevices(SessionUser sessionUser) async {
     return [sessionUser.deviceId].where((item) => item.isNotEmpty).toList();
-  }
-
-  Future<void> syncCurrentDeviceProfile({
-    required ApiClient apiClient,
-    required SessionUser sessionUser,
-  }) async {
-    final state = await resolveCurrentDeviceProfile();
-    apiClient.setDeviceId(state.deviceIdentity.id);
-    final response =
-        await apiClient.post('/users/me/device/sync', {
-              'device_id': state.deviceIdentity.id,
-              'device_name': state.deviceIdentity.deviceName,
-              'platform': state.deviceIdentity.platform,
-              'identity_public_key': state.identityKeyMaterial.publicKey,
-              'key_algorithm': state.identityKeyMaterial.algorithm,
-              'pqc_public_key': state.pqcKeyMaterial?.publicKey ?? '',
-              'pqc_algorithm': state.pqcKeyMaterial?.algorithm ?? '',
-              'pqc_signing_public_key': state.pqcSigningKeyMaterial.publicKey,
-              'pqc_signing_algorithm': state.pqcSigningKeyMaterial.algorithm,
-            })
-            as Map<String, dynamic>;
-    final serverFingerprint = response['profile_fingerprint'] as String? ?? '';
-    final statusValue = response['device_status'] as String? ?? 'active';
-    await markDeviceProfileSynced(
-      serverProfileFingerprint: serverFingerprint,
-      installationStatus: DeviceInstallationStatus.values.firstWhere(
-        (item) => item.name == statusValue,
-        orElse: () => DeviceInstallationStatus.active,
-      ),
-    );
-    apiClient.setDeviceId(
-      sessionUser.deviceId.isEmpty
-          ? state.deviceIdentity.id
-          : sessionUser.deviceId,
-    );
   }
 
   Future<DeviceProfileSnapshot?> _readSnapshot() async {

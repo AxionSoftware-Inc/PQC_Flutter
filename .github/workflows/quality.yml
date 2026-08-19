@@ -59,6 +59,7 @@ jobs:
         run: python -m pip install -r services/backend/requirements.txt
       - name: Backend tests (PostgreSQL)
         env:
+          ANTIQ_BACKEND_PLUGINS: rbac,task_kpi
           DB_BACKEND: postgres
           POSTGRES_DB: pqc_chat_test
           POSTGRES_USER: pqc_chat
@@ -66,7 +67,7 @@ jobs:
           POSTGRES_HOST: 127.0.0.1
           POSTGRES_PORT: 5432
           SQLITE_PATH: ""
-        run: python services/backend/manage.py test users chat --verbosity 1
+        run: python services/backend/manage.py test users chat config backend_plugins.rbac backend_plugins.task_kpi --verbosity 1
 
   flutter:
     runs-on: ubuntu-latest
