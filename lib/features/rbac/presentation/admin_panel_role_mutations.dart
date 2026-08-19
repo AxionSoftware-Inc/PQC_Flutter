@@ -2,9 +2,7 @@ part of 'admin_panel_page.dart';
 
 // ignore_for_file: invalid_use_of_protected_member
 
-
 extension _AdminPanelRoleMutations on _AdminPanelPageState {
-
   Future<void> _showRoleManager() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -74,7 +72,6 @@ extension _AdminPanelRoleMutations on _AdminPanelPageState {
     ),
   );
 
-
   Future<void> _editRole({Map<String, dynamic>? role}) async {
     final name = TextEditingController(text: role?['name'] as String? ?? '');
     final rank = TextEditingController(
@@ -137,16 +134,16 @@ extension _AdminPanelRoleMutations on _AdminPanelPageState {
         'visibility': visibility,
       };
       if (role == null) {
-        await widget.repository.post('/rbac/roles', body);
+        await widget.repository.createRole(body);
       } else {
-        await widget.repository.patch('/rbac/roles/${role['id']}', body);
+        await widget.repository.updateRole((role['id'] as num).toInt(), body);
       }
     });
   }
 
   Future<void> _bootstrapDefaultRoles() async {
     await _run(() async {
-      await widget.repository.post('/rbac/roles/bootstrap-defaults', {});
+      await widget.repository.bootstrapDefaultRoles();
     });
   }
 
@@ -175,9 +172,10 @@ extension _AdminPanelRoleMutations on _AdminPanelPageState {
     );
     if (roleId == null) return;
     await _run(() async {
-      await widget.repository.put('/rbac/members/${member['member_id']}/role', {
-        'role_id': roleId < 0 ? null : roleId,
-      });
+      await widget.repository.assignRole(
+        (member['member_id'] as num).toInt(),
+        roleId: roleId < 0 ? null : roleId,
+      );
     });
   }
 
@@ -203,10 +201,8 @@ extension _AdminPanelRoleMutations on _AdminPanelPageState {
     );
     if (approved == true) {
       await _run(() async {
-        await widget.repository.delete('/rbac/roles/${role['id']}');
+        await widget.repository.deleteRole((role['id'] as num).toInt());
       });
     }
   }
-
-
 }

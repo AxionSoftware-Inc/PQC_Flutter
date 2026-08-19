@@ -309,6 +309,14 @@ esa bitta aniq public application/protocol boundary sifatida saqlanadi.
 Public barrel fayllari eski importlarni saqlaydi, lekin yangi kodni to‘g‘ri
 boundary'ga yo‘naltiradi.
 
+Feature repository'lar generic `get(path)` yoki `post(path, body)` adapteri
+bo‘lmaydi. Ular `listTasks`, `updateTask`, `getRecoveryManifest`,
+`assignRole` kabi feature atamalaridagi methodlarni expose qiladi; endpoint,
+query, multipart va recovery credential tafsilotlari faqat `data/` ichida
+qoladi. Presentation faqat state, navigation va user interactionni
+boshqaradi. Bu qoida Task Center, RBAC va account/recovery oqimlarida amalda
+tekshiriladi.
+
 ## 9. Tavsiya Etiladigan Tech Stack
 
 Bu faqat arxitektura uchun tavsiya, hali implementatsiya emas.

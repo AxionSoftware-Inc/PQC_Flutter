@@ -56,7 +56,7 @@ extension _TaskKpiTaskActions on _TaskKpiPageState {
       if (reviewNote?.trim().isEmpty != false) return;
     }
     try {
-      await widget.repository.patch('/task-kpi/tasks/${task['id']}', {
+      await widget.repository.updateTask((task['id'] as num).toInt(), {
         'status': accepted ? 'done' : 'returned',
         ...?reviewNote == null ? null : {'review_note': reviewNote},
       });
@@ -115,7 +115,7 @@ extension _TaskKpiTaskActions on _TaskKpiPageState {
       if (note != null) {
         payload['completion_note'] = note;
       }
-      await widget.repository.patch('/task-kpi/tasks/${task['id']}', payload);
+      await widget.repository.updateTask((task['id'] as num).toInt(), payload);
       await _load();
     } catch (error) {
       if (mounted) {

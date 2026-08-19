@@ -2,9 +2,7 @@ part of 'admin_panel_page.dart';
 
 // ignore_for_file: invalid_use_of_protected_member
 
-
 extension _AdminPanelMemberMutations on _AdminPanelPageState {
-
   Widget _memberTile(Map<String, dynamic> member) {
     final role = member['role'] as Map<String, dynamic>?;
     final isActive = member['is_active'] == true;
@@ -160,7 +158,7 @@ extension _AdminPanelMemberMutations on _AdminPanelPageState {
   Future<void> _addRegisteredUser() async {
     try {
       final users = List<Map<String, dynamic>>.from(
-        await widget.repository.get('/rbac/registered-users') as List,
+        await widget.repository.listRegisteredUsers() as List,
       );
       if (!mounted) return;
       if (users.isEmpty) {
@@ -222,10 +220,10 @@ extension _AdminPanelMemberMutations on _AdminPanelPageState {
         ),
       );
       await _run(() async {
-        await widget.repository.post('/rbac/members/add', {
-          'user_id': selected['user_id'],
-          ...?roleId == null ? null : {'role_id': roleId},
-        });
+        await widget.repository.addMember(
+          (selected['user_id'] as num).toInt(),
+          roleId: roleId,
+        );
       });
     } catch (error) {
       if (mounted) {
@@ -235,7 +233,6 @@ extension _AdminPanelMemberMutations on _AdminPanelPageState {
       }
     }
   }
-
 
   Future<void> _deactivate(Map<String, dynamic> member) async {
     final approved = await showDialog<bool>(
@@ -257,9 +254,8 @@ extension _AdminPanelMemberMutations on _AdminPanelPageState {
     );
     if (approved == true) {
       await _run(() async {
-        await widget.repository.post(
-          '/rbac/members/${member['member_id']}/deactivate',
-          {},
+        await widget.repository.deactivateMember(
+          (member['member_id'] as num).toInt(),
         );
       });
     }
@@ -267,11 +263,9 @@ extension _AdminPanelMemberMutations on _AdminPanelPageState {
 
   Future<void> _reactivate(Map<String, dynamic> member) async {
     await _run(() async {
-      await widget.repository.post(
-        '/rbac/members/${member['member_id']}/reactivate',
-        {},
+      await widget.repository.reactivateMember(
+        (member['member_id'] as num).toInt(),
       );
     });
   }
-
 }

@@ -56,6 +56,8 @@ class PqcChatApp extends StatelessWidget {
             GlobalCupertinoLocalizations.delegate,
           ],
           themeMode: themeController.themeMode,
+          themeAnimationDuration: const Duration(milliseconds: 280),
+          themeAnimationCurve: Curves.easeOutCubic,
           theme: AppThemeFactory.build(skin: skin, brand: brand),
           darkTheme: AppThemeFactory.build(
             skin: skin,

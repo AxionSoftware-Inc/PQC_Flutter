@@ -6,8 +6,8 @@ extension _TaskKpiAnalyticsViews on _TaskKpiPageState {
   Future<void> _openOperationalReport() async {
     try {
       final values = await Future.wait<dynamic>([
-        widget.repository.get('/task-kpi/kpi-summary'),
-        widget.repository.get('/task-kpi/reports'),
+        widget.repository.getKpiSummary(),
+        widget.repository.getReport(),
       ]);
       if (!mounted) return;
       final summary = values[0] is List
@@ -93,7 +93,7 @@ extension _TaskKpiAnalyticsViews on _TaskKpiPageState {
       final file = File(p.join(directory.path, '${id}_$safeName'));
       if (!await file.exists() || await file.length() == 0) {
         final response = await widget.repository
-            .getBytes('/task-kpi/attachments/$id/download')
+            .downloadTaskAttachment(id)
             .timeout(const Duration(seconds: 45));
         await file.writeAsBytes(response.bytes, flush: true);
       }

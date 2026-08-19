@@ -36,7 +36,7 @@ mixin _ChatHubActions on _ChatHubControllerBase {
       workspaceId: sessionUser.activeWorkspaceId,
     );
     try {
-      final response = await accountRepository.get('/users/me/settings');
+      final response = await accountRepository.getAccountSettings();
       if (response is Map) {
         _accountSettings = Map<String, dynamic>.from(response);
       }
@@ -157,10 +157,7 @@ mixin _ChatHubActions on _ChatHubControllerBase {
   }
 
   Future<void> updateAccountSettings(Map<String, dynamic> values) async {
-    final response = await accountRepository.patch(
-      '/users/me/settings',
-      values,
-    );
+    final response = await accountRepository.updateAccountSettings(values);
     if (response is Map) {
       _accountSettings = Map<String, dynamic>.from(response);
       notifyListeners();
@@ -168,10 +165,7 @@ mixin _ChatHubActions on _ChatHubControllerBase {
   }
 
   Future<void> revokeDevice(String deviceId) async {
-    await accountRepository.post(
-      '/users/me/devices/$deviceId/revoke',
-      const {},
-    );
+    await accountRepository.revokeDevice(deviceId);
     await refresh();
   }
 

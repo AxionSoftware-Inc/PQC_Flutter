@@ -10,7 +10,6 @@ class _CreateTaskPage extends StatefulWidget {
   State<_CreateTaskPage> createState() => _CreateTaskPageState();
 }
 
-
 class _CreateTaskPageState extends State<_CreateTaskPage> {
   static const _maxAttachmentBytes = 25 * 1024 * 1024;
   final _formKey = GlobalKey<FormState>();
@@ -95,13 +94,13 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
     }
     setState(() => _saving = true);
     try {
-      final created = await widget.repository.post('/task-kpi/tasks', {
-        'title': _titleController.text.trim(),
-        'description': _descriptionController.text.trim(),
-        'assignee_id': _assigneeId,
-        'priority': _priority,
-        if (_dueAt != null) 'due_at': _dueAt!.toUtc().toIso8601String(),
-      });
+      final created = await widget.repository.createTask(
+        title: _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
+        assigneeId: _assigneeId!,
+        priority: _priority,
+        dueAt: _dueAt,
+      );
       if (_attachments.isNotEmpty && created is Map && created['id'] != null) {
         final taskId = (created['id'] as num).toInt();
         for (final attachment in _attachments) {
@@ -120,37 +119,14 @@ class _CreateTaskPageState extends State<_CreateTaskPage> {
   }
 
   Future<void> _uploadAttachment(int taskId, PlatformFile file) async {
-    final path = file.path?.trim();
-    if (path != null && path.isNotEmpty) {
-      try {
-        await widget.repository.multipartPost(
-          '/task-kpi/tasks/$taskId/attachments',
-          files: [
-            await http.MultipartFile.fromPath(
-              'file',
-              path,
-              filename: file.name,
-            ),
-          ],
-        );
-        return;
-      } on FileSystemException {
-        // Android content providers can expose a temporary path that is no
-        // longer readable by the time the multipart stream starts. In that
-        // case use the bytes loaded by FilePicker instead.
-      }
-    }
-    final bytes = file.bytes;
-    if (bytes == null || bytes.isEmpty) {
-      throw StateError('Fayl ma’lumotini o‘qib bo‘lmadi. Qayta tanlang.');
-    }
-    await widget.repository.multipartPost(
-      '/task-kpi/tasks/$taskId/attachments',
-      files: [http.MultipartFile.fromBytes('file', bytes, filename: file.name)],
+    await widget.repository.uploadTaskAttachment(
+      taskId,
+      path: file.path,
+      bytes: file.bytes,
+      filename: file.name,
     );
   }
 
   @override
   Widget build(BuildContext context) => _buildView(context);
-
 }

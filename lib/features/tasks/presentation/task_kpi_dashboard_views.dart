@@ -145,13 +145,19 @@ extension _TaskKpiDashboardViews on _TaskKpiPageState {
                       SizedBox(height: spacing.xs),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(99),
-                        child: LinearProgressIndicator(
-                          value: teamCompletion,
-                          minHeight: 8,
-                          backgroundColor: colors.surface.withValues(
-                            alpha: 0.7,
-                          ),
-                          color: colors.primary,
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0, end: teamCompletion),
+                          duration: context.appDurations.normal,
+                          curve: Curves.easeOutCubic,
+                          builder: (context, value, _) =>
+                              LinearProgressIndicator(
+                                value: value,
+                                minHeight: 8,
+                                backgroundColor: colors.surface.withValues(
+                                  alpha: 0.7,
+                                ),
+                                color: colors.primary,
+                              ),
                         ),
                       ),
                       SizedBox(height: spacing.xs),
@@ -198,11 +204,21 @@ extension _TaskKpiDashboardViews on _TaskKpiPageState {
         children: [
           Icon(icon, color: color, size: 20),
           SizedBox(height: context.appSpacing.sm),
-          Text(
-            '$value',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          AnimatedSwitcher(
+            duration: context.appDurations.normal,
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(scale: animation, child: child),
+            ),
+            child: Text(
+              '$value',
+              key: ValueKey('$label:$value'),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
           ),
           SizedBox(height: context.appSpacing.xs),
           Text(

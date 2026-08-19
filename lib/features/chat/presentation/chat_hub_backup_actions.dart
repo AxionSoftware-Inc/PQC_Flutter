@@ -8,11 +8,10 @@ mixin _ChatHubBackupActions on _ChatHubControllerBase {
       BackupExportRequest(recoveryPassphrase: recoveryPassphrase),
     );
     final bytes = utf8.encode(blob);
-    await accountRepository.put('/users/me/crypto-backup', {
-      'version': 1,
-      'encrypted_blob': blob,
-      'blob_sha256': sha256.convert(bytes).toString(),
-    });
+    await accountRepository.saveEncryptedBackup(
+      encryptedBlob: blob,
+      blobSha256: sha256.convert(bytes).toString(),
+    );
     _backupState = _backupState.copyWith(
       lastExportedBlob: blob,
       statusMessage: 'Encrypted backup tayyor bo‘ldi.',
@@ -23,7 +22,7 @@ mixin _ChatHubBackupActions on _ChatHubControllerBase {
   }
 
   Future<String?> downloadServerBackup() async {
-    final response = await accountRepository.get('/users/me/crypto-backup');
+    final response = await accountRepository.getEncryptedBackup();
     if (response is! Map || response['available'] != true) return null;
     final blob = response['encrypted_blob'] as String?;
     if (blob == null || blob.isEmpty) return null;
@@ -31,8 +30,7 @@ mixin _ChatHubBackupActions on _ChatHubControllerBase {
   }
 
   Future<void> syncEnterpriseRecoveryManifest() async {
-    final response = await accountRepository.get(
-      '/users/me/crypto-recovery',
+    final response = await accountRepository.getRecoveryManifest(
       queryParameters: const {'metadata_only': 'true'},
       includeRecoveryCredentials: true,
     );
@@ -58,17 +56,16 @@ mixin _ChatHubBackupActions on _ChatHubControllerBase {
     }
     dynamic response;
     try {
-      response = await accountRepository.get(
-        '/users/me/crypto-recovery',
+      response = await accountRepository.getRecoveryManifest(
         queryParameters: queryParameters,
         includeRecoveryCredentials: true,
       );
     } on ApiException catch (error) {
       if (error.code != 'recovery_approval_required') rethrow;
       final approval =
-          await accountRepository.post('/users/me/crypto-recovery/approvals', {
-                'requester_device_id': sessionUserProvider().deviceId,
-              }, includeRecoveryCredentials: true)
+          await accountRepository.requestRecoveryApproval(
+                sessionUserProvider().deviceId,
+              )
               as Map<String, dynamic>;
       _recoveryApprovalChallenge = approval['challenge'] as String?;
       _backupState = _backupState.copyWith(
@@ -106,10 +103,7 @@ mixin _ChatHubBackupActions on _ChatHubControllerBase {
   }
 
   Future<List<Map<String, dynamic>>> pendingRecoveryApprovals() async {
-    final response = await accountRepository.get(
-      '/users/me/crypto-recovery/approvals',
-      includeRecoveryCredentials: true,
-    );
+    final response = await accountRepository.listRecoveryApprovals();
     if (response is! Map) return const [];
     return (response['approvals'] as List<dynamic>? ?? const [])
         .whereType<Map>()
@@ -121,13 +115,10 @@ mixin _ChatHubBackupActions on _ChatHubControllerBase {
     required int approvalId,
     required bool approved,
   }) {
-    return accountRepository.post(
-      '/users/me/crypto-recovery/approvals/$approvalId',
-      {
-        'approver_device_id': sessionUserProvider().deviceId,
-        'approved': approved,
-      },
-      includeRecoveryCredentials: true,
+    return accountRepository.decideRecoveryApproval(
+      approvalId: approvalId,
+      approverDeviceId: sessionUserProvider().deviceId,
+      approved: approved,
     );
   }
 
@@ -137,26 +128,25 @@ mixin _ChatHubBackupActions on _ChatHubControllerBase {
     final payload = await cryptoCoreFacade.exportEnterpriseRecoveryManifest();
     final deviceId = sessionUserProvider().deviceId;
     try {
-      await accountRepository.put('/users/me/crypto-recovery', {
-        'schema_version': 2,
-        'payload': payload,
-        'source_device_id': deviceId,
-        'expected_sequence': expectedSequence,
-      }, includeRecoveryCredentials: true);
+      await accountRepository.saveRecoveryManifest(
+        schemaVersion: 2,
+        payload: payload,
+        sourceDeviceId: deviceId,
+        expectedSequence: expectedSequence,
+      );
     } on ApiException catch (error) {
       if (error.code != 'recovery_manifest_conflict') rethrow;
-      final latest = await accountRepository.get(
-        '/users/me/crypto-recovery',
+      final latest = await accountRepository.getRecoveryManifest(
         queryParameters: const {'metadata_only': 'true'},
         includeRecoveryCredentials: true,
       );
       if (latest is! Map || latest['available'] != true) rethrow;
-      await accountRepository.put('/users/me/crypto-recovery', {
-        'schema_version': 2,
-        'payload': payload,
-        'source_device_id': deviceId,
-        'expected_sequence': latest['sequence'] as int? ?? 0,
-      }, includeRecoveryCredentials: true);
+      await accountRepository.saveRecoveryManifest(
+        schemaVersion: 2,
+        payload: payload,
+        sourceDeviceId: deviceId,
+        expectedSequence: latest['sequence'] as int? ?? 0,
+      );
     }
   }
 

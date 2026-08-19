@@ -47,7 +47,9 @@ extension _TaskKpiViews on _TaskKpiPageState {
                   icon: Icons.search_off_rounded,
                 )
               else
-                ...visibleTasks.map(_taskTile),
+                ...visibleTasks.asMap().entries.map(
+                  (entry) => _taskTile(entry.value, index: entry.key),
+                ),
               if (_hasMore) ...[
                 SizedBox(height: spacing.sm),
                 Center(
@@ -71,54 +73,70 @@ extension _TaskKpiViews on _TaskKpiPageState {
     );
   }
 
-  Widget _taskTile(Map<String, dynamic> task) {
+  Widget _taskTile(Map<String, dynamic> task, {required int index}) {
     final status = task['status'] as String? ?? 'todo';
     final meta = _taskMeta(task);
-    return Padding(
-      padding: EdgeInsets.only(bottom: context.appSpacing.sm),
-      child: AppSurfaceCard(
-        padding: EdgeInsets.symmetric(
-          horizontal: context.appSpacing.md,
-          vertical: context.appSpacing.sm,
+    final duration = Duration(
+      milliseconds: 220 + (index > 6 ? 210 : index * 35),
+    );
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('task-tile-${task['id']}'),
+      tween: Tween(begin: 0, end: 1),
+      duration: duration,
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) => Opacity(
+        opacity: value,
+        child: Transform.translate(
+          offset: Offset(0, 10 * (1 - value)),
+          child: child,
         ),
-        onTap: () => _showTaskDetail(task),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: _statusColor(status).withValues(alpha: 0.13),
-                borderRadius: BorderRadius.circular(context.appRadii.md),
+      ),
+      child: Padding(
+        padding: EdgeInsets.only(bottom: context.appSpacing.sm),
+        child: AppSurfaceCard(
+          padding: EdgeInsets.symmetric(
+            horizontal: context.appSpacing.md,
+            vertical: context.appSpacing.sm,
+          ),
+          onTap: () => _showTaskDetail(task),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: _statusColor(status).withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(context.appRadii.md),
+                ),
+                child: Icon(_statusIcon(status), color: _statusColor(status)),
               ),
-              child: Icon(_statusIcon(status), color: _statusColor(status)),
-            ),
-            SizedBox(width: context.appSpacing.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    task['title'] as String? ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  SizedBox(height: context.appSpacing.xs),
-                  Text(
-                    '${task['assignee_name'] as String? ?? 'Biriktirilmagan'}${meta.isEmpty ? '' : ' • $meta'}',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: context.appColors.textMuted,
+              SizedBox(width: context.appSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      task['title'] as String? ?? '',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
-                  ),
-                ],
+                    SizedBox(height: context.appSpacing.xs),
+                    Text(
+                      '${task['assignee_name'] as String? ?? 'Biriktirilmagan'}${meta.isEmpty ? '' : ' • $meta'}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: context.appColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            SizedBox(width: context.appSpacing.sm),
-            _statusPill(status),
-          ],
+              SizedBox(width: context.appSpacing.sm),
+              _statusPill(status),
+            ],
+          ),
         ),
       ),
     );
@@ -174,7 +192,7 @@ extension _TaskKpiViews on _TaskKpiPageState {
     );
     if (_unreadNotifications > 0) {
       try {
-        await widget.repository.post('/task-kpi/notifications/read', {});
+        await widget.repository.markNotificationsRead();
       } catch (_) {
         // The inbox remains usable if marking read is temporarily offline.
       }

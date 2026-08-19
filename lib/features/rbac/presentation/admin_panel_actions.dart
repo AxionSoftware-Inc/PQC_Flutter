@@ -41,9 +41,9 @@ extension _AdminPanelActions on _AdminPanelPageState {
     });
     try {
       final results = await Future.wait<dynamic>([
-        widget.repository.get('/rbac/me'),
-        widget.repository.get('/rbac/roles'),
-        widget.repository.get('/rbac/members'),
+        widget.repository.getCurrentAccess(),
+        widget.repository.listRoles(),
+        widget.repository.listMembers(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -65,7 +65,7 @@ extension _AdminPanelActions on _AdminPanelPageState {
   Future<void> _refreshRegisteredUserCount() async {
     if (!_isAdmin) return;
     try {
-      final users = await widget.repository.get('/rbac/registered-users');
+      final users = await widget.repository.listRegisteredUsers();
       if (mounted && users is List) {
         final ids = users
             .whereType<Map>()

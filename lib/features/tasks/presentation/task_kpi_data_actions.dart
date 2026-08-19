@@ -3,9 +3,9 @@ part of 'task_kpi_page.dart';
 // ignore_for_file: invalid_use_of_protected_member
 
 extension _TaskKpiDataActions on _TaskKpiPageState {
-  Future<dynamic> _optionalGet(String path) async {
+  Future<dynamic> _optional(Future<dynamic> Function() request) async {
     try {
-      return await widget.repository.get(path);
+      return await request();
     } catch (_) {
       return null;
     }
@@ -49,24 +49,29 @@ extension _TaskKpiDataActions on _TaskKpiPageState {
       });
     }
     try {
-      final query = <String, String>{
-        'offset': '${append ? _nextOffset : 0}',
-        'limit': '50',
-        if (_statusFilter != 'all') 'status': _statusFilter,
-        if (_searchController.text.trim().isNotEmpty)
-          'q': _searchController.text.trim(),
-      };
+      final offset = append ? _nextOffset ?? 0 : 0;
+      final search = _searchController.text.trim();
       final values = append
           ? await Future.wait<dynamic>([
-              widget.repository.get('/task-kpi/tasks', queryParameters: query),
+              widget.repository.listTasks(
+                offset: offset,
+                limit: 50,
+                status: _statusFilter == 'all' ? null : _statusFilter,
+                query: search,
+              ),
             ])
           : await Future.wait<dynamic>([
-              widget.repository.get('/task-kpi/tasks', queryParameters: query),
-              widget.repository.get('/task-kpi/assignees'),
-              _optionalGet('/task-kpi/notifications'),
-              _optionalGet('/task-kpi/kpi-summary'),
-              _optionalGet('/task-kpi/dashboard'),
-              _optionalGet('/task-kpi/reports'),
+              widget.repository.listTasks(
+                offset: offset,
+                limit: 50,
+                status: _statusFilter == 'all' ? null : _statusFilter,
+                query: search,
+              ),
+              widget.repository.listAssignees(),
+              _optional(widget.repository.getNotifications),
+              _optional(widget.repository.getKpiSummary),
+              _optional(widget.repository.getDashboard),
+              _optional(widget.repository.getReport),
             ]);
       final taskResponse = values[0];
       final taskItems = _extractTaskItems(taskResponse);

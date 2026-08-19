@@ -55,7 +55,7 @@ extension _ChatListStateActions on _ChatListPageState {
 
   Future<void> _loadAdminAccess() async {
     try {
-      final result = await widget.rbacRepository.get('/rbac/me');
+      final result = await widget.rbacRepository.getCurrentAccess();
       if (!mounted) return;
       setState(() {
         _isWorkspaceAdmin =

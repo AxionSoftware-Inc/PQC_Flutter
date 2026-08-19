@@ -5,7 +5,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:crypto_core/crypto_core.dart' show Conversation;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -20,7 +19,6 @@ import '../../chat/presentation/chat_thread_widget.dart';
 
 part 'task_detail_page.dart';
 part 'task_create_page.dart';
-part 'task_create_actions.dart';
 part 'task_create_views.dart';
 part 'task_create_helpers.dart';
 part 'task_detail_actions.dart';

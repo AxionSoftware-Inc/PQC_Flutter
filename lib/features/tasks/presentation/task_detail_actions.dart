@@ -28,8 +28,8 @@ extension _TaskDetailActions on _TaskDetailPageState {
   Future<void> _loadActivities({bool silent = false}) async {
     if (!silent && mounted) setState(() => _loadingActivities = true);
     try {
-      final response = await widget.repository.get(
-        '/task-kpi/tasks/${task['id']}/activity',
+      final response = await widget.repository.getTaskActivity(
+        (task['id'] as num).toInt(),
       );
       if (!mounted) return;
       setState(() {
@@ -107,8 +107,8 @@ extension _TaskDetailActions on _TaskDetailPageState {
               ? {'reply_to_attachment_id': replyId}
               : {'reply_to_activity_id': replyId};
         }
-        await widget.repository.post(
-          '/task-kpi/tasks/${task['id']}/activity',
+        await widget.repository.addTaskActivity(
+          (task['id'] as num).toInt(),
           payload,
         );
       }
@@ -166,9 +166,10 @@ extension _TaskDetailActions on _TaskDetailPageState {
     final id = (activity['id'] as num?)?.toInt();
     if (id == null) return;
     try {
-      await widget.repository.post(
-        '/task-kpi/tasks/${task['id']}/activity/$id/pin',
-        {'pinned': activity['is_pinned'] != true},
+      await widget.repository.pinTaskActivity(
+        (task['id'] as num).toInt(),
+        id,
+        pinned: activity['is_pinned'] != true,
       );
       await _loadActivities(silent: true);
     } catch (error) {
@@ -239,31 +240,11 @@ extension _TaskDetailActions on _TaskDetailPageState {
   }
 
   Future<void> _uploadActivityAttachment(PlatformFile file) async {
-    final path = file.path?.trim();
-    if (path != null && path.isNotEmpty) {
-      try {
-        await widget.repository.multipartPost(
-          '/task-kpi/tasks/${task['id']}/attachments',
-          files: [
-            await http.MultipartFile.fromPath(
-              'file',
-              path,
-              filename: file.name,
-            ),
-          ],
-        );
-        return;
-      } on FileSystemException {
-        // Android content-provider paths can expire; use picker bytes below.
-      }
-    }
-    final bytes = file.bytes;
-    if (bytes == null || bytes.isEmpty) {
-      throw StateError('Fayl ma’lumotini o‘qib bo‘lmadi. Qayta tanlang.');
-    }
-    await widget.repository.multipartPost(
-      '/task-kpi/tasks/${task['id']}/attachments',
-      files: [http.MultipartFile.fromBytes('file', bytes, filename: file.name)],
+    await widget.repository.uploadTaskAttachment(
+      (task['id'] as num).toInt(),
+      path: file.path,
+      bytes: file.bytes,
+      filename: file.name,
     );
   }
 }
