@@ -8,7 +8,7 @@ class AppThemeController extends ChangeNotifier {
     : _preferencesStore = preferencesStore ?? LocalUiPreferencesStore();
 
   final LocalUiPreferencesStore _preferencesStore;
-  ThemeMode _themeMode = ThemeMode.light;
+  ThemeMode _themeMode = ThemeMode.dark;
   AppLanguagePreference _languagePreference = AppLanguagePreference.uzbek;
 
   ThemeMode get themeMode => _themeMode;

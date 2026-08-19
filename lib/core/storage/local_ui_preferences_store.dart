@@ -47,7 +47,7 @@ class AppPreferencesState {
     this.compactListMode = true,
     this.keepDrafts = true,
     this.preferManualRefreshHints = false,
-    this.themePreference = AppThemePreference.light,
+    this.themePreference = AppThemePreference.dark,
     this.languagePreference = AppLanguagePreference.uzbek,
   });
 
@@ -167,8 +167,8 @@ class LocalUiPreferencesStore {
         (item) =>
             item.name ==
             (preferences.getString(_themePreferenceKey) ??
-                AppThemePreference.light.name),
-        orElse: () => AppThemePreference.light,
+                AppThemePreference.dark.name),
+        orElse: () => AppThemePreference.dark,
       ),
       languagePreference: AppLanguagePreference.values.firstWhere(
         (item) =>

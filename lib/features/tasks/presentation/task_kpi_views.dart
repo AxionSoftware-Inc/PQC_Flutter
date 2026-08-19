@@ -71,19 +71,58 @@ extension _TaskKpiViews on _TaskKpiPageState {
     );
   }
 
-  Widget _taskTile(Map<String, dynamic> task) => Card(
-    child: ListTile(
-      leading: Icon(_statusIcon(task['status'] as String? ?? 'todo')),
-      title: Text(task['title'] as String? ?? ''),
-      subtitle: Text(
-        '${task['assignee_name'] as String? ?? 'Biriktirilmagan'}${_taskMeta(task).isEmpty ? '' : ' • ${_taskMeta(task)}'}',
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
+  Widget _taskTile(Map<String, dynamic> task) {
+    final status = task['status'] as String? ?? 'todo';
+    final meta = _taskMeta(task);
+    return Padding(
+      padding: EdgeInsets.only(bottom: context.appSpacing.sm),
+      child: AppSurfaceCard(
+        padding: EdgeInsets.symmetric(
+          horizontal: context.appSpacing.md,
+          vertical: context.appSpacing.sm,
+        ),
+        onTap: () => _showTaskDetail(task),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: _statusColor(status).withValues(alpha: 0.13),
+                borderRadius: BorderRadius.circular(context.appRadii.md),
+              ),
+              child: Icon(_statusIcon(status), color: _statusColor(status)),
+            ),
+            SizedBox(width: context.appSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    task['title'] as String? ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  SizedBox(height: context.appSpacing.xs),
+                  Text(
+                    '${task['assignee_name'] as String? ?? 'Biriktirilmagan'}${meta.isEmpty ? '' : ' • $meta'}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: context.appColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: context.appSpacing.sm),
+            _statusPill(status),
+          ],
+        ),
       ),
-      trailing: _statusPill(task['status'] as String? ?? 'todo'),
-      onTap: () => _showTaskDetail(task),
-    ),
-  );
+    );
+  }
 
   Future<void> _openNotifications() async {
     final notifications = List<Map<String, dynamic>>.from(_notifications);

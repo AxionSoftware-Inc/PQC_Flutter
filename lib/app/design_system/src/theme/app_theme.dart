@@ -29,15 +29,15 @@ class AppThemeFactory {
         );
     final isDark = brightness == Brightness.dark;
     final background = isDark
-        ? const Color(0xFF05070A)
+        ? const Color(0xFF080D18)
         : _mix(skin.backgroundColor, const Color(0xFFF7F8FB), 0.72);
-    final surface = isDark ? const Color(0xFF0C0F14) : Colors.white;
+    final surface = isDark ? const Color(0xFF101827) : Colors.white;
     final surfaceMuted = isDark
-        ? const Color(0xFF13171E)
-        : const Color(0xFFF2F4F7);
-    final border = isDark ? const Color(0xFF222832) : const Color(0xFFE7EAF0);
+        ? const Color(0xFF172235)
+        : const Color(0xFFF0F3F8);
+    final border = isDark ? const Color(0xFF263550) : const Color(0xFFE3E8F0);
     final foreground = isDark
-        ? const Color(0xFFF3F4F6)
+        ? const Color(0xFFF4F7FB)
         : const Color(0xFF111827);
     final colors = AppColors(
       background: background,
@@ -47,7 +47,7 @@ class AppThemeFactory {
           ? _mix(surfaceMuted, Colors.white, 0.08)
           : _mix(skin.surfaceMutedColor, Colors.white, 0.35),
       border: border,
-      textMuted: isDark ? const Color(0xFF929AA8) : const Color(0xFF707785),
+      textMuted: isDark ? const Color(0xFF9AAAC2) : const Color(0xFF68748A),
       primary: accent,
       primarySoft: isDark
           ? _mix(accent, Colors.black, 0.72)
@@ -137,6 +137,16 @@ class AppThemeFactory {
         elevation: 0,
         titleTextStyle: textTheme.titleLarge,
         centerTitle: false,
+      ),
+      listTileTheme: ListTileThemeData(
+        contentPadding: EdgeInsets.symmetric(horizontal: spacing.md),
+        minVerticalPadding: spacing.sm,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radii.md),
+        ),
+        iconColor: colors.textMuted,
+        textColor: foreground,
+        tileColor: Colors.transparent,
       ),
       dividerTheme: DividerThemeData(
         color: colors.border.withValues(alpha: 0.72),
@@ -241,6 +251,30 @@ class AppThemeFactory {
         ),
         labelStyle: textTheme.bodySmall,
       ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: colors.surfaceStrong,
+        surfaceTintColor: Colors.transparent,
+        elevation: 8,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radii.md),
+          side: BorderSide(color: colors.border),
+        ),
+        textStyle: textTheme.bodyMedium,
+      ),
+      drawerTheme: DrawerThemeData(
+        backgroundColor: colors.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.horizontal(
+            right: Radius.circular(radii.xl),
+          ),
+        ),
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: accent,
+        linearTrackColor: colors.surfaceMuted,
+        circularTrackColor: colors.surfaceMuted,
+      ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: colors.surface,
         surfaceTintColor: Colors.transparent,
@@ -282,6 +316,7 @@ class AppThemeFactory {
     return Color.lerp(a, b, ratioToB)!;
   }
 }
+
 extension AppThemeBuildContext on BuildContext {
   ThemeData get theme => Theme.of(this);
 

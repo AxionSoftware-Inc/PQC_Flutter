@@ -50,5 +50,6 @@ void main() {
     expect(restored.compactListMode, isTrue);
     expect(restored.keepDrafts, isFalse);
     expect(restored.preferManualRefreshHints, isTrue);
+    expect(restored.themePreference, AppThemePreference.dark);
   });
 }
