@@ -192,7 +192,7 @@ class LoginView(APIView):
                 ).data,
                 'user': UserSerializer(
                     user,
-                    context={'request': request},
+                    context={'request': request, 'workspace': workspace},
                 ).data,
             }
         )
@@ -278,7 +278,6 @@ class GoogleLoginView(APIView):
             'organizations': _serialize_org_context(user),
             'user': UserSerializer(
                 user,
-                context={'request': request},
+                context={'request': request, 'workspace': workspace},
             ).data,
         })
-

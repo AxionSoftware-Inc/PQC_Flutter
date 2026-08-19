@@ -546,6 +546,8 @@ class AuthApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['username'], 'vali')
+        self.assertEqual(response.data['role_label'], 'Egasi')
+        self.assertIsNotNone(response.data['workspace_member_id'])
 
     def test_users_endpoint_returns_created_users(self):
         self.client.post('/api/auth/login', {'username': 'ali', 'device_id': 'device-1'}, format='json')
@@ -559,6 +561,7 @@ class AuthApiTests(APITestCase):
         self.assertEqual(usernames, ['ali', 'vali'])
         self.assertEqual(response.data[0]['devices'][0]['device_id'], 'device-1')
         self.assertEqual(response.data[1]['devices'][0]['device_id'], 'device-2')
+        self.assertTrue(all(item['workspace_member_id'] for item in response.data))
 
     def test_same_device_reuses_existing_account_binding(self):
         first = self.client.post(

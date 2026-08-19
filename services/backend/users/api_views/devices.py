@@ -76,11 +76,24 @@ class UserListView(APIView):
             organization_memberships__workspace_memberships__workspace=workspace,
             organization_memberships__workspace_memberships__is_active=True,
         ).select_related('account_settings').distinct().order_by('id')
+        workspace_members_by_user_id = {
+            member.organization_member.user_id: member
+            for member in WorkspaceMember.objects.select_related(
+                'organization_member',
+            ).filter(
+                workspace=workspace,
+                organization_member__is_active=True,
+                is_active=True,
+            )
+        }
         return Response(
             UserSerializer(
                 users,
                 many=True,
-                context={'request': request},
+                context={
+                    'request': request,
+                    'workspace_members_by_user_id': workspace_members_by_user_id,
+                },
             ).data
         )
 

@@ -335,6 +335,8 @@ class UserSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
     devices = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
+    role_label = serializers.SerializerMethodField()
+    workspace_member_id = serializers.SerializerMethodField()
     account_id = serializers.IntegerField(source='id')
 
     class Meta:
@@ -345,6 +347,8 @@ class UserSerializer(serializers.ModelSerializer):
             'username',
             'display_name',
             'avatar_url',
+            'role_label',
+            'workspace_member_id',
             'devices',
         ]
 
@@ -356,6 +360,32 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_avatar_url(self, obj):
         return avatar_url_for_user(obj, self.context.get('request'))
+
+    def _workspace_member(self, obj):
+        members_by_user_id = self.context.get('workspace_members_by_user_id')
+        if members_by_user_id is not None:
+            return members_by_user_id.get(obj.id)
+        query = WorkspaceMember.objects.filter(
+            organization_member__user=obj,
+            organization_member__is_active=True,
+            is_active=True,
+        )
+        workspace = self.context.get('workspace')
+        if workspace is not None:
+            query = query.filter(workspace=workspace)
+        return query.order_by('-workspace__is_default', 'workspace_id').first()
+
+    def get_role_label(self, obj):
+        member = self._workspace_member(obj)
+        return {
+            OrganizationMember.Role.OWNER: 'Egasi',
+            OrganizationMember.Role.ADMIN: 'Administrator',
+            OrganizationMember.Role.MEMBER: 'Xodim',
+        }.get(member.role, 'Xodim') if member is not None else 'Xodim'
+
+    def get_workspace_member_id(self, obj):
+        member = self._workspace_member(obj)
+        return member.id if member is not None else None
 
     def get_devices(self, obj):
         device_rows = [

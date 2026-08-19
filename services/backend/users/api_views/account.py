@@ -169,7 +169,7 @@ class MeView(APIView):
             return error_response
         user_data = UserSerializer(
             request.user,
-            context={'request': request},
+            context={'request': request, 'workspace': workspace},
         ).data
         return Response(
             {
@@ -181,6 +181,9 @@ class MeView(APIView):
         )
 
     def patch(self, request):
+        workspace, error_response = _get_request_active_workspace(request)
+        if error_response is not None:
+            return error_response
         display_name = str(request.data.get('display_name', '')).strip()
         email = str(request.data.get('email', '')).strip()
         if not display_name and not email:
@@ -197,7 +200,7 @@ class MeView(APIView):
         return Response(
             UserSerializer(
                 request.user,
-                context={'request': request},
+                context={'request': request, 'workspace': workspace},
             ).data
         )
 
