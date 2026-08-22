@@ -11,12 +11,14 @@ class AppStatusBanner extends StatelessWidget {
     this.tone = AppStatusTone.info,
     this.leading,
     this.action,
+    this.compact = false,
   });
 
   final String message;
   final AppStatusTone tone;
   final Widget? leading;
   final Widget? action;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +49,7 @@ class AppStatusBanner extends StatelessWidget {
     };
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(spacing.lg),
+      padding: EdgeInsets.all(compact ? spacing.md : spacing.lg),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(radii.lg),
@@ -56,25 +58,21 @@ class AppStatusBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          leading ??
-              Icon(
-                icon,
-                color: foreground,
-                size: 20,
-              ),
+          leading ?? Icon(icon, color: foreground, size: compact ? 18 : 20),
           SizedBox(width: spacing.md),
           Expanded(
             child: Text(
               message,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: foreground,
-              ),
+              maxLines: compact ? 4 : null,
+              overflow: compact ? TextOverflow.ellipsis : null,
+              style:
+                  (compact
+                          ? Theme.of(context).textTheme.bodySmall
+                          : Theme.of(context).textTheme.bodyMedium)
+                      ?.copyWith(color: foreground),
             ),
           ),
-          if (action != null) ...[
-            SizedBox(width: spacing.md),
-            action!,
-          ],
+          if (action != null) ...[SizedBox(width: spacing.md), action!],
         ],
       ),
     );
