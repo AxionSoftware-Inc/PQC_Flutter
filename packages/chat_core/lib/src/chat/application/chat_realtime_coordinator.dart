@@ -79,8 +79,7 @@ class ChatRealtimeCoordinator {
       ),
       payload: payload,
     );
-    if (conversation.isGroup ||
-        !cryptoService.isDecryptFailureMarker(plaintext)) {
+    if (!cryptoService.isDecryptFailureMarker(plaintext)) {
       return plaintext;
     }
     await refreshUsers();

@@ -75,8 +75,7 @@ class ConversationSyncService {
       ),
       payload: payload,
     );
-    if (conversation.isGroup ||
-        !cryptoService.isDecryptFailureMarker(plaintext)) {
+    if (!cryptoService.isDecryptFailureMarker(plaintext)) {
       return plaintext;
     }
     await refreshUsers();
@@ -284,8 +283,7 @@ class MessageSyncService {
       ),
       payload: payload,
     );
-    if (conversation.isGroup ||
-        !cryptoService.isDecryptFailureMarker(plaintext)) {
+    if (!cryptoService.isDecryptFailureMarker(plaintext)) {
       return plaintext;
     }
     await refreshUsers();

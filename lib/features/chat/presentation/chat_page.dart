@@ -35,7 +35,6 @@ part 'chat_page_attachment_views.dart';
 part 'chat_page_transfer_views.dart';
 part 'chat_page_composer_internal.dart';
 part 'chat_page_conversation_widgets.dart';
-part 'chat_page_security_widgets.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({

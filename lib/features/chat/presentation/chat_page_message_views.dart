@@ -42,23 +42,6 @@ extension _ChatPageMessageViews on _ChatPageState {
                 tone: AppStatusTone.danger,
               ),
             ),
-          if (!widget.conversation.isGroup && conversationTrust != null)
-            Column(
-              children: [
-                _SecurityBanner(
-                  trust: conversationTrust,
-                  onVerify: _verifyCurrentKey,
-                  isExpanded: _showSecurityDetails,
-                  onToggleExpanded: () {
-                    setState(() {
-                      _showSecurityDetails = !_showSecurityDetails;
-                    });
-                  },
-                ),
-                if (_showSecurityDetails)
-                  _SecurityDetailCard(trust: conversationTrust),
-              ],
-            ),
           if (needsBackupRestore)
             Padding(
               padding: EdgeInsets.fromLTRB(
@@ -207,7 +190,6 @@ extension _ChatPageMessageViews on _ChatPageState {
                               ),
                               child: AppTextField(
                                 controller: _messageController,
-                                focusNode: _composerFocusNode,
                                 hintText: context.antiQText(
                                   uz: 'Xabar',
                                   en: 'Message',
