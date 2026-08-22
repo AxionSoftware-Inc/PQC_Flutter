@@ -13,11 +13,22 @@ mixin _OutgoingMessageCrypto on _OutgoingMessageServiceBase {
             _OutgoingMessageServiceBase._capabilitiesCacheLifetime) {
       return cached;
     }
-    final capabilities = await remoteDataSource
-        .fetchCryptoProtocolCapabilities();
-    _cachedCapabilities = capabilities;
-    _capabilitiesFetchedAt = DateTime.now().toUtc();
-    return capabilities;
+    final inFlight = _capabilitiesFetchInFlight;
+    if (inFlight != null) return inFlight;
+    late final Future<CryptoProtocolCapabilities> operation;
+    operation = remoteDataSource.fetchCryptoProtocolCapabilities().then((
+      value,
+    ) {
+      _cachedCapabilities = value;
+      _capabilitiesFetchedAt = DateTime.now().toUtc();
+      return value;
+    });
+    _capabilitiesFetchInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_capabilitiesFetchInFlight, operation)) {
+        _capabilitiesFetchInFlight = null;
+      }
+    });
   }
 
   Future<String> _encryptPayloadWithUserRefresh({

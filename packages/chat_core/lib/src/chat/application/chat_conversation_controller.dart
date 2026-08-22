@@ -84,6 +84,16 @@ class ChatConversationController extends ChangeNotifier {
       // Local cache is an optimization; authoritative sync still runs.
     }
     await refresh(showLoader: _messages.isEmpty);
+    // Preload the protocol capability handshake while the user reads the
+    // conversation so the first send does not pay that network round trip.
+    unawaited(
+      chatFacade
+          .warmSendPipeline(
+            conversation: conversation,
+            currentUserId: currentUserId,
+          )
+          .catchError((_) {}),
+    );
     // Realtime is the primary delivery path. Keep a modest polling fallback
     // for reconnect recovery without continuously competing with encryption
     // and send requests on slower mobile networks.
@@ -164,9 +174,29 @@ class ChatConversationController extends ChangeNotifier {
   }
 
   Future<void> sendMessage(SendMessageCommand command) {
+    final createdAt = DateTime.now().toUtc();
+    final prepared = command.copyWith(
+      clientMessageId:
+          command.clientMessageId ??
+          '${command.conversation.id}_${command.currentUserId}_${createdAt.microsecondsSinceEpoch}',
+    );
+    _messages = mergeChatTimeline(_messages, [
+      ChatMessage(
+        id: -createdAt.microsecondsSinceEpoch,
+        conversationId: prepared.conversation.id,
+        senderId: prepared.currentUserId,
+        senderName: 'You',
+        body: prepared.text,
+        messageType: prepared.messageType,
+        attachmentCount: prepared.attachments.length,
+        createdAt: createdAt,
+        clientMessageId: prepared.clientMessageId!,
+        deliveryState: MessageDeliveryState.pending,
+      ),
+    ]);
     _queuedSendCount++;
     notifyListeners();
-    final operation = _sendTail.then((_) => _sendMessageInOrder(command));
+    final operation = _sendTail.then((_) => _sendMessageInOrder(prepared));
     // A failed message remains in the durable outbox, but it must not block
     // the next message the user already queued in the composer.
     _sendTail = operation.catchError((_) {});
@@ -177,13 +207,29 @@ class ChatConversationController extends ChangeNotifier {
   }
 
   Future<void> _sendMessageInOrder(SendMessageCommand command) async {
-    final sent = await chatFacade.sendMessage(command);
-    // The send pipeline already persists this acknowledged message locally.
-    // Render it immediately instead of waiting for another decrypt/poll cycle.
-    _messages = mergeChatTimeline(_messages, [sent]);
-    notifyListeners();
-    // Reconcile receipts/realtime state later without delaying the composer.
-    unawaited(refresh(showLoader: false).catchError((_) {}));
+    try {
+      final sent = await chatFacade.sendMessage(command);
+      // The send pipeline already persists this acknowledged message locally.
+      // Render it immediately instead of waiting for another decrypt/poll cycle.
+      _messages = mergeChatTimeline(_messages, [sent]);
+      notifyListeners();
+      // Reconcile receipts/realtime state later without delaying the composer.
+      unawaited(refresh(showLoader: false).catchError((_) {}));
+    } catch (error) {
+      _messages = _messages
+          .map((message) {
+            if (message.clientMessageId != command.clientMessageId) {
+              return message;
+            }
+            return message.copyWith(
+              deliveryState: MessageDeliveryState.failedRetryable,
+              failureReason: error.toString(),
+            );
+          })
+          .toList(growable: false);
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<void> retryMessage(String clientMessageId) async {

@@ -119,41 +119,46 @@ extension _ChatPageStateActions on _ChatPageState {
       return;
     }
 
+    final command = SendMessageCommand(
+      conversation: widget.conversation,
+      currentUserId: widget.currentUserId,
+      text: text,
+      messageType: _selectedAttachments.isEmpty
+          ? 'text'
+          : _selectedAttachments.any((item) => item.isImage)
+          ? 'image'
+          : 'file',
+      attachments: _selectedAttachments
+          .map(
+            (item) => PendingAttachmentUpload(
+              filename: item.name,
+              bytes: item.bytes,
+              filePath: item.filePath,
+              sizeBytes: item.sizeBytes,
+              mimeType: item.mimeType,
+            ),
+          )
+          .toList(),
+    );
+    // Clear the composer immediately. The controller already renders a
+    // durable pending bubble, so the UI never feels blocked by encryption or
+    // a slow server round trip.
+    _messageController.clear();
+    setState(() => _selectedAttachments = const []);
+    unawaited(
+      widget.database
+          .upsertDraft(
+            DraftsTableCompanion(
+              conversationId: drift.Value(widget.conversation.id),
+              draftText: const drift.Value(''),
+              updatedAt: drift.Value(DateTime.now().toUtc()),
+            ),
+          )
+          .catchError((_) {}),
+    );
+
     try {
-      await _controller.sendMessage(
-        SendMessageCommand(
-          conversation: widget.conversation,
-          currentUserId: widget.currentUserId,
-          text: text,
-          messageType: _selectedAttachments.isEmpty
-              ? 'text'
-              : _selectedAttachments.any((item) => item.isImage)
-              ? 'image'
-              : 'file',
-          attachments: _selectedAttachments
-              .map(
-                (item) => PendingAttachmentUpload(
-                  filename: item.name,
-                  bytes: item.bytes,
-                  filePath: item.filePath,
-                  sizeBytes: item.sizeBytes,
-                  mimeType: item.mimeType,
-                ),
-              )
-              .toList(),
-        ),
-      );
-      _messageController.clear();
-      await widget.database.upsertDraft(
-        DraftsTableCompanion(
-          conversationId: drift.Value(widget.conversation.id),
-          draftText: const drift.Value(''),
-          updatedAt: drift.Value(DateTime.now().toUtc()),
-        ),
-      );
-      setState(() {
-        _selectedAttachments = const [];
-      });
+      await _controller.sendMessage(command);
     } catch (error) {
       if (error is UnauthorizedApiException) {
         await widget.onUnauthorized();

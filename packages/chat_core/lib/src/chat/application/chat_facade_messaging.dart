@@ -1,6 +1,19 @@
 part of 'chat_facade.dart';
 
 mixin _ChatFacadeMessaging on _ChatFacadeBase {
+  Future<void> warmSendPipeline({
+    required Conversation conversation,
+    required int currentUserId,
+  }) async {
+    _activeCurrentUserId = currentUserId;
+    await _ensureUsersLoaded();
+    await _refreshPrivateUsersIfNeeded(
+      conversation: conversation,
+      currentUserId: currentUserId,
+    );
+    await _outgoingMessageService.warmProtocolCapabilities();
+  }
+
   Future<ChatMessage> sendMessage(SendMessageCommand command) async {
     _activeCurrentUserId = command.currentUserId;
     await _ensureUsersLoaded();

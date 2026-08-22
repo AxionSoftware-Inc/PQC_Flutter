@@ -25,6 +25,7 @@ abstract class _OutgoingMessageServiceBase {
   static const _capabilitiesCacheLifetime = Duration(minutes: 5);
   static const _attachmentChunkSize = 256 * 1024;
   final Map<String, Future<ChatMessage>> _inFlightSends = {};
+  Future<CryptoProtocolCapabilities>? _capabilitiesFetchInFlight;
 
   Future<ChatMessage> _sendQueuedMessage(
     QueuedOutgoingMessage queued, {
@@ -98,4 +99,8 @@ class OutgoingMessageService extends _OutgoingMessageServiceBase
     super.attachmentTransferFacade,
     super.onCryptoStateChanged,
   });
+
+  Future<void> warmProtocolCapabilities() async {
+    await _fetchCryptoProtocolCapabilities();
+  }
 }

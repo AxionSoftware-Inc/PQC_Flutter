@@ -13,6 +13,7 @@ mixin _OutgoingMessageQueue on _OutgoingMessageServiceBase {
   }) async {
     final now = DateTime.now().toUtc();
     final clientMessageId =
+        command.clientMessageId ??
         '${command.conversation.id}_${command.currentUserId}_${now.microsecondsSinceEpoch}';
     final currentUser = usersById[command.currentUserId];
     final queued = QueuedOutgoingMessage(

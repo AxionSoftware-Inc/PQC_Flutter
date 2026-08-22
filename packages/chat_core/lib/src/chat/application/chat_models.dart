@@ -77,6 +77,7 @@ class SendMessageCommand {
     required this.text,
     this.messageType = 'text',
     this.attachments = const [],
+    this.clientMessageId,
     this.onProgress,
   });
 
@@ -85,7 +86,20 @@ class SendMessageCommand {
   final String text;
   final String messageType;
   final List<PendingAttachmentUpload> attachments;
+  final String? clientMessageId;
   final SendPipelineProgress? onProgress;
+
+  SendMessageCommand copyWith({String? clientMessageId}) {
+    return SendMessageCommand(
+      conversation: conversation,
+      currentUserId: currentUserId,
+      text: text,
+      messageType: messageType,
+      attachments: attachments,
+      clientMessageId: clientMessageId ?? this.clientMessageId,
+      onProgress: onProgress,
+    );
+  }
 }
 
 class ChatListState {
