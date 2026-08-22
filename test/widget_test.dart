@@ -76,8 +76,8 @@ void main() {
 
     expect(find.text('antiQ akkauntiga kirish'), findsOneWidget);
     expect(find.text('Google orqali davom etish'), findsOneWidget);
-    expect(find.byType(FilledButton), findsNothing);
-    expect(find.byType(OutlinedButton), findsOneWidget);
+    expect(find.byType(FilledButton), findsOneWidget);
+    expect(find.byType(OutlinedButton), findsNothing);
   });
 }
 

@@ -10,7 +10,9 @@ class SessionController extends ChangeNotifier {
   final Future<void> Function(SessionUser? sessionUser)? onSessionChanged;
 
   SessionUser? _sessionUser;
-  bool _isLoading = true;
+  // The login screen is interactive until an explicit session restore starts.
+  // `initialize()` owns the bootstrap loading state.
+  bool _isLoading = false;
   String? _error;
 
   SessionUser? get sessionUser => _sessionUser;

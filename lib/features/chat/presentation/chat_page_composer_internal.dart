@@ -34,6 +34,8 @@ class _ComposerActionButton extends StatelessWidget {
         maximumSize: const Size.square(38),
         padding: EdgeInsets.zero,
         backgroundColor: context.appColors.surfaceMuted,
+        foregroundColor: context.appColors.textMuted,
+        overlayColor: context.appColors.primary.withValues(alpha: 0.12),
       ),
     );
   }
@@ -62,6 +64,7 @@ class _ComposerSendButton extends StatelessWidget {
         onPressed: onPressed,
         padding: EdgeInsets.zero,
         color: Colors.white,
+        splashRadius: 22,
         icon: AnimatedSwitcher(
           duration: context.appDurations.fast,
           transitionBuilder: (child, animation) => ScaleTransition(

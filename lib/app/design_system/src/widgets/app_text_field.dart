@@ -4,6 +4,7 @@ class AppTextField extends StatelessWidget {
   const AppTextField({
     super.key,
     this.controller,
+    this.focusNode,
     this.hintText,
     this.labelText,
     this.onSubmitted,
@@ -12,6 +13,7 @@ class AppTextField extends StatelessWidget {
   });
 
   final TextEditingController? controller;
+  final FocusNode? focusNode;
   final String? hintText;
   final String? labelText;
   final ValueChanged<String>? onSubmitted;
@@ -22,10 +24,8 @@ class AppTextField extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
-      decoration: InputDecoration(
-        hintText: hintText,
-        labelText: labelText,
-      ),
+      focusNode: focusNode,
+      decoration: InputDecoration(hintText: hintText, labelText: labelText),
       onSubmitted: onSubmitted,
       maxLines: maxLines,
       minLines: minLines,

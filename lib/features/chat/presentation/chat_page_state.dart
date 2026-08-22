@@ -2,6 +2,7 @@ part of 'chat_page.dart';
 
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _messageController = TextEditingController();
+  final FocusNode _composerFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   late final ChatConversationController _controller;
   final LocalUiPreferencesStore _preferencesStore = LocalUiPreferencesStore();
@@ -26,6 +27,7 @@ class _ChatPageState extends State<ChatPage> {
       conversation: widget.conversation,
     )..addListener(_onControllerChanged);
     _messageController.addListener(_queueDraftSave);
+    _composerFocusNode.addListener(_onComposerFocusChanged);
     unawaited(_initialize());
   }
 
@@ -36,10 +38,17 @@ class _ChatPageState extends State<ChatPage> {
       ..dispose();
     _draftDebounce?.cancel();
     _messageController.dispose();
+    _composerFocusNode
+      ..removeListener(_onComposerFocusChanged)
+      ..dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => _buildPage(context);
+
+  void _onComposerFocusChanged() {
+    if (mounted) setState(() {});
+  }
 }

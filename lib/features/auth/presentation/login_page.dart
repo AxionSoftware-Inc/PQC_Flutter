@@ -172,15 +172,17 @@ class _LoginPageState extends State<LoginPage>
                                 color: colors.textMuted,
                               ),
                               SizedBox(width: spacing.xs),
-                              Text(
-                                context.antiQText(
-                                  uz: 'Shifrlangan va korporativ darajada himoyalangan',
-                                  en: 'Encrypted and protected for your workspace',
+                              Flexible(
+                                child: Text(
+                                  context.antiQText(
+                                    uz: 'Shifrlangan va korporativ darajada himoyalangan',
+                                    en: 'Encrypted and protected for your workspace',
+                                  ),
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: colors.textMuted,
+                                  ),
+                                  textAlign: TextAlign.center,
                                 ),
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: colors.textMuted,
-                                ),
-                                textAlign: TextAlign.center,
                               ),
                             ],
                           ),
