@@ -156,7 +156,7 @@ class ChatThreadWidget extends StatelessWidget {
         child: Container(
           margin: EdgeInsets.symmetric(
             horizontal: spacing.xs,
-            vertical: spacing.xs,
+            vertical: spacing.xs + 2,
           ),
           child: ConstrainedBox(
             constraints: BoxConstraints(
@@ -174,7 +174,7 @@ class ChatThreadWidget extends StatelessWidget {
                         ? EdgeInsets.zero
                         : EdgeInsets.symmetric(
                             horizontal: spacing.sm + 2,
-                            vertical: spacing.xs + 3,
+                            vertical: spacing.xs + 4,
                           ),
                     decoration: BoxDecoration(
                       color: isImageOnly

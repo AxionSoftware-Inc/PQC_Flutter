@@ -33,7 +33,7 @@ class _ConversationListRow extends StatelessWidget {
     return AnimatedContainer(
       duration: context.appDurations.fast,
       curve: Curves.easeOutCubic,
-      margin: const EdgeInsets.only(bottom: 1),
+      margin: EdgeInsets.only(bottom: context.appSpacing.xs),
       decoration: BoxDecoration(
         color: selected ? colors.primarySoft : Colors.transparent,
         borderRadius: BorderRadius.circular(context.appRadii.md),
