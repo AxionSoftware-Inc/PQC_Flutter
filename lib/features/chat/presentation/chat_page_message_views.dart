@@ -164,33 +164,19 @@ extension _ChatPageMessageViews on _ChatPageState {
                     _buildSelectedAttachmentTray(),
                   if (_selectedAttachments.isNotEmpty)
                     SizedBox(height: spacing.xs),
-                  AnimatedContainer(
+                  Container(
                     padding: EdgeInsets.symmetric(
                       horizontal: spacing.xs + 2,
                       vertical: spacing.xs + 2,
                     ),
                     decoration: BoxDecoration(
-                      color: _composerFocusNode.hasFocus
-                          ? Color.lerp(colors.surface, colors.primarySoft, 0.18)
-                          : colors.surface.withValues(alpha: 0.98),
+                      color: colors.surface.withValues(alpha: 0.98),
                       borderRadius: BorderRadius.circular(context.appRadii.xl),
                       border: Border.all(
-                        color: _composerFocusNode.hasFocus
-                            ? colors.primary.withValues(alpha: 0.72)
-                            : colors.border.withValues(alpha: 0.72),
+                        color: colors.border.withValues(alpha: 0.72),
                       ),
-                      boxShadow: _composerFocusNode.hasFocus
-                          ? [
-                              BoxShadow(
-                                color: colors.primary.withValues(alpha: 0.14),
-                                blurRadius: 22,
-                                offset: const Offset(0, 8),
-                              ),
-                            ]
-                          : context.appShadows.floating,
+                      boxShadow: null,
                     ),
-                    duration: context.appDurations.fast,
-                    curve: Curves.easeOutCubic,
                     child: AnimatedSize(
                       duration: context.appDurations.fast,
                       curve: Curves.easeOutCubic,

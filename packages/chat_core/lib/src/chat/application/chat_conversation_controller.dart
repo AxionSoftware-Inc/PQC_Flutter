@@ -174,26 +174,11 @@ class ChatConversationController extends ChangeNotifier {
   }
 
   Future<void> sendMessage(SendMessageCommand command) {
-    final createdAt = DateTime.now().toUtc();
     final prepared = command.copyWith(
       clientMessageId:
           command.clientMessageId ??
-          '${command.conversation.id}_${command.currentUserId}_${createdAt.microsecondsSinceEpoch}',
+          '${command.conversation.id}_${command.currentUserId}_${DateTime.now().toUtc().microsecondsSinceEpoch}',
     );
-    _messages = mergeChatTimeline(_messages, [
-      ChatMessage(
-        id: -createdAt.microsecondsSinceEpoch,
-        conversationId: prepared.conversation.id,
-        senderId: prepared.currentUserId,
-        senderName: 'You',
-        body: prepared.text,
-        messageType: prepared.messageType,
-        attachmentCount: prepared.attachments.length,
-        createdAt: createdAt,
-        clientMessageId: prepared.clientMessageId!,
-        deliveryState: MessageDeliveryState.pending,
-      ),
-    ]);
     _queuedSendCount++;
     notifyListeners();
     final operation = _sendTail.then((_) => _sendMessageInOrder(prepared));

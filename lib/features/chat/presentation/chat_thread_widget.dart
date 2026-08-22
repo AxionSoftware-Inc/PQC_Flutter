@@ -139,14 +139,14 @@ class ChatThreadWidget extends StatelessWidget {
     return TweenAnimationBuilder<double>(
       key: messageKey,
       tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 260),
+      duration: const Duration(milliseconds: 160),
       curve: Curves.easeOutCubic,
       builder: (context, value, child) => Opacity(
         opacity: value,
         child: Transform.translate(
           offset: Offset(
-            isMine ? 12 * (1 - value) : -12 * (1 - value),
-            5 * (1 - value),
+            isMine ? 6 * (1 - value) : -6 * (1 - value),
+            2 * (1 - value),
           ),
           child: child,
         ),
@@ -197,15 +197,7 @@ class ChatThreadWidget extends StatelessWidget {
                           : Border.all(
                               color: colors.border.withValues(alpha: 0.62),
                             ),
-                      boxShadow: isImageOnly
-                          ? null
-                          : [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.10),
-                                blurRadius: 14,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
+                      boxShadow: null,
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,

@@ -35,7 +35,7 @@ class _ComposerActionButton extends StatelessWidget {
         padding: EdgeInsets.zero,
         backgroundColor: context.appColors.surfaceMuted,
         foregroundColor: context.appColors.textMuted,
-        overlayColor: context.appColors.primary.withValues(alpha: 0.12),
+        overlayColor: context.appColors.primary.withValues(alpha: 0.10),
       ),
     );
   }
